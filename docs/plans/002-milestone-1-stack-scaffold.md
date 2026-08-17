@@ -22,8 +22,9 @@ No product features should be implemented.
 Current inspected state:
 
 - Current directory: `/Users/shlomihazan/Documents/The vinyl collector`
-- Current branch: `main`
-- Current status before this planning work: clean, tracking `origin/main`
+- Planning branch: `codex/milestone-1-stack-scaffold`
+- Base branch for implementation: `main`
+- Starting base before this planning branch: clean, tracking `origin/main`
 - Last approved commit: `939ef81f67ac77c7979c0779370f8aecbec64c0f`
 - Existing content: documentation and project intent only
 - Ignored local `.DS_Store` files exist in the workspace but are protected by `.gitignore`
@@ -118,6 +119,7 @@ Conflict handling:
 - Generated Vite sample assets: omit default logos/assets unless required by Vite. Do not keep decorative starter assets that imply product UI.
 - Generated `src/` sample app: replace with a minimal Vinyl Intelligence scaffold shell.
 - Generated package/config files: review and adapt deliberately rather than copying blindly.
+- Generated Oxlint dependencies/config/scripts if present: omit/remove them and use only the approved ESLint flat configuration.
 
 ## Exact Proposed File Structure
 
@@ -203,6 +205,8 @@ Reasoning:
 ## Linting Setup
 
 Use ESLint flat config in `eslint.config.js`.
+
+The current Vite React TypeScript template may include Oxlint. During implementation, inspect the generated scaffold and do not blindly carry Oxlint into the repository. Do not maintain both Oxlint and ESLint. Remove or omit generated Oxlint dependencies, config files, and package scripts if present. Do not change the approved linting decision without human approval.
 
 Minimum coverage:
 
@@ -294,7 +298,7 @@ Expected route config shape:
 import type { Config } from "@netlify/functions"
 
 export const config: Config = {
-  method: "GET",
+  method: ["GET"],
   path: "/api/health",
 }
 ```
@@ -311,19 +315,15 @@ Use a minimal explicit configuration:
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
 ```
 
 Notes:
 
 - Keep the config minimal.
-- The redirect supports future client-side routing but should not introduce real routes in Milestone 1.
+- Do not add a catch-all SPA fallback redirect in Milestone 1 because this milestone does not include client-side routing.
+- Add SPA fallback routing only in a later milestone when client-side routing actually requires it.
 - Use the function's route config for `/api/health`; do not add a broad `/api/*` redirect to `/.netlify/functions/:splat` for this milestone.
-- Ensure any SPA fallback does not shadow `/api/health`.
+- Ensure future routing changes do not shadow `/api/health`.
 - Netlify function runtime should align with Node 24. If Netlify site configuration does not use Node 24, set it through Netlify environment/configuration rather than committing secrets.
 
 ## `.env.example`
@@ -483,7 +483,7 @@ Because this milestone should be implemented on its own branch:
 ## Acceptance Criteria
 
 - Human-approved spec and plan exist before implementation starts.
-- Milestone branch is created only after approval.
+- The milestone branch may be created for planning and review before implementation approval, but no implementation commits may be added until the specification and implementation plan are explicitly approved by the human.
 - Vite + React + TypeScript app scaffold exists.
 - Netlify Functions scaffold exists with only a health/check function.
 - `netlify.toml` builds to `dist` and points to `netlify/functions`.
@@ -499,17 +499,13 @@ Because this milestone should be implemented on its own branch:
 - No Supabase integration, Supabase client configuration, Supabase Auth, database migrations, database tables, RLS policies, collection CRUD, music API, Discogs integration, MusicBrainz integration, OpenRouter integration, LLM calls, model wrappers, image recognition, Supabase Storage, recommendation logic, listening history, ratings/favorites, conversational state, product telemetry, or product feature logic is implemented.
 - Documentation is updated only to explain how to run and verify the scaffold.
 
-## Decisions Requiring Human Approval
+## Remaining Approval and Deployment Dependency
 
-Before implementation, please approve or adjust:
+The human review decisions for Node.js 24, npm, Vitest, React Testing Library, jsdom, ESLint flat config, `/api/health`, and the planning branch name are reflected in this plan.
 
-- Node.js `24.x` as the project standard.
-- `npm` as the package manager.
-- Vitest + React Testing Library as the Milestone 1 test setup.
-- Use of `@netlify/vite-plugin` for local Netlify platform emulation.
-- Health endpoint public path/name: `/api/health`.
-- Branch name: `codex/milestone-1-stack-scaffold`.
-- Whether to attempt Netlify preview deployment during Milestone 1 if Netlify auth/project setup is available.
+Before implementation, the remaining required approval is explicit human approval to begin adding implementation commits to this branch.
+
+The early Netlify preview deployment remains conditional on Netlify authentication and project access being available during implementation. If that access is unavailable, record it as a deployment verification dependency and continue with local scaffold verification.
 
 ## Reference Documentation Checked
 

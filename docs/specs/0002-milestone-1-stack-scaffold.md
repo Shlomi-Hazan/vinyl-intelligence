@@ -25,6 +25,7 @@ Relevant approved decisions:
 - Testing: Vitest, React Testing Library, and jsdom
 - Linting: ESLint flat configuration
 - Type-checking: TypeScript no-emit behavior
+- Generated Vite template linting must be inspected; do not carry Oxlint into the repository if present
 - No RAG
 - No unjustified multi-agent architecture
 - Milestones require explicit human-approved specification and implementation plan before implementation begins
@@ -107,6 +108,7 @@ Expected behavior:
 - Implementation file is `netlify/functions/health.mts`.
 - Public application path is `/api/health`.
 - Uses Netlify's supported function routing configuration mechanism, such as the exported function `config.path`, instead of making frontend code depend on `/.netlify/functions/health`.
+- Preferred route configuration uses the currently documented Netlify form with `method: ["GET"]` and `path: "/api/health"`.
 - Returns minimal JSON with non-sensitive scaffold information, such as `{ "status": "ok" }`.
 - Restricts the endpoint to `GET` if supported by the chosen Netlify Functions configuration.
 - Does not read secrets.
@@ -149,6 +151,10 @@ React component tests may use React Testing Library and jsdom.
 ## Linting and Type-Checking Requirements
 
 - ESLint must run successfully for TypeScript/React code.
+- ESLint flat configuration is the approved linting stack.
+- If the generated Vite React TypeScript template includes Oxlint, omit/remove generated Oxlint dependencies, configs, and scripts.
+- Do not maintain both Oxlint and ESLint.
+- Do not change the approved linting decision without human approval.
 - TypeScript must run in no-emit checking mode.
 - Functions must be included in type-checking or have their own TypeScript coverage.
 - Build must fail on TypeScript errors.
@@ -160,9 +166,10 @@ The scaffold should include:
 - `netlify.toml`
 - Vite build command and publish directory
 - functions directory configuration
-- SPA fallback/redirect behavior if needed for the app shell
 - function route configuration for `/api/health`
 - local function development approach
+
+Milestone 1 does not include client-side routing, so it must not add a catch-all SPA fallback redirect. Add SPA fallback routing only in a later milestone when client-side routing actually requires it.
 
 Early deployment check:
 
@@ -178,7 +185,7 @@ This preview check does not replace the later Production Deployment milestone.
 ## Acceptance Criteria
 
 - Human-approved specification and implementation plan exist before implementation begins.
-- Implementation occurs on the approved milestone branch, not directly on `main`.
+- The milestone branch may be created for planning and review before implementation approval, but no implementation commits may be added until the specification and implementation plan are explicitly approved by the human.
 - Vite + React + TypeScript scaffold exists in the current repository without overwriting existing documentation.
 - Local dev command starts the app.
 - Build command creates production output.
