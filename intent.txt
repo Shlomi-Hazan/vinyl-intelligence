@@ -1,0 +1,1335 @@
+VINYL INTELLIGENCE — PROJECT INTENT Agentic Software Engineering
+(ASE-26) Primary build environment: Codex / agentic coding workflow
+
+======================================================================
+0. DOCUMENT PURPOSE
+======================================================================
+
+This file is the source-of-truth intent for the project.
+
+It is deliberately more detailed than a normal README. Its job is to
+give an agentic coding system enough direction to build the project
+without silently inventing the product. It should be read before
+planning, architecture work, database design, UI implementation, or
+feature development.
+
+This is a living document. The project may evolve, but major changes
+should update this file first so that product intent, implementation,
+and verification stay aligned.
+
+The project should demonstrate agentic software engineering, not merely
+a finished app. The repository should therefore preserve specifications,
+decisions, plans, verification evidence, and an understandable audit
+trail.
+
+====================================================================== 1.
+WORKING PROJECT NAME
+======================================================================
+
+Working name: Vinyl Intelligence
+
+Alternative product-style names may be chosen later, but renaming must
+not change the product’s central purpose.
+
+One-line description:
+
+An AI-powered web application for vinyl collectors that turns a personal
+record collection into an intelligent, searchable, conversational music
+library.
+
+Short pitch:
+
+Users build their vinyl collection manually or by photographing record
+covers. The system identifies albums using AI vision plus external music
+APIs, enriches them with structured metadata, automatically organizes
+the collection, records listening behavior and ratings, and lets users
+either browse normally or ask an LLM for personalized recommendations in
+natural language.
+
+======================================================================
+2. PRIMARY INTENT — WHY THIS PROJECT EXISTS
+======================================================================
+
+Vinyl collectors often own enough records that choosing what to play
+becomes surprisingly difficult. They may forget albums they own,
+repeatedly play the same records, remember a desired mood but not a
+specific album, or know what they want emotionally without knowing the
+correct genre, artist, decade, or filter.
+
+Traditional collection software mainly answers:
+
+    "What records do I own?"
+
+This project should additionally answer:
+
+    "Given what I own, what should I listen to right now, and why?"
+
+The application should reduce the friction between a human musical
+intention and a physical record in the user’s own collection.
+
+The central product idea is NOT “ChatGPT for records.”
+
+The central product idea is:
+
+    A personal vinyl collection that becomes intelligent.
+
+AI should appear only where cognition genuinely improves the experience:
+understanding vague human intent, recognizing album covers, interpreting
+collection metadata, and producing personalized recommendations or
+useful organization.
+
+Normal deterministic software should handle tasks that do not need an
+LLM: authentication, CRUD operations, filtering, sorting, database
+persistence, validation, history tracking, API caching, and other
+predictable behavior.
+
+======================================================================
+3. THE USER PROBLEM
+======================================================================
+
+Primary user:
+
+A vinyl collector with a personal physical record collection who wants
+an easy way to catalog, rediscover, browse, and choose records.
+
+Core problems:
+
+1.  The user may not remember every record in the collection.
+2.  Adding records one by one can be tedious.
+3.  The user may know a mood or situation but not know which album fits
+    it.
+4.  Traditional filters require the user to translate a human feeling
+    into database fields.
+5.  A growing collection becomes harder to browse mentally.
+6.  The user may repeatedly listen to familiar albums while forgetting
+    others.
+7.  Album metadata may be inconsistent or incomplete if entered
+    manually.
+8.  A recommendation engine that ignores the user’s actual collection is
+    not useful when the goal is to choose a physical record the user can
+    play now.
+
+Example user thoughts:
+
+-   “I had a stressful day and want something relaxing, but not sleepy.”
+-   “Friends are coming over. Give me something energetic and
+    accessible.”
+-   “I want classic rock, but not something I’ve played recently.”
+-   “Give me something from the 90s.”
+-   “I want jazz for dinner.”
+-   “Surprise me with something I forgot I own.”
+-   “I want something upbeat from my older records.”
+-   “What haven’t I listened to in months?”
+-   “I feel nostalgic.”
+-   “I want something similar in vibe to the record I played yesterday.”
+
+These requests are intentionally different from ordinary genre/year
+filters.
+
+======================================================================
+4. PRODUCT PRINCIPLES
+======================================================================
+
+4.1 AI must add real value
+
+Do not use an LLM for a task that plain code can perform more reliably.
+
+Good LLM/AI uses: - Natural-language intent interpretation. - Mood/vibe
+interpretation. - Conversational recommendation. - Vision-based
+album-cover recognition. - Explanation of recommendations. - Optional
+semantic enrichment when metadata is ambiguous.
+
+Bad/unnecessary LLM uses: - Simple year filtering. - Exact artist
+search. - Sorting. - Authentication. - Database updates. - Basic
+validation. - Calculating listening counts.
+
+4.2 The user’s collection is the recommendation boundary
+
+By default, recommendation results must come from records the user
+actually owns.
+
+The system may optionally show external discovery information, but it
+must never quietly recommend an album outside the collection when
+answering a “what should I play?” request.
+
+4.3 Manual control must always exist
+
+AI is an assistant, not the only interface.
+
+The user must be able to: - Add/edit/delete records manually. - Search
+manually. - Filter manually. - Correct AI recognition. - Override
+metadata. - choose a record without using chat.
+
+4.4 Uncertainty must be visible
+
+The system must not pretend that uncertain album recognition is certain.
+
+For image recognition: - Show likely matches. - Let the user confirm the
+correct result. - If confidence is insufficient, ask for correction or
+manual entry. - Never silently add a guessed album to the permanent
+collection.
+
+For recommendations: - Avoid claiming unsupported facts. - Explanations
+should be grounded in available collection metadata, history, ratings,
+and user-provided context.
+
+4.5 The app should feel useful without a tutorial
+
+The main actions should be obvious: - Add a record. - Photograph a
+record. - Browse the collection. - Search/filter. - Ask for a
+recommendation. - Mark/listen/rate.
+
+======================================================================
+5. CORE PRODUCT EXPERIENCE
+======================================================================
+
+The product has two equally important ways to use the collection:
+
+A. CLASSIC LIBRARY MODE Search, browse, sort, filter, inspect, edit.
+
+B. AI CURATOR MODE Describe an intention naturally and receive
+personalized suggestions.
+
+The project becomes more interesting because both modes operate over the
+same real collection and history.
+
+======================================================================
+6. CORE FEATURE SET
+======================================================================
+
+6.1 User account and personal collection
+
+The application should support a user account and a persistent personal
+vinyl collection.
+
+Each collection item should represent a physical album/release owned by
+the user.
+
+Possible fields:
+
+-   internal collection item ID
+-   user ID
+-   external music database ID(s)
+-   artist
+-   album title
+-   release title / edition if available
+-   release year
+-   decade
+-   genres
+-   styles/subgenres
+-   cover image
+-   label
+-   country
+-   format
+-   track list
+-   external links/identifiers
+-   date added to collection
+-   source of entry: manual / image recognition / API search
+-   user rating
+-   user notes
+-   favorite flag
+-   listening count
+-   last listened date
+-   metadata confidence/source information where useful
+
+The exact schema should be finalized during specification and
+architecture.
+
+6.2 Add a record manually
+
+The user can search for an album/release and add it.
+
+Preferred flow:
+
+1.  User types artist/album information.
+2.  Backend queries an external music metadata API.
+3.  App shows candidate matches.
+4.  User selects the correct release.
+5.  Metadata is imported.
+6.  User confirms.
+7.  Record is stored in the personal collection.
+
+There must also be a fallback for completely manual entry if no API
+match exists.
+
+6.3 AI photo-based collection entry — major “wow” feature
+
+The user can photograph or upload an image of a vinyl record cover.
+
+Target flow:
+
+1.  User captures/uploads a cover image.
+2.  Backend securely receives the image.
+3.  A vision-capable AI model analyzes the image.
+4.  The model extracts likely identifying information such as artist,
+    album title, visible text, artwork clues, and possibly edition
+    clues.
+5.  The backend uses the extracted information to query a music metadata
+    API.
+6.  The app presents the best candidate matches.
+7.  The user confirms one candidate.
+8.  Structured metadata is imported from the authoritative music API.
+9.  The confirmed record is added to the collection.
+
+Important design rule:
+
+The vision model should help identify the record, but external
+structured metadata should be used where possible instead of treating
+model-generated metadata as authoritative.
+
+Failure flow:
+
+-   If the image is unclear, tell the user.
+-   If multiple releases are plausible, show choices.
+-   If no match is found, allow another photo, edited search terms, or
+    manual entry.
+-   Never permanently save an uncertain match without user confirmation.
+
+Potential later enhancement: - Multiple-record photo / shelf scanning.
+This is NOT required for the first version because reliably identifying
+many records in one image increases complexity substantially.
+
+6.4 Automatic organization
+
+Once records are added, the application automatically organizes them
+using metadata.
+
+Collections should be browsable by: - artist - album - genre -
+style/subgenre where available - year - decade (e.g. 1960s, 1970s,
+1980s, 1990s, 2000s) - favorites - rating - recently added - recently
+listened - least recently listened / forgotten records - most played /
+least played
+
+The AI may help interpret messy or broad genre information, but
+deterministic metadata should be preferred when available.
+
+6.5 Manual search and filtering
+
+Users must not be forced to use AI chat.
+
+Support normal search such as: - album title - artist - genre -
+decade/year
+
+Support combined filters where practical, for example: - Jazz + 1970s -
+Rock + rating >= 4 - Not listened to recently - Favorites from the 1990s
+
+Search/filter results should be fast and deterministic.
+
+6.6 Listening history
+
+The application should track listening events.
+
+Minimum behavior: - User can mark a record as “played” / “listened
+now.” - Store timestamp. - Update last-listened date. - Update listening
+count.
+
+History enables recommendations such as: - “Something I haven’t heard
+recently.” - “An album I forgot I own.” - “Don’t give me something I
+played this week.” - “What have I been listening to most?” - “Give me
+something different from my recent listening.”
+
+A history page should let the user inspect recent listening activity.
+
+6.7 Ratings, favorites, and personal notes
+
+The user can: - rate albums - favorite albums - optionally add personal
+notes
+
+These signals can be used by the recommendation logic.
+
+Ratings should not force every recommendation toward the highest-rated
+album; they are one signal among mood, recency, genre, decade, novelty,
+and explicit user instructions.
+
+6.8 Conversational AI curator
+
+The central AI experience is a chat/recommendation interface.
+
+The user writes naturally rather than filling out a recommendation form.
+
+Examples: - “I need something calm after a long day.” - “Give me
+something fun for friends coming over.” - “I want something from the 90s
+that I haven’t heard recently.” - “No jazz tonight.” - “Surprise me.” -
+“Something energetic, but not too aggressive.” - “I want an album I
+usually overlook.”
+
+The system should convert this request into structured recommendation
+intent.
+
+Possible structured intent:
+
+{ mood: […], desired_genres: […], excluded_genres: […], decades: […],
+energy: …, familiarity_preference: …, recency_constraint: …,
+social_context: …, novelty_preference: …, number_of_recommendations: … }
+
+This structure is illustrative, not a fixed schema.
+
+The system then uses collection data and deterministic filtering/ranking
+where possible, with the LLM handling interpretation and final
+explanation.
+
+6.9 Recommendation results
+
+A recommendation should normally return a small number of strong choices
+rather than a huge list.
+
+Suggested default: - 3 recommendations - one clearly marked best match
+
+Each recommendation can show: - cover - artist - album - year -
+genre/style - why it fits the request - relevant personal context,
+e.g. “you haven’t played this in 4 months” - rating/favorite/history
+information where relevant
+
+The user should be able to: - choose one - ask for alternatives - refine
+the request - reject a suggestion - mark the chosen album as played
+
+6.10 Conversational follow-up
+
+The AI should support short multi-turn refinement.
+
+Example:
+
+User: “I want classic rock.”
+
+System: “Do you want something energetic, mellow, or surprising?”
+
+User: “Mellow, and preferably something I haven’t played recently.”
+
+The second turn should retain the relevant first-turn intent.
+
+This should be implemented with bounded conversation state, not
+uncontrolled long-term model memory.
+
+6.11 Recommendation reasoning
+
+The recommendation engine should combine several signals rather than
+simply asking an LLM to choose from an unstructured dump of every
+record.
+
+Possible signals: - explicit user request - genre/style match -
+decade/year match - mood interpretation - rating - favorite status -
+listening recency - listening frequency - novelty/rediscovery -
+exclusions - current conversational constraints
+
+The architecture should avoid sending the entire database to the model
+whenever possible.
+
+A good pattern is:
+
+1.  LLM interprets the user’s natural-language intent.
+2.  Backend converts intent into candidate selection/filtering.
+3.  Backend retrieves a manageable candidate set from the database.
+4.  Ranking logic and/or LLM selects the strongest candidates.
+5.  LLM explains the final recommendations using only supplied facts.
+
+This preserves AI value while keeping cost, latency, and hallucination
+risk under control.
+
+======================================================================
+7. EXTERNAL API STRATEGY
+======================================================================
+
+The project should intentionally demonstrate API integration.
+
+The exact providers must be verified before implementation based on
+current terms, authentication requirements, rate limits, cost, and
+available data.
+
+Potential API roles:
+
+A. Music catalog / release metadata Candidate providers: Discogs and/or
+MusicBrainz.
+
+Use for: - artist/album identification - release metadata - year -
+label - track list - genres/styles where available - cover references
+where legally/technically permitted
+
+B. LLM / multimodal AI provider Use a server-side model API, potentially
+through OpenRouter or another provider supported by the course/project.
+
+Use for: - natural-language intent interpretation - recommendation
+explanation - conversational follow-up - vision-based cover
+identification if the chosen provider supports vision
+
+C. Optional enrichment API Only add if it creates clear product value.
+
+Possible roles: - additional genre/tags - artist metadata -
+popularity/context - preview or external listening link
+
+Do not integrate APIs merely to increase the API count.
+
+The interesting engineering is the orchestration: AI interpretation ->
+API lookup -> database -> ranking -> AI explanation.
+
+======================================================================
+8. RAG DECISION
+======================================================================
+
+A full RAG/vector-database subsystem is deliberately NOT a core
+requirement.
+
+Reason:
+
+The project mainly operates over structured personal collection data.
+For a relatively small vinyl collection, a full
+retrieval-augmented-generation stack may add complexity without enough
+useful source material to justify it.
+
+Instead, use targeted database retrieval and API enrichment.
+
+The project may still retrieve relevant data before an LLM call; that is
+normal application retrieval. It does not need to be branded or
+implemented as a vector RAG architecture.
+
+Possible future RAG extension: - album reviews - liner-note text -
+long-form music journalism - personal journal entries - large
+unstructured music knowledge corpus
+
+That is future scope, not the project’s center.
+
+======================================================================
+9. AGENTIC / LLM DESIGN
+======================================================================
+
+The application should demonstrate meaningful agentic behavior without
+creating fake complexity.
+
+Do NOT create multiple agents merely so the architecture can be called
+“multi-agent.”
+
+Preferred first design:
+
+One orchestrated AI workflow with clearly separated stages/tools: 1.
+Understand request. 2. Retrieve structured collection candidates. 3.
+Optionally call external metadata service. 4. Rank/select. 5. Explain.
+6. Return structured result.
+
+Photo workflow: 1. Analyze image. 2. Extract search clues. 3. Call music
+catalog API. 4. Compare candidate matches. 5. Ask user for confirmation.
+6. Persist only after confirmation.
+
+If a true multi-agent design is added later, each agent must have an
+independent reason to exist, such as: - recommendation planner -
+candidate critic/verifier
+
+But a multi-agent system is optional, not a success criterion by itself.
+
+======================================================================
+10. WEB APPLICATION ARCHITECTURE
+======================================================================
+
+The project should be a real deployed web application.
+
+Four major parts:
+
+1.  Browser / frontend
+2.  Backend / authoritative application logic
+3.  Database / persistent state
+4.  Deployment / public runtime environment
+
+10.1 Frontend responsibilities
+
+The browser should handle: - UI rendering - forms - collection
+browsing - search/filter controls - chat interface - camera/file
+selection - loading/error/empty states - client-side interaction
+
+The browser must NOT contain: - private API keys - privileged database
+credentials - authoritative security rules - secret prompts that must
+remain server-side
+
+10.2 Backend responsibilities
+
+The backend is authoritative.
+
+It should handle: - authentication enforcement - input validation -
+authorization - database access - external API calls requiring secrets -
+LLM calls - image-recognition workflow - recommendation orchestration -
+rate limiting where necessary - API error handling - model output
+validation - logging/audit information - cost/usage tracking where
+practical
+
+10.3 Database responsibilities
+
+Persistent storage should cover: - users - collection items -
+normalized/enriched album/release metadata as appropriate - listening
+events - ratings/favorites/notes - conversation/session state if
+needed - external API identifiers - model-call audit information where
+appropriate
+
+A relational database is a natural fit because users, collection items,
+releases, and listening events have clear relationships, but the final
+decision should be made during architecture design.
+
+10.4 Deployment
+
+The project should be deployable and demonstrable from a real URL.
+
+Potential course-compatible stack: - frontend hosting/deployment:
+Netlify or equivalent - backend/database/auth/storage: Supabase or
+equivalent - model access: OpenRouter or equivalent - source/version
+control: GitHub
+
+The final stack may differ if there is a documented reason.
+
+======================================================================
+11. SUGGESTED DATA MODEL
+======================================================================
+
+This is a starting model, not a final migration.
+
+USERS - id - email/auth identity - display name - created_at
+
+RELEASES / ALBUM_METADATA - id - provider - provider_release_id -
+artist - album_title - release_year - genres - styles - label -
+country - format - cover_url - tracklist - metadata_json - created_at -
+updated_at
+
+COLLECTION_ITEMS - id - user_id - release_id - date_added - source -
+rating - favorite - personal_notes - created_at - updated_at
+
+LISTENING_EVENTS - id - user_id - collection_item_id - listened_at
+
+IMAGE_IDENTIFICATION_ATTEMPTS - id - user_id - image reference/storage
+path if retained - extracted_artist - extracted_album - candidate
+IDs/results - selected_release_id - status - created_at
+
+AI_INTERACTIONS / MODEL_CALLS - id - user_id - feature -
+model/provider - request type - success/failure - latency - token usage
+if available - estimated cost if available - created_at
+
+CONVERSATION_SESSIONS (optional) - id - user_id - bounded state /
+summarized intent - created_at - updated_at
+
+Security and privacy requirements may mean some raw prompts/images
+should not be stored. Decide deliberately before implementation.
+
+======================================================================
+12. USER FLOWS
+======================================================================
+
+12.1 First-time user
+
+1.  Open app.
+2.  Sign up / log in.
+3.  See an empty collection with clear calls to action.
+4.  Choose:
+    -   Add manually/search API
+    -   Add by photo
+5.  Add first record.
+6.  See it appear in the collection.
+7.  Add more records.
+8.  Use AI curator once enough records exist.
+
+12.2 Add by photo
+
+1.  Press “Add by photo.”
+2.  Take/upload photo.
+3.  See upload/analysis state.
+4.  AI extracts clues.
+5.  Backend searches external catalog.
+6.  Candidate releases appear.
+7.  User confirms correct release.
+8.  User optionally edits details.
+9.  Record is saved.
+10. Success state links to the album page or “add another.”
+
+12.3 Manual/API add
+
+1.  Press “Add record.”
+2.  Search artist/title.
+3.  API candidates appear.
+4.  Select release.
+5.  Confirm/edit.
+6.  Save.
+
+12.4 Browse collection
+
+1.  Open collection.
+2.  View cover-grid or list.
+3.  Search or filter.
+4.  Open an album.
+5.  See metadata, rating, notes, and listening history.
+6.  Mark as played / edit / favorite.
+
+12.5 AI recommendation
+
+1.  Open curator.
+2.  Enter free-text mood/intention.
+3.  UI shows thinking/loading state.
+4.  Backend interprets intent.
+5.  Candidate records are selected from user’s collection.
+6.  AI returns a few grounded recommendations.
+7.  User can:
+    -   choose one
+    -   ask why
+    -   ask for alternatives
+    -   refine constraints
+    -   mark chosen album as played
+
+12.6 Rediscovery
+
+Example: User asks: “Give me something good that I’ve ignored lately.”
+
+Backend identifies collection items with old/no listening history,
+combines that with ratings/preferences and other requested constraints,
+and returns suitable records.
+
+======================================================================
+13. INTERFACE / PAGE INVENTORY
+======================================================================
+
+Minimum pages/views:
+
+1.  Landing / authentication
+2.  Dashboard / home
+3.  Collection
+4.  Album detail
+5.  Add record
+6.  Add by photo
+7.  AI curator/chat
+8.  Listening history
+9.  Profile/settings
+
+Potential dashboard modules: - total records - recently added - recently
+played - forgotten records - favorite genres/decades - quick “What
+should I play?” entry - “Surprise me” button
+
+Do not overload the dashboard merely to show complexity.
+
+======================================================================
+14. UI STATES THAT MUST BE DESIGNED
+======================================================================
+
+Every important flow must specify:
+
+-   initial state
+-   loading state
+-   success state
+-   empty state
+-   validation error
+-   network/API error
+-   AI/model error
+-   no-match state
+-   ambiguous-match state
+-   permission/authentication failure
+
+Examples:
+
+Photo recognition: “Analyzing cover…” is different from “Searching
+catalog…” and both are different from “We found several possible
+releases.”
+
+Recommendation: If the model call fails, show failure as failure. Do not
+show an empty card or fabricated default recommendation.
+
+======================================================================
+15. SECURITY AND PRIVACY
+======================================================================
+
+Minimum requirements:
+
+-   All API secrets remain server-side.
+-   Never expose privileged database keys in the frontend.
+-   Enforce per-user ownership of collection data.
+-   Validate all backend inputs.
+-   Validate/parse model output before using it.
+-   Treat model output as untrusted input.
+-   Apply file type and size restrictions to image uploads.
+-   Avoid storing uploaded images forever unless needed.
+-   Document retention behavior.
+-   Use least-privilege access.
+-   Avoid logging secrets or unnecessary personal content.
+-   Add reasonable abuse/rate protection for costly AI/API endpoints.
+-   Do not allow prompts to directly control privileged tools or
+    arbitrary backend operations.
+-   Sanitize/escape displayed user-generated content.
+
+======================================================================
+16. MODEL RELIABILITY RULES
+======================================================================
+
+The system must assume the LLM can be confidently wrong.
+
+Therefore:
+
+1.  Structured model responses should use a defined schema.
+2.  Parse and validate responses.
+3.  Retry only when appropriate and with a hard retry limit.
+4.  Never use model-generated database IDs as trusted identifiers.
+5.  Reconcile image-recognition output with catalog API results.
+6.  Recommendations must reference real collection item IDs selected by
+    the backend.
+7.  If a returned recommendation ID is not in the allowed candidate set,
+    reject it.
+8.  Do not let the model invent listening history, ratings, release
+    years, or ownership.
+9.  User-visible failure is preferable to fake success.
+10. Log enough information to diagnose model failures without leaking
+    secrets.
+
+======================================================================
+17. COST AND LATENCY
+======================================================================
+
+AI is a runtime dependency and every model call can cost money and time.
+
+The project should make deliberate choices about: - which model is used
+for which task - maximum tokens - maximum calls per user action -
+image-analysis cost - retries - timeouts - caching of safe external
+metadata - whether a cheaper model can perform intent extraction -
+whether a stronger model is needed for recommendation/explanation
+
+Avoid chains of unnecessary LLM calls.
+
+Potential architecture: - one compact structured-output call for
+intent - deterministic candidate retrieval - one
+recommendation/explanation call
+
+For photo recognition: - one vision call - one or more deterministic
+catalog API searches
+
+Store token/cost/latency telemetry if practical. This is valuable both
+for engineering and for the course demonstration.
+
+======================================================================
+18. ERROR HANDLING
+======================================================================
+
+External dependencies will fail.
+
+Design for: - music API unavailable - API rate limit - malformed API
+response - no search results - AI provider unavailable - model timeout -
+malformed model output - image too large - unsupported image format -
+poor/blurred image - database failure - authentication expiration -
+duplicate record - network interruption
+
+Each should produce a useful, honest user-facing state and an actionable
+log.
+
+======================================================================
+19. DUPLICATES AND RELEASE AMBIGUITY
+======================================================================
+
+Vinyl releases can have many editions.
+
+The product must decide deliberately whether the collection tracks: -
+album-level ownership, or - exact release/pressing-level ownership.
+
+Preferred direction: Support a release-level external identifier when
+available, but keep the normal UI understandable for users who do not
+care about pressing details.
+
+Duplicate behavior must be specified: - warn if the exact release is
+already owned - allow multiple copies if intentionally confirmed - do
+not silently block legitimate duplicates
+
+======================================================================
+20. RECOMMENDATION QUALITY — WHAT “GOOD” MEANS
+======================================================================
+
+A good recommendation:
+
+-   is actually in the user’s collection
+-   respects explicit constraints
+-   fits the interpreted mood/context reasonably
+-   does not invent metadata
+-   uses listening history correctly
+-   gives a concise reason
+-   provides variety when multiple results are requested
+-   handles “surprise me” differently from “give me my favorite”
+-   can surface forgotten records instead of always choosing obvious
+    favorites
+
+A bad recommendation:
+
+-   is outside the collection
+-   violates “not jazz” or another exclusion
+-   says an album has not been played recently when it was played
+    yesterday
+-   invents a genre/year
+-   returns the same few albums regardless of prompt
+-   relies only on popularity
+-   provides a long generic explanation that could describe any album
+
+======================================================================
+21. VERIFICATION / ACCEPTANCE TESTS
+======================================================================
+
+The final project should have automated tests plus manual verification.
+
+Examples of checkable acceptance criteria:
+
+COLLECTION - A logged-in user can add a record through catalog search. -
+A saved record remains after refresh/login. - User A cannot access User
+B’s collection. - A user can edit and delete an owned record. -
+Duplicate handling follows the documented rule.
+
+PHOTO IDENTIFICATION - A supported image can be uploaded. - The image
+never sends privileged secrets to the browser. - The workflow produces
+candidates rather than silently persisting a guess. - The user must
+confirm before save. - A failed/no-match recognition has a manual
+fallback.
+
+SEARCH/FILTER - Search by artist/title works. - Filter by genre works. -
+Filter by decade works. - Combined filters behave predictably. - Empty
+results display a clear state.
+
+LISTENING HISTORY - Marking an album played creates an event. -
+Last-listened information updates correctly. - History is displayed in
+correct chronological order.
+
+RATINGS/FAVORITES - Rating/favorite persists. - AI receives only
+accurate stored values when these are used as signals.
+
+AI CURATOR - Recommendation IDs always belong to the user’s candidate
+set. - Explicit exclusions are respected. - A recency request uses real
+listening history. - “Surprise me” can return a less-frequently played
+item. - Malformed model output does not reach the UI as valid data. -
+Model/API failure is visible.
+
+SECURITY - Secrets are absent from client bundles/repository. - Backend
+authorization is tested. - File upload validation exists. - Model output
+is treated as untrusted.
+
+DEPLOYMENT - App is reachable from the deployed URL. - Critical flows
+work in production, not only locally.
+
+======================================================================
+22. DEFINITION OF DONE
+======================================================================
+
+The project counts as functionally complete when a reviewer can:
+
+1.  Create/login to an account.
+2.  Add multiple vinyl records using an external catalog API.
+3.  Add at least one record using the AI photo-recognition flow.
+4.  Correct or reject an uncertain photo match.
+5.  Browse the saved collection.
+6.  Search and filter it manually by meaningful metadata such as artist,
+    genre, year/decade, and listening-related fields.
+7.  Open an album and see useful metadata.
+8.  Rate/favorite a record.
+9.  Mark a record as listened and see history update.
+10. Ask the AI curator for a recommendation using natural language.
+11. Receive recommendations only from the owned collection.
+12. See explanations based on real stored/API data.
+13. Refine the recommendation conversationally.
+14. Trigger at least one handled failure state without the UI pretending
+    success.
+15. Use the deployed application from a real URL.
+16. Inspect the repository and understand the architecture, intent,
+    major decisions, verification, and development history.
+
+The project is NOT done merely because the happy-path demo works.
+
+======================================================================
+23. OUT OF SCOPE FOR THE FIRST COMPLETE VERSION
+======================================================================
+
+Unless deliberately promoted later, the following are out of scope:
+
+-   Full streaming service replacement.
+-   Playing copyrighted full-length music.
+-   Buying/selling marketplace.
+-   Social network.
+-   Public follower system.
+-   Full Discogs clone.
+-   Automatic pricing/valuation of the entire collection.
+-   Full vector-database RAG system.
+-   Large-scale review ingestion.
+-   Training/fine-tuning a custom foundation model.
+-   Building a custom computer-vision model from scratch.
+-   Perfect pressing identification from artwork alone.
+-   Guaranteed recognition of every record.
+-   Shelf-scale recognition of dozens of albums from one image.
+-   Native iOS/Android apps; responsive web is sufficient unless scope
+    changes.
+-   Complex multi-agent architecture without a demonstrated need.
+-   Autonomous actions that modify the user’s collection without
+    confirmation.
+
+======================================================================
+24. STRETCH FEATURES — ONLY AFTER CORE IS SOLID
+======================================================================
+
+Possible enhancements:
+
+-   “Forgotten gems” dashboard.
+-   Recommendation presets: Dinner, Sunday Morning, Party, Focus, Relax,
+    Surprise.
+-   Personal listening statistics.
+-   Genre/decade distribution charts.
+-   Smart collection insights.
+-   Optional external discovery: “If you like your X records, consider
+    Y” clearly separated from owned-record recommendations.
+-   Barcode/catalog-number recognition.
+-   Better pressing identification.
+-   Multiple photo angles for difficult identification.
+-   Voice input for the curator.
+-   PWA/mobile camera optimization.
+-   Shareable collection view.
+-   Import existing collection from a supported service.
+-   Export collection to CSV/JSON.
+-   Model/provider comparison mode for course experimentation.
+-   Recommendation feedback (“good suggestion” / “not what I meant”) to
+    improve ranking heuristics within the session/user profile.
+-   Carefully justified two-agent recommendation + critic workflow.
+
+Stretch features must not destabilize core flows.
+
+======================================================================
+25. PROJECT SUCCESS CRITERIA
+======================================================================
+
+The project should impress because the pieces form one coherent product,
+not because it contains the largest number of technologies.
+
+Technical depth should be visible through:
+
+-   real frontend/backend/database separation
+-   authentication and authorization
+-   persistent relational data
+-   external API integration
+-   multimodal AI
+-   runtime LLM integration
+-   structured model output
+-   orchestration between AI, APIs, and database
+-   deterministic + probabilistic logic used in the right places
+-   error handling
+-   security boundaries
+-   cost/latency awareness
+-   testing
+-   deployment
+-   documentation
+-   version control
+-   audit trail
+
+Product depth should be visible through:
+
+-   a real collector problem
+-   an obvious reason for AI
+-   useful manual functionality
+-   graceful uncertainty
+-   personalization from real history
+-   a polished end-to-end experience
+
+======================================================================
+26. AGENTIC DEVELOPMENT PROCESS — CODEX
+======================================================================
+
+This project is intended to be built substantially with Codex.
+
+Codex should be treated as an engineering collaborator, not as a
+one-shot app generator.
+
+For every meaningful implementation turn, follow this loop:
+
+1.  INTENT Reconfirm the user/product outcome.
+
+2.  SPECIFICATION Write precise, checkable behavior before coding.
+
+3.  CONTEXT Give Codex only the relevant files, conventions,
+    architecture, existing decisions, API documentation, and
+    constraints.
+
+4.  PLAN Ask Codex to produce an implementation plan before large
+    changes. Review the plan before execution.
+
+5.  EXECUTION Let Codex implement within an explicit scope.
+
+6.  VERIFICATION Run tests, type checks, linting, build, and relevant
+    manual checks. Verify against the written specification, not against
+    Codex saying “done.”
+
+7.  AUDIT TRAIL Preserve important decisions, commits, test evidence,
+    and reasoning in the repository.
+
+The human remains responsible for: - choosing what is worth building -
+deciding product intent - judging architecture - deciding tradeoffs -
+approving specifications - reviewing agent plans - verifying behavior -
+accepting/rejecting changes
+
+======================================================================
+27. REPOSITORY DOCUMENTATION STRATEGY
+======================================================================
+
+Recommended repository documentation:
+
+/intent.txt This document.
+
+/README.md What the product is, setup, architecture summary, demo
+instructions.
+
+/docs/ architecture.md api-integrations.md data-model.md ai-design.md
+security.md verification.md decisions/ ADR-style major decisions specs/
+feature specifications plans/ reviewed implementation plans where useful
+
+Do not create documentation merely for volume.
+
+The important distinction: - Codex can describe WHAT the code does. -
+The human must record WHY important product/architecture choices were
+made.
+
+======================================================================
+28. VERSION CONTROL DISCIPLINE
+======================================================================
+
+Use Git/GitHub throughout development.
+
+Principles: - Small coherent commits. - Do not combine unrelated
+features. - Commit messages explain the change. - Major risky changes
+happen on branches. - Never commit secrets. - Keep migrations/versioned
+schema changes in source control. - Prompts and AI schemas are
+source-controlled like code. - Tests change with behavior. - The
+repository should make project evolution understandable.
+
+A reviewer should be able to see that the app was engineered iteratively
+rather than generated once and submitted.
+
+======================================================================
+29. PROMPT MANAGEMENT
+======================================================================
+
+Prompts are runtime behavior and should be treated as code.
+
+Requirements: - Keep important system prompts in version-controlled
+server-side files/modules. - Do not hide critical product logic inside
+random inline strings. - Version prompt changes through Git. - Prefer
+structured outputs for machine-consumed calls. - Include explicit
+allowed candidate IDs when asking the model to choose. - Tell the model
+not to invent facts outside supplied context. - Keep prompts focused; do
+not dump unnecessary database state. - Test important prompt behavior
+with representative cases.
+
+======================================================================
+30. OBSERVABILITY / AUDITABILITY
+======================================================================
+
+Where practical, record:
+
+-   feature invoked
+-   external service/model used
+-   timestamp
+-   success/failure
+-   latency
+-   token usage
+-   estimated cost
+-   non-sensitive error category
+
+Do not log secrets or unnecessary private content.
+
+The goal is to answer: - What happened? - Which dependency was called? -
+Why did the user see this result? - How expensive/slow was it? - Where
+did a failure occur?
+
+======================================================================
+31. DEVELOPMENT PHASES
+======================================================================
+
+PHASE 0 — Product specification - Finalize this intent. - Define MVP. -
+Decide exact catalog API. - Decide AI provider/model strategy. - Decide
+stack. - Define data model. - Define acceptance criteria. - Produce
+initial architecture.
+
+PHASE 1 — Foundation - Repository setup. - Frontend/backend skeleton. -
+Database. - Authentication. - Deployment pipeline. - Environment/secrets
+setup.
+
+PHASE 2 — Collection CRUD - Manual record creation. - Edit/delete. -
+Album detail. - Collection grid/list. - Basic search.
+
+PHASE 3 — External catalog integration - Search external catalog. -
+Candidate selection. - Metadata import. - Duplicate logic. - API
+caching/error handling.
+
+PHASE 4 — Organization - Genre/year/decade organization. -
+Filters/sorting. - Favorites/ratings. - Dashboard basics.
+
+PHASE 5 — Listening history - Mark played. - History events. -
+Last-listened/count. - History UI. - “forgotten” queries.
+
+PHASE 6 — AI curator - Natural-language intent extraction. - Candidate
+retrieval. - Ranking/recommendation. - Grounded explanation. -
+Structured output validation. - Follow-up conversation.
+
+PHASE 7 — AI photo recognition - Image upload/camera UX. - Vision
+call. - Search-clue extraction. - Catalog API reconciliation. -
+Candidate confirmation. - Fallback/manual correction.
+
+PHASE 8 — Reliability/security - Auth/authorization audit. - Input
+validation. - Upload restrictions. - AI output validation. - Rate
+limits. - Failure states. - Logging.
+
+PHASE 9 — Verification and polish - Automated tests. - End-to-end
+critical flows. - Accessibility/basic responsive review. - Production
+verification. - Cost/latency review. - Documentation. - Demo
+dataset/demo flow.
+
+Do not begin later phases by destabilizing unfinished earlier ones.
+
+======================================================================
+32. MVP VS. FINAL COURSE PROJECT
+======================================================================
+
+MVP: - authentication - collection database - manual/API record add -
+browse/search/filter - listening history - simple AI recommendation from
+owned collection - deployed web app
+
+Final course project target: - everything in MVP - polished
+photo-recognition add flow - robust recommendation workflow -
+conversational refinement - ratings/favorites - strong error states -
+model/API audit telemetry - security/authorization verification - clear
+documentation and audit trail - polished deployment/demo
+
+======================================================================
+33. DEMO STORY
+======================================================================
+
+The final presentation/demo should tell one coherent story.
+
+Suggested demo:
+
+1.  Log in.
+2.  Show an existing collection organized by covers, genre, and decade.
+3.  Add a new record by taking/uploading a photo.
+4.  Let AI identify it.
+5.  Show catalog candidates.
+6.  Confirm the correct album.
+7.  Show imported metadata and automatic organization.
+8.  Mark another album as recently played.
+9.  Open the AI curator.
+10. Ask: “I’ve had a long day. Give me something mellow from the 70s
+    that I haven’t listened to recently.”
+11. Show the system interpreting the request and selecting only from
+    owned records.
+12. Display three grounded recommendations.
+13. Ask: “Make it a little more energetic.”
+14. Show refined results.
+15. Choose one and mark it as played.
+16. Show the history update.
+
+This single flow demonstrates: - UI - backend - database - external
+API - vision AI - LLM reasoning - structured data - personalization -
+conversation - persistent state - orchestration
+
+======================================================================
+34. QUESTIONS THAT MUST BE DECIDED BEFORE OR DURING IMPLEMENTATION
+======================================================================
+
+These are intentional open decisions, not permission for the agent to
+guess.
+
+1.  Exact project/product name?
+2.  Exact frontend framework?
+3.  Exact backend architecture?
+4.  Supabase or alternative?
+5.  Exact catalog provider: Discogs, MusicBrainz, combination, or
+    another?
+6.  Which API is authoritative for each metadata field?
+7.  Which AI provider/models?
+8.  Is image recognition done with the same provider as text
+    recommendation?
+9.  Exact authentication method?
+10. Album-level vs exact pressing-level collection semantics?
+11. How are duplicate copies represented?
+12. Which genres/styles are displayed when providers disagree?
+13. How is decade derived from year?
+14. How long is conversational state retained?
+15. Are chat transcripts stored?
+16. Are uploaded cover photos retained after identification?
+17. How is recommendation ranking weighted?
+18. What constitutes “not listened to recently” by default?
+19. What is the maximum candidate set sent to the LLM?
+20. Maximum AI calls and cost per interaction?
+21. Retry/fallback strategy?
+22. What analytics/telemetry are stored?
+23. Which stretch features, if any, enter final scope?
+24. What automated test framework is used?
+25. What exact production deployment architecture is used?
+
+Codex must ask or surface these decisions instead of silently choosing
+important product behavior.
+
+======================================================================
+35. NON-NEGOTIABLE RULES FOR CODEX
+======================================================================
+
+When building this project:
+
+-   Read intent.txt before planning substantial work.
+-   Do not reinterpret the product as a generic music recommender.
+-   Do not recommend external albums in the core “what should I play?”
+    flow.
+-   Do not introduce RAG/vector infrastructure unless the human
+    explicitly changes scope.
+-   Do not add multi-agent complexity merely for appearance.
+-   Do not expose secrets in client code.
+-   Do not trust model output.
+-   Do not persist uncertain image recognition without user
+    confirmation.
+-   Do not use an LLM where deterministic code is clearly better.
+-   Do not silently invent requirements.
+-   For meaningful ambiguity, stop and ask or record the assumption for
+    approval.
+-   Keep external integrations behind clear service boundaries.
+-   Keep prompts/schema/versioned behavior reviewable.
+-   Add tests for critical behavior.
+-   Preserve a clear audit trail.
+-   Prefer reversible, incremental changes.
+-   Before declaring a task complete, verify it against its written
+    acceptance criteria.
+
+======================================================================
+36. FINAL PRODUCT VISION
+======================================================================
+
+The final app should feel like this:
+
+The user opens a beautiful personal record library and immediately sees
+their collection as something alive rather than a static spreadsheet.
+
+They can browse it the normal way.
+
+They can search for “Pink Floyd,” choose “Jazz,” click “1990s,” sort by
+rating, or find records they have not played recently.
+
+When they buy or rediscover a record, they can point a camera at the
+cover instead of typing every field. AI recognizes what it probably is;
+a real music catalog supplies the structured facts; the user confirms;
+the album joins the library.
+
+And when the user does not know what they want, they do not need to
+translate a feeling into filters.
+
+They can simply say:
+
+    "I'm tired, but I don't want sleepy music. Something warm, maybe older, and
+    please give me something I haven't played lately."
+
+The system understands the intention, looks only at the records the user
+actually owns, combines metadata with personal listening history, and
+returns a small set of real choices with useful reasons.
+
+That is the product.
+
+Not a database with an AI button. Not a chatbot with a list of albums.
+Not a technology demonstration held together by unrelated features.
+
+A coherent, AI-augmented vinyl collection system in which vision,
+language models, external APIs, deterministic software, persistent data,
+and a thoughtful interface work together to solve one recognizable
+problem.
+
+======================================================================
+37. SOURCE / COURSE ALIGNMENT NOTE
+======================================================================
+
+This intent follows the ASE-26 course framing that the engineer should
+first define the real purpose, user, constraints, definition of done,
+and out-of-scope items; separate browser, backend, database, and
+deployment responsibilities; treat AI as a runtime component with
+variability, latency, cost, and failure; specify interface flows and bad
+states; and preserve specification, verification, and an audit trail
+throughout agentic development.
+
+END OF INTENT
