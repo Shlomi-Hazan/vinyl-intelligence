@@ -35,7 +35,7 @@ No application code has been implemented yet.
 
 ## Project Status
 
-Current status: planning and engineering foundation.
+Current status: Milestone 1 stack scaffold implemented on the active milestone branch.
 
 Implemented:
 
@@ -43,10 +43,10 @@ Implemented:
 - Initial engineering documentation structure
 - Codex project instructions
 - Approved initial architecture decisions, data model direction, AI/API/security constraints, verification approach, and milestone roadmap
+- Vite, React, TypeScript, Netlify Functions, linting, type-checking, testing, and build scaffold
 
 Planned:
 
-- Application scaffold
 - Authentication
 - Database migrations and RLS policies
 - Catalog search/add flow
@@ -58,16 +58,42 @@ Planned:
 
 ## Local Setup
 
-Local setup will be documented after the stack is approved and the application scaffold exists.
+Milestone 1 uses Node.js 24 and npm.
+
+```bash
+nvm use
+npm install
+npm run dev
+```
+
+The local Vite development server exposes the minimal application shell. With
+the Netlify Vite integration active, the scaffold health function is available
+at:
+
+```text
+http://127.0.0.1:5173/api/health
+```
+
+Useful verification commands:
+
+```bash
+npm run typecheck
+npm run lint
+npm run test:run
+npm run build
+npm run preview
+```
+
+No secrets are required for Milestone 1. Future milestones will introduce
+documented environment variables only after their specifications are approved.
 
 Expected future requirements:
 
-- Node.js and npm or pnpm
 - Supabase project credentials
 - Music catalog API credentials if required
 - LLM provider API key
 
-Never commit `.env` or local credentials. A safe `.env.example` should be added when the first runtime configuration is defined.
+Never commit `.env` or local credentials. This repository includes a safe `.env.example` for documented public scaffold settings.
 
 ## Documentation
 
