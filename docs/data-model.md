@@ -8,7 +8,9 @@ This is a proposed relational model. Do not create production migrations until r
 
 Track the user's collection at collection-item level. Store release-level metadata when a provider has an exact release identifier, but keep the normal UI album-first so users who do not care about pressing details are not forced into expert workflows.
 
-Derived fields such as `decade`, `listening_count`, and `last_listened_at` may be denormalized for fast UI and recommendation queries, provided write paths keep them correct.
+For the initial model, `listening_events` are the source of truth for listening count and last-listened state. Avoid denormalizing `listening_count` and `last_listened_at` into `collection_items` until there is a demonstrated performance or UX need.
+
+The `decade` can be derived from `release_year` in query/application logic or stored later if filtering performance requires it.
 
 ## Tables
 
@@ -97,8 +99,6 @@ Important fields:
 - `personal_notes text`
 - `copy_label text` optional user-facing duplicate note
 - `date_added timestamptz`
-- `listening_count int default 0`
-- `last_listened_at timestamptz`
 - `created_at timestamptz`
 - `updated_at timestamptz`
 
@@ -114,7 +114,6 @@ Indexes:
 - Index on `(user_id, release_id)`
 - Index on `(user_id, favorite)`
 - Index on `(user_id, rating)`
-- Index on `(user_id, last_listened_at)`
 
 Ownership/security:
 
@@ -142,11 +141,12 @@ Indexes:
 
 - Index on `(user_id, listened_at desc)`
 - Index on `(collection_item_id, listened_at desc)`
+- Index on `(user_id, collection_item_id, listened_at desc)`
 
 Ownership/security:
 
 - User can create events only for collection items they own.
-- Write path should update `collection_items.listening_count` and `last_listened_at`.
+- Listening count and last-listened values should initially be derived from this table.
 
 ### image_identification_attempts
 
@@ -163,7 +163,7 @@ Important fields:
 - `extracted_artist text`
 - `extracted_album text`
 - `extracted_text jsonb`
-- `vision_confidence numeric`
+- `vision_confidence numeric` advisory/debug only, never authoritative probability
 - `catalog_query jsonb`
 - `candidate_results jsonb`
 - `selected_release_id uuid references releases(id)`
@@ -186,12 +186,12 @@ Indexes:
 Ownership/security:
 
 - Users may access only their own attempts.
-- Uploaded images should not be retained forever by default.
+- Uploaded cover photos are temporary and should be deleted after the identification flow unless future retention is explicitly approved.
 - The model output is not authoritative and must not directly create collection records.
 
 ### model_calls
 
-Purpose: non-sensitive audit of AI/model usage, latency, cost, and failure category.
+Purpose: lightweight, non-sensitive audit/telemetry for AI/model usage, latency, cost, and failure category.
 
 Important fields:
 
@@ -225,12 +225,13 @@ Indexes:
 Ownership/security:
 
 - Do not store raw prompts or images by default.
-- If transcript/debug storage is added, it needs explicit retention and privacy rules.
+- Do not permanently store full AI curator chat transcripts for MVP.
+- Keep this table lightweight. It is not intended to become a large observability subsystem.
 - Users should not access other users' call records.
 
 ### conversation_sessions optional
 
-Purpose: bounded state for short curator follow-up conversations.
+Purpose: bounded structured state for short curator follow-up conversations if persistence becomes necessary.
 
 Important fields:
 
@@ -238,7 +239,6 @@ Important fields:
 - `user_id uuid not null references profiles(id)`
 - `state_summary jsonb`
 - `current_constraints jsonb`
-- `last_user_intent text`
 - `expires_at timestamptz`
 - `created_at timestamptz`
 - `updated_at timestamptz`
@@ -255,12 +255,11 @@ Indexes:
 Ownership/security:
 
 - Store summarized intent and constraints, not uncontrolled long-term model memory.
-- Decide before implementation whether chat transcripts are retained.
+- Do not permanently store full AI curator chat transcripts for MVP.
 
 ## Open Decisions
 
-- Exact release-level vs album-level semantics in UI and duplicate prompts
-- Whether raw uploaded cover images are deleted immediately, retained temporarily, or retained after user confirmation
-- Whether conversation sessions persist in the database or remain ephemeral for MVP
+- Exact duplicate-copy representation and prompt wording
+- Whether conversation sessions persist in the database or remain ephemeral for MVP implementation
 - Exact enum values for source/status/feature fields
 - Whether shared release metadata can be edited by users or only user-specific overrides are allowed

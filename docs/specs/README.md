@@ -16,11 +16,21 @@ A useful spec should include:
 - Acceptance criteria
 - Verification steps
 
-Likely first specs:
+Existing planned specs/spikes:
 
-- `001-auth-and-profile.md`
-- `002-catalog-search-add.md`
-- `003-collection-browse-filter.md`
-- `004-listening-history.md`
-- `005-basic-ai-curator.md`
-- `006-photo-identification.md`
+- [0001 Music Catalog API Spike](0001-music-catalog-api-spike.md)
+
+Likely milestone specs:
+
+- `0002-vite-react-netlify-scaffold.md`
+- `0003-supabase-auth-profile-rls.md`
+- `0004-manual-collection-crud.md`
+- `0005-music-catalog-integration.md`
+- `0006-ai-photo-recognition.md`
+- `0007-browse-search-filter.md`
+- `0008-ratings-favorites-notes.md`
+- `0009-listening-history.md`
+- `0010-ai-curator.md`
+- `0011-conversational-refinement.md`
+- `0012-production-deployment.md`
+- `0013-reliability-security-telemetry-polish.md`

@@ -11,12 +11,14 @@ Each decision should include:
 - Alternatives considered
 - Date
 
+Accepted decisions:
+
+- [0001 Approved Initial Architecture](0001-approved-initial-architecture.md)
+
 Initial decisions still pending:
 
-- Frontend framework: Vite React vs Next.js
-- Backend function host: Supabase Edge Functions vs Netlify/Next API routes
 - Catalog provider: Discogs vs MusicBrainz
 - AI provider and exact models
-- Album-level vs exact release-level UI semantics
-- Image retention policy
-- Conversation retention policy
+- Exact duplicate-copy representation
+- Whether bounded structured conversation state is persisted or kept ephemeral for MVP implementation
+- How long lightweight `model_calls` audit records are retained

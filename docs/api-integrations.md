@@ -4,6 +4,8 @@ Last updated: 2026-08-17.
 
 Do not implement external integrations until exact provider capabilities, terms, authentication, rate limits, and cost are verified.
 
+Before implementing the music catalog integration, complete a small documented API spike comparing Discogs and MusicBrainz against the requirements below. Do not select a provider simply based on preference.
+
 ## Music Catalog Requirements
 
 The application needs:
@@ -23,9 +25,42 @@ The application needs:
 - Search by artist/title
 - Optional search by barcode/catalog number later
 
+## Required Music Catalog API Spike
+
+Create or update a short spike document before implementation. It should compare Discogs and MusicBrainz using the same sample searches and the same rubric.
+
+Minimum sample searches:
+
+- One widely known classic rock album
+- One jazz album with multiple releases
+- One 1990s album
+- One record where edition/release ambiguity is likely
+
+Comparison criteria:
+
+- Search quality by artist/title
+- Release-level identifier support
+- Master/release-group identifier support
+- Metadata completeness for artist, title, year, genre/style, label, country, format, tracklist, and cover reference
+- Cover image legality and technical availability
+- Authentication requirements
+- Rate limits and fair-use expectations
+- Error/no-match behavior
+- Terms suitability for a deployed university demo
+- Implementation complexity with Netlify Functions
+- Fit with album-first UI plus release-level identifiers
+
+Spike output:
+
+- Recommendation for primary provider
+- Whether a fallback provider is justified
+- Known gaps and mitigation
+- Example normalized response shape
+- Acceptance criteria for the integration milestone
+
 ## Discogs
 
-Role: likely primary catalog candidate because the product is vinyl/release oriented.
+Role: strong catalog candidate because the product is vinyl/release oriented.
 
 Needs verification before implementation:
 
@@ -42,9 +77,10 @@ Automated lookup note:
 - Official Discogs developer documentation at `https://www.discogs.com/developers` should be treated as the source of truth, but the automated documentation fetch was not reliable in this session.
 - Do not rely on secondary summaries without checking the official developer page manually before implementation.
 
-Recommendation:
+Current posture:
 
-- Evaluate Discogs first. If access, terms, or image handling are awkward, use MusicBrainz as the primary catalog.
+- Discogs is a strong candidate because the product is vinyl/release oriented.
+- It is not selected yet. Selection requires the documented API spike.
 
 ## MusicBrainz
 
@@ -65,7 +101,7 @@ Open questions:
 - Whether release search and disambiguation feels good for normal vinyl collectors.
 - Whether cover art availability is sufficient for demo data.
 
-Recommendation:
+Current posture:
 
 - Use MusicBrainz if open access and predictable limits matter more than vinyl-specific release depth.
 - Consider storing both Discogs and MusicBrainz IDs only if one provider is insufficient. Do not integrate both just to increase API count.
@@ -137,7 +173,7 @@ Source:
 
 For first implementation planning:
 
-1. Choose Supabase as the platform boundary.
-2. Verify Discogs manually and test a small catalog search.
-3. If Discogs is blocked or unsuitable, switch to MusicBrainz.
+1. Use Netlify Functions as the server-side integration boundary.
+2. Use Supabase for persistent storage of normalized release metadata.
+3. Run the Discogs/MusicBrainz API spike before choosing the primary music catalog provider.
 4. Choose OpenRouter only after selecting exact models that support needed structured output and image input.

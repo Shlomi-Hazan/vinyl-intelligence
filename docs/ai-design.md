@@ -62,6 +62,12 @@ The backend must reject:
 - unsupported fields
 - claims about ownership/history/metadata not present in supplied facts
 
+## Architecture Boundaries
+
+Do not use RAG or vector databases for the core product.
+
+Do not introduce a multi-agent architecture unless a later milestone explicitly justifies why separate agents are needed.
+
 ## Image Recognition Workflow
 
 ```text
@@ -76,11 +82,13 @@ image upload
 
 The vision model output is never authoritative metadata. It is only a clue generator for catalog search.
 
+Any model-reported vision confidence is advisory/debug information only. Never treat it as an authoritative probability and never use it as the sole reason to persist a collection record.
+
 ## Conversation State
 
 Use bounded state only.
 
-For MVP, a single request may be enough. For final project, store or carry a small session state with:
+For MVP, do not permanently store full AI curator chat transcripts. A single request may be enough. If persistence becomes necessary, store or carry only bounded structured state with:
 
 - current interpreted intent
 - active constraints
@@ -96,6 +104,7 @@ Do not use uncontrolled long-term memory.
 - Limit candidate set size before sending to the model.
 - Set timeouts and hard retry limits.
 - Log provider, model, feature, latency, token usage, estimated cost, and non-sensitive error category where practical.
+- Keep `model_calls` lightweight. It is audit/telemetry for project reasoning, not a large observability subsystem.
 - Show user-visible failure when model/API calls fail.
 
 ## Initial Model Strategy

@@ -22,6 +22,8 @@ For every meaningful feature follow:
 
 Keep the repository understandable as an agentic software-engineering project. Preserve specifications, decisions, implementation plans, verification evidence, and commits.
 
+Do not begin implementation of a new milestone until its specification and implementation plan have been explicitly approved by the human.
+
 ## Planning
 
 Before substantial code changes:
@@ -36,6 +38,21 @@ Before substantial code changes:
 - Identify verification steps.
 
 Do not begin large implementation work until the plan is understandable.
+
+## Git Workflow
+
+Each meaningful milestone must be implemented on its own branch and reviewed through a pull request before merging to `main`.
+
+Branch names should use the `codex/` prefix unless the human asks for a different naming convention.
+
+Pull request descriptions should include:
+
+- Specification
+- Implementation summary
+- Verification performed
+- Known gaps
+
+Keep commits small and coherent. Do not combine unrelated milestones in one branch or pull request.
 
 ## AI Boundaries
 

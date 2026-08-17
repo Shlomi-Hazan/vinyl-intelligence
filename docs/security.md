@@ -14,16 +14,18 @@ Security is part of the product definition. The app handles personal collections
 - Validate external API responses before storing.
 - Validate image upload type and size.
 - Do not persist uncertain image recognition as a collection record.
+- Delete temporary uploaded cover photos after the identification flow unless future retention is explicitly approved.
+- Do not permanently store full AI curator chat transcripts for MVP.
 - Do not log secrets or unnecessary personal content.
 
 ## Authentication and Authorization
 
-If Supabase is selected:
+Supabase is approved for database, authentication, and storage:
 
 - Use Supabase Auth as the identity source.
 - Link application user data through `auth.users`.
 - Use RLS policies on user-owned tables.
-- Use server-side functions for privileged writes and external API calls.
+- Use Netlify Functions for privileged writes, external API calls, LLM calls, and image-recognition orchestration.
 
 Tables requiring strict ownership:
 
@@ -58,7 +60,8 @@ Cover-photo uploads must enforce:
 - Allowed MIME types
 - Maximum file size
 - Authenticated user ownership
-- Short retention by default unless a retention decision is approved
+- Temporary retention only
+- Deletion after the identification flow unless a future retention reason is explicitly approved
 - Safe storage path structure
 - No public bucket listing
 
@@ -76,6 +79,7 @@ For recommendations:
 For image recognition:
 
 - Vision output is a clue source, not authoritative metadata.
+- Model-reported confidence is advisory/debug only and never authoritative probability.
 - Catalog API data is preferred where available.
 - User confirmation is required before persistence.
 
@@ -90,7 +94,7 @@ For image recognition:
 
 ## Abuse and Cost Controls
 
-Costly endpoints should have:
+Costly Netlify Function endpoints should have:
 
 - Auth requirement
 - Reasonable request size limits
@@ -100,7 +104,6 @@ Costly endpoints should have:
 
 ## Open Privacy Decisions
 
-- Are uploaded cover images retained after a successful identification?
-- Are chat transcripts stored, or only summarized bounded intent?
 - How long are model-call audit records retained?
 - Are user notes included in recommendation context by default?
+- Whether bounded structured conversation state is persisted or kept ephemeral for the MVP implementation

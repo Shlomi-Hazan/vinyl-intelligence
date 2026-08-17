@@ -24,12 +24,12 @@ Vinyl collectors often remember a mood, setting, decade, or feeling before they 
 
 The recommended baseline is:
 
-- Frontend: React with TypeScript, likely Vite unless the implementation plan chooses Next.js for stronger full-stack routing.
-- Backend: server-side API boundary for all privileged work, likely Supabase Edge Functions or framework API routes.
+- Frontend: Vite + React + TypeScript.
+- Backend: Netlify Functions for privileged server-side logic.
 - Database/Auth/Storage: Supabase Postgres, Supabase Auth, and Supabase Storage.
 - AI: server-side LLM API access, with OpenRouter as the initial candidate.
-- Music metadata: Discogs as the likely primary vinyl/release catalog, with MusicBrainz as a serious alternative or fallback after provider verification.
-- Deployment: Netlify for the frontend if paired with Supabase backend services, or an equivalent modern deployment target if the framework choice changes.
+- Music metadata: Discogs and MusicBrainz must be compared in a small documented API spike before implementation.
+- Deployment: Netlify.
 
 No application code has been implemented yet.
 
@@ -42,7 +42,7 @@ Implemented:
 - Product intent copied into the repository
 - Initial engineering documentation structure
 - Codex project instructions
-- Initial architecture, data model, AI, API, security, verification, and roadmap documents
+- Approved initial architecture decisions, data model direction, AI/API/security constraints, verification approach, and milestone roadmap
 
 Planned:
 
@@ -79,5 +79,7 @@ Never commit `.env` or local credentials. A safe `.env.example` should be added 
 - [Security](docs/security.md)
 - [Verification](docs/verification.md)
 - [Initial Project Plan](docs/plans/001-initial-project-plan.md)
+- [Approved Initial Architecture Decision](docs/decisions/0001-approved-initial-architecture.md)
+- [Music Catalog API Spike](docs/specs/0001-music-catalog-api-spike.md)
 - [Decision Records](docs/decisions/README.md)
 - [Feature Specs](docs/specs/README.md)
