@@ -31,11 +31,9 @@ The recommended baseline is:
 - Music metadata: Discogs and MusicBrainz must be compared in a small documented API spike before implementation.
 - Deployment: Netlify.
 
-No application code has been implemented yet.
-
 ## Project Status
 
-Current status: Milestone 1 stack scaffold implemented on the active milestone branch.
+Current status: Milestone 2 authentication/profile foundation implemented on the active milestone branch.
 
 Implemented:
 
@@ -44,11 +42,15 @@ Implemented:
 - Codex project instructions
 - Approved initial architecture decisions, data model direction, AI/API/security constraints, verification approach, and milestone roadmap
 - Vite, React, TypeScript, Netlify Functions, linting, type-checking, testing, and build scaffold
+- Supabase local development structure
+- Supabase Auth browser client foundation
+- Email/password authentication UI
+- Local email confirmation flow using Mailpit
+- User-owned `profiles` table with RLS and least-privilege grants
+- Minimal authenticated profile workflow for editing `display_name`
 
 Planned:
 
-- Authentication
-- Database migrations and RLS policies
 - Catalog search/add flow
 - Collection browsing
 - Listening history
@@ -58,7 +60,7 @@ Planned:
 
 ## Local Setup
 
-Milestone 1 uses Node.js 24 and npm.
+The project uses Node.js 24 and npm.
 
 ```bash
 nvm use
@@ -66,9 +68,27 @@ npm install
 npm run dev
 ```
 
-The local Vite development server exposes the minimal application shell. With
-the Netlify Vite integration active, the scaffold health function is available
-at:
+Milestone 2 requires browser-safe Supabase settings. Copy `.env.example` to a
+local `.env` file and fill in local or hosted Supabase values. Do not commit
+`.env`.
+
+For the local Supabase stack:
+
+```bash
+npx supabase start
+npx supabase db reset
+npx supabase test db
+npx supabase db lint
+```
+
+Local email confirmation is intentionally enabled. Mailpit is available at:
+
+```text
+http://127.0.0.1:54324
+```
+
+The local Vite development server exposes the application shell. With the
+Netlify Vite integration active, the scaffold health function is available at:
 
 ```text
 http://127.0.0.1:5173/api/health
@@ -84,12 +104,11 @@ npm run build
 npm run preview
 ```
 
-No secrets are required for Milestone 1. Future milestones will introduce
-documented environment variables only after their specifications are approved.
+No service-role key is required for Milestone 2. Browser code must use only
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
 Expected future requirements:
 
-- Supabase project credentials
 - Music catalog API credentials if required
 - LLM provider API key
 
