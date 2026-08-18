@@ -53,6 +53,34 @@ Ignored local artifacts such as `node_modules/`, `dist/`, `.netlify/`, and `.DS_
 - Do not use RAG, vector databases, or multi-agent architecture.
 - Do not begin implementation until this plan and the matching specification are explicitly approved.
 
+## Human Planning Decisions Recorded
+
+Human review accepted these planning decisions before implementation approval:
+
+- Authentication method: email + password.
+- No magic-link-only flow in Milestone 2.
+- No OAuth in Milestone 2.
+- Hosted email confirmation remains enabled.
+- Local Supabase development should configure `auth.email.enable_confirmations = true` to intentionally exercise the confirmation flow.
+- Mailpit is the local confirmation-email mechanism.
+- Do not add custom production SMTP in Milestone 2.
+- Hosted SMTP/email-delivery limits remain a known constraint.
+- Profile creation strategy: database trigger on `auth.users`.
+- Trigger responsibility: create the profile row with `id = new.id` only.
+- Do not copy `display_name` or other user metadata during signup.
+- Display name is edited later through the protected profile workflow.
+- Profile schema: `id`, nullable `display_name`, `created_at`, `updated_at`.
+- Add a database-level `display_name` constraint: `NULL` allowed, otherwise trim-normalized/non-blank, maximum length 80 characters.
+- Supabase CLI is approved as a project-scoped npm dev dependency.
+- During implementation, verify the current stable Supabase CLI version from the official source or npm registry, pin it in `package.json`, and commit `package-lock.json`.
+- Run Supabase CLI commands through `npx supabase`.
+- Local Supabase CLI verification is the required database/RLS verification path.
+- A Docker-compatible container runtime is required for implementation verification.
+- If no compatible container runtime is available, stop and report the blocker instead of silently replacing the verification strategy.
+- A hosted Supabase smoke test may be performed if project access is available, but it does not replace local migration/RLS tests.
+
+Implementation itself is not approved yet. This branch may contain planning documentation, but no implementation commits may be added until explicit human approval is granted.
+
 ## Official Documentation Checked
 
 Official Supabase documentation checked during planning:
@@ -134,11 +162,11 @@ Reason:
 
 - Official Supabase React guidance uses `@supabase/supabase-js` for browser Auth and database access.
 
-Possible development dependency:
+Approved development dependency:
 
 - `supabase`
 
-Recommendation: add Supabase CLI as an npm dev dependency during implementation if the human approves local migration/RLS verification as part of the repo workflow.
+Plan: add Supabase CLI as a project-scoped npm dev dependency during implementation.
 
 Reason:
 
@@ -147,11 +175,18 @@ Reason:
 - It avoids relying on a developer's global CLI version.
 - Commands can be run as `npx supabase ...`.
 
+Implementation requirements:
+
+- Verify the current stable CLI version from the official source or npm registry before adding it.
+- Pin the CLI version in `package.json`; do not rely on an unbounded `latest` range.
+- Commit `package-lock.json`.
+- Run CLI commands through `npx supabase`.
+- Do not install the CLI during this planning correction.
+
 Tradeoffs:
 
 - Supabase CLI local stack requires Docker or another compatible container runtime.
 - Adding the CLI increases dependency surface.
-- If the human prefers global installation, the repo can document a required external CLI version instead.
 
 Possible test helper dependency:
 
@@ -200,7 +235,7 @@ Notes:
 
 ## Authentication UX Recommendation
 
-Recommended method: email + password.
+Approved planning decision: email + password.
 
 Reasoning:
 
@@ -211,12 +246,16 @@ Reasoning:
 - Avoids OAuth provider configuration and secrets.
 - Compatible with future password reset without implementing reset in this milestone.
 
-Magic link / OTP remains a reasonable alternative, but it depends more heavily on email delivery, redirect template handling, Mailpit/local email inspection, and hosted email limits.
+Milestone 2 must not implement a magic-link-only flow or OAuth.
 
-Human approval required:
+Email confirmation behavior:
 
-- Approve email + password for Milestone 2, or choose magic link/OTP.
-- Decide whether hosted email confirmation stays enabled for Milestone 2. Hosted Supabase projects enable email confirmation by default, while local development differs. If confirmation is enabled, implementation must include a clear "check your email" state and local Mailpit instructions.
+- Hosted email confirmation remains enabled.
+- Local Supabase should set `auth.email.enable_confirmations = true` so local behavior intentionally exercises the confirmation path.
+- Use Mailpit for local confirmation email inspection.
+- Implementation must include a clear "check your email" state after sign-up when confirmation is required.
+- Do not add custom production SMTP in Milestone 2.
+- Hosted SMTP/email-delivery limits remain a known constraint.
 
 ## Auth State Architecture in React
 
@@ -234,6 +273,11 @@ Recommended structure:
   - `updateProfile`
 - `AuthProvider` initializes from Supabase Auth on load.
 - `AuthProvider` subscribes to `onAuthStateChange`.
+- The `onAuthStateChange` callback should stay synchronous and lightweight:
+  - update session/auth state inside the callback
+  - unsubscribe on cleanup
+  - do not run profile/database fetching directly inside the callback
+- Profile fetching should happen in a separate effect/service path keyed from the authenticated user/session.
 - App shell conditionally renders:
   - loading state while session is unknown
   - auth form for unauthenticated users
@@ -275,7 +319,7 @@ Use version-controlled SQL migrations under:
 supabase/migrations/
 ```
 
-Recommended implementation setup if Supabase CLI is approved:
+Approved implementation setup:
 
 ```bash
 npx supabase init
@@ -284,13 +328,22 @@ npx supabase migration new create_profiles
 
 The migration should be reviewed as source-controlled SQL. Do not make undocumented dashboard-only schema changes.
 
+The generated local Supabase config should intentionally set:
+
+```toml
+[auth.email]
+enable_confirmations = true
+```
+
+This keeps local Auth behavior aligned with hosted confirmation behavior for Milestone 2.
+
 Implementation should also add database test files under:
 
 ```text
 supabase/tests/database/
 ```
 
-Recommended verification commands if the local stack is available:
+Required verification commands:
 
 ```bash
 npx supabase start
@@ -299,7 +352,9 @@ npx supabase test db
 npx supabase db lint
 ```
 
-If local Docker/Supabase CLI is unavailable, use a controlled hosted Supabase project and document the exact verification gap and substitute checks. Do not claim RLS is verified unless policy behavior has been exercised.
+Local Supabase CLI verification is required for Milestone 2. If the Supabase CLI or a Docker-compatible container runtime is unavailable during implementation, stop and report the blocker. Do not silently replace this with hosted-only verification.
+
+A hosted Supabase smoke test may also be performed if project access is available, but it does not replace local deterministic migration/RLS/privilege tests.
 
 ## Proposed Profile Schema
 
@@ -314,10 +369,13 @@ create table public.profiles (
 );
 ```
 
-Potential additional constraints:
+Required display-name constraint intent:
 
 - `display_name` nullable.
-- If non-null, trim/check length between 1 and 80 characters.
+- If non-null, trim-normalized/non-blank.
+- Maximum length 80 characters.
+- The database must enforce this boundary; React validation is useful UX but not authoritative.
+- Exact SQL can be finalized during implementation review.
 
 Timestamps:
 
@@ -328,14 +386,19 @@ Do not include collection, catalog, preferences, images, recommendation, or list
 
 ## Proposed Profile Creation Approach
 
-Recommendation: database trigger on `auth.users`.
+Approved planning decision: database trigger on `auth.users`.
 
 Planned behavior:
 
 - After a new Supabase Auth user is inserted, a `public.profiles` row is inserted with `id = new.id`.
-- Optionally copy `display_name` from `new.raw_user_meta_data ->> 'display_name'`.
+- Do not copy `display_name` from user metadata.
+- Do not copy any other user metadata during signup.
+- The display name should be edited later through the protected profile workflow.
 - Trigger function is minimal, deterministic, and contains no external calls.
-- Use `security definer set search_path = ''`.
+- Use `security definer` with a fixed/empty `search_path` and fully-qualified relation names.
+- Prefer placing the trigger helper function in a non-exposed schema such as `private`.
+- If implementation uses another schema, explicitly revoke `execute` from `public`, `anon`, and `authenticated`.
+- No browser/client role should be able to invoke the profile-creation helper as an RPC.
 - Test thoroughly because Supabase warns trigger failure can block signups.
 
 Fallback/recovery behavior:
@@ -365,21 +428,36 @@ using ((select auth.uid()) = id)
 with check ((select auth.uid()) = id);
 ```
 
-Recommended grants/permissions:
+## Proposed Data API Grants and Column Privileges
+
+RLS restricts rows. Postgres grants and column privileges restrict operations and mutable columns. Milestone 2 must use both layers and must not depend on Supabase's evolving default Data API grants.
+
+Grant/revoke intent:
 
 - No `anon` profile access.
-- `authenticated` can select own rows through RLS.
-- `authenticated` can update approved mutable columns, initially `display_name`.
-- Normal client INSERT is not granted if trigger strategy is approved.
-- Normal client DELETE is not granted in Milestone 2.
+- Revoke all table privileges on `public.profiles` from `anon`.
+- Revoke all table privileges on `public.profiles` from `authenticated`.
+- Grant `select` on `public.profiles` to `authenticated`; RLS still limits rows to self.
+- Grant column-limited `update (display_name)` on `public.profiles` to `authenticated`; RLS still limits rows to self.
+- Do not grant normal client `insert`.
+- Do not grant normal client `delete`.
 
-If the application-side profile creation strategy is approved instead, add a narrow INSERT policy:
+Implementation shape to review:
 
 ```sql
-for insert
-to authenticated
-with check ((select auth.uid()) = id)
+revoke all on table public.profiles from anon;
+revoke all on table public.profiles from authenticated;
+
+grant select
+on table public.profiles
+to authenticated;
+
+grant update (display_name)
+on table public.profiles
+to authenticated;
 ```
+
+Exact final migration SQL must be reviewed during implementation.
 
 Do not add "all authenticated users can read all profiles" policies.
 
@@ -413,15 +491,20 @@ Minimum behavior to verify:
 - `profiles.id` is primary key and references `auth.users(id)` with `on delete cascade`.
 - RLS is enabled on `profiles`.
 - Only expected policies exist.
+- Expected Data API grants exist.
 - User A can select User A profile.
 - User A cannot select User B profile.
 - An unauthenticated/anon role cannot select profile rows.
 - User A can update User A `display_name`.
 - User A cannot update User B profile.
 - Normal authenticated clients cannot delete profile rows.
-- Normal authenticated clients cannot insert profile rows if trigger strategy is approved.
+- Normal authenticated clients cannot insert profile rows directly.
+- Normal authenticated clients cannot update protected columns such as `id`, `created_at`, or `updated_at`.
+- Creating a new auth user creates exactly one profile row.
+- Normal API roles cannot execute the profile-creation helper function.
+- Deleting an auth user cascades to the profile row in the controlled database test environment.
 
-Do not treat "migration applied" as RLS verification. Policy behavior must be exercised.
+Do not treat "migration applied" as RLS verification. Policy and privilege behavior must be exercised.
 
 ### Integration/manual tests
 
@@ -435,6 +518,8 @@ Manual or controlled-hosted checks:
 - Sign out.
 - Verify signed-out state.
 - Use two test users to confirm cross-profile denial.
+- Confirm direct profile insert/delete attempts fail for normal authenticated clients.
+- Confirm protected column updates fail for normal authenticated clients.
 
 Record evidence in `docs/verification.md` after implementation.
 
@@ -451,7 +536,7 @@ git diff --check
 git status --short --branch
 ```
 
-Expected Supabase checks if CLI/local stack is approved and available:
+Required Supabase checks:
 
 ```bash
 npx supabase start
@@ -460,11 +545,17 @@ npx supabase test db
 npx supabase db lint
 ```
 
+If a Docker-compatible container runtime is unavailable, stop and report the blocker rather than claiming database/RLS verification is complete.
+
 Expected security checks:
 
 - Secret-pattern scan excluding `.git/`, `node_modules/`, `dist/`, `.netlify/`, `.supabase/`, and build artifacts.
 - Confirm no `SUPABASE_SERVICE_ROLE_KEY` or secret key is committed.
 - Confirm browser bundle/config uses only `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+- Confirm `anon` has no `public.profiles` privileges.
+- Confirm `authenticated` can update only `display_name` on `public.profiles`.
+- Confirm the profile-creation helper is not executable by `public`, `anon`, or `authenticated`.
+- Confirm the helper function uses a fixed/empty `search_path` and fully-qualified table names.
 - Confirm no collection/catalog/AI/product feature code was introduced.
 
 ## Implementation Commit Strategy
@@ -493,9 +584,11 @@ Keep commits coherent. Do not mix Milestone 3 collection schema or product UI in
 - Magic-link/OTP flows require redirect/template handling and can be fragile in demos if email delivery is delayed.
 - Database trigger profile creation is reliable for invariants but can block signup if implemented incorrectly.
 - RLS policies can appear correct in SQL but still fail behaviorally; policy tests are required.
-- Supabase CLI local stack requires Docker/container runtime availability.
-- Adding Supabase CLI as a dev dependency increases dependency surface and should be approved.
+- Supabase CLI local stack requires Docker/container runtime availability; absence of a compatible runtime is an implementation blocker.
+- Adding Supabase CLI as a dev dependency increases dependency surface, so its pinned version must be verified and reviewed.
 - Publishable/anon keys are safe to expose only when RLS and grants are correct.
+- RLS alone does not restrict mutable columns; explicit grants/column privileges are required.
+- A `security definer` trigger helper can become dangerous if it is exposed as callable RPC; schema placement and execute revokes must be verified.
 - Existing Milestone 1 Netlify tooling has documented dev-only audit findings; dependency changes should re-run audit.
 
 ## Rollback and Recovery
@@ -512,14 +605,13 @@ Because implementation should happen on a milestone branch:
 
 Required before implementation:
 
-- Approve email + password, or choose magic link/OTP.
-- Decide email confirmation behavior for Milestone 2 local and hosted verification.
-- Approve database trigger profile creation, or choose application-side/server-side creation.
-- Approve minimal `profiles` schema and whether `display_name` should have a length constraint.
 - Approve adding `@supabase/supabase-js`.
-- Approve Supabase CLI strategy: npm dev dependency versus externally installed CLI.
-- Decide whether RLS verification must use local Supabase CLI, a hosted dev project, or both.
+- Approve the exact pinned Supabase CLI version after implementation verifies the current stable version.
+- Approve the exact SQL for the display-name constraint.
+- Approve the exact SQL for grants/revokes, RLS policies, trigger helper schema, and execute revokes.
+- Confirm whether a hosted Supabase smoke test should be attempted in addition to required local verification if project access is available.
 - Confirm whether any Netlify Function auth verification helper is needed in Milestone 2. Recommendation: no, not for the profile workflow.
+- Grant explicit implementation approval for Milestone 2.
 
 ## Stop Point
 
