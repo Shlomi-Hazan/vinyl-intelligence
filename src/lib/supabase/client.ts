@@ -12,12 +12,30 @@ type Database = {
     Tables: {
       profiles: {
         Row: Profile
-        Insert: never
+        Insert: {
+          id: string
+          display_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
         Update: {
           display_name?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'profiles_id_fkey'
+            columns: ['id']
+            isOneToOne: true
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
   }
 }
 
