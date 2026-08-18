@@ -1,10 +1,14 @@
 # 0003 Milestone 2 Supabase Auth + Profile/RLS Specification
 
-Status: proposed for human approval
+Status: approved for implementation
 
 Milestone: 2 - Supabase Auth + Profile/RLS
 
 Date: 2026-08-18
+
+Approved: 2026-08-18
+
+Implementation approval granted after human review of planning commit `62fe536ef7b21a138bea383d1fbc1c2afddf4411`.
 
 ## Intent
 
@@ -89,7 +93,7 @@ Human review accepted these planning decisions before implementation approval:
 - If no compatible container runtime is available during implementation, stop and report the blocker.
 - A hosted Supabase smoke test may be added if project access is available, but it does not replace local migration/RLS tests.
 
-Implementation itself is not approved yet. Keep this document in `Status: proposed for human approval` until the human explicitly authorizes implementation.
+Implementation approval has been granted. Keep implementation limited to this approved Milestone 2 scope.
 
 ## User Outcome
 
