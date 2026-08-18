@@ -1,6 +1,6 @@
 # 0003 Milestone 2 Supabase Auth + Profile/RLS Specification
 
-Status: approved for implementation
+Status: approved and implemented
 
 Milestone: 2 - Supabase Auth + Profile/RLS
 
@@ -9,6 +9,8 @@ Date: 2026-08-18
 Approved: 2026-08-18
 
 Implementation approval granted after human review of planning commit `62fe536ef7b21a138bea383d1fbc1c2afddf4411`.
+
+Implemented: 2026-08-18
 
 ## Intent
 
