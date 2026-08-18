@@ -30,14 +30,17 @@ select {
   min-height: 100vh;
   align-content: center;
   gap: 1.5rem;
-  width: min(100% - 2rem, 880px);
+  width: min(100% - 2rem, 720px);
   margin: 0 auto;
   padding: 3rem 0;
 }
 
-.intro {
+.auth-panel,
+.profile-panel,
+.status-panel {
   display: grid;
-  gap: 0.85rem;
+  gap: 1rem;
+  max-width: 34rem;
 }
 
 .eyebrow {
@@ -56,10 +59,10 @@ p {
 }
 
 h1 {
-  max-width: 12ch;
+  max-width: 14ch;
   color: #151311;
-  font-size: clamp(3rem, 10vw, 5.8rem);
-  line-height: 0.95;
+  font-size: 3.25rem;
+  line-height: 1;
   letter-spacing: 0;
 }
 
@@ -70,41 +73,90 @@ h1 {
   line-height: 1.6;
 }
 
-.stack-panel {
+.auth-form,
+.profile-form {
   display: grid;
   gap: 1rem;
-  max-width: 34rem;
   padding-top: 1rem;
   border-top: 1px solid #d9d1c6;
 }
 
-.stack-panel h2 {
-  color: #151311;
-  font-size: 1rem;
-  letter-spacing: 0;
-}
-
-.stack-panel ul {
+label {
   display: grid;
-  gap: 0.6rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 0.45rem;
+  color: #2f2a25;
+  font-weight: 700;
 }
 
-.stack-panel li {
+input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid #b9b0a5;
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
+  background: #fffdf8;
+  color: #151311;
+}
+
+input:focus {
+  border-color: #2e6f63;
+  outline: 3px solid #b9ded6;
+}
+
+.auth-actions {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  color: #34302b;
-  line-height: 1.4;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-.stack-panel li::before {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: #2c6e49;
-  content: "";
-  flex: 0 0 auto;
+button {
+  min-height: 2.6rem;
+  border: 1px solid #1e473f;
+  border-radius: 6px;
+  padding: 0.55rem 0.9rem;
+  background: #245c52;
+  color: #fffdf8;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button:hover:not(:disabled) {
+  background: #1e473f;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.notice,
+.error,
+.field-hint,
+.account-line {
+  max-width: 42rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.notice {
+  color: #245c52;
+}
+
+.error {
+  color: #9b2c2c;
+}
+
+.field-hint,
+.account-line {
+  color: #5f574f;
+}
+
+@media (max-width: 520px) {
+  h1 {
+    font-size: 2.5rem;
+  }
+
+  .auth-actions {
+    display: grid;
+  }
 }

@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-17.
+Last updated: 2026-08-18.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -191,3 +191,340 @@ The official Vite integration was sufficient for local Function verification. Th
 - Development-only `npm audit` findings remain in the Netlify local development integration dependency chain.
 - The project should re-run `npm audit` before merging future dependency changes and revisit the Netlify plugin chain when upstream packages publish a normal non-breaking remediation.
 - Production deployment verification remains pending until Netlify project access is available.
+
+## Milestone 2 Evidence - Supabase Auth + Profile/RLS
+
+Date: 2026-08-18
+
+Branch: `codex/milestone-2-supabase-auth-profile-rls`
+
+Planning approval commit: `62fe536ef7b21a138bea383d1fbc1c2afddf4411`
+
+Implementation commits:
+
+- `00937c7` - `docs: approve milestone 2 implementation`
+- `40f5297` - `chore: add Supabase local auth foundation`
+- `02e250e` - `db: add profile ownership and RLS foundation`
+- `a46a8b8` - `feat: add authenticated profile workflow`
+- `e79e2b8` - `chore: tighten milestone 2 local setup`
+
+### Tool and Dependency Versions
+
+| Item | Result |
+| --- | --- |
+| `node --version` | `v24.19.0` |
+| `npm --version` | `11.17.0` |
+| Docker | `Docker version 29.7.2, build a7dcaa6` |
+| Docker Server | `29.7.2`, Docker Desktop, `aarch64` |
+| Docker Compose | `v5.4.0` |
+| `@supabase/supabase-js` | `2.112.3` |
+| Supabase CLI npm package | `2.115.0` |
+| `@testing-library/user-event` | `14.6.5` |
+
+### Implemented Database Boundary
+
+Migration: `supabase/migrations/20260818134203_create_profiles.sql`
+
+Implemented `public.profiles`:
+
+- `id uuid primary key references auth.users(id) on delete cascade`
+- `display_name text`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`
+
+Display-name constraint:
+
+```sql
+display_name is null
+or (
+  display_name = btrim(display_name)
+  and char_length(display_name) between 1 and 80
+)
+```
+
+Trigger/helper design:
+
+- `private` schema exists and is not granted to `anon` or `authenticated`.
+- `private.create_profile_for_new_user()` is `security definer`, uses `set search_path = ''`, and inserts only `public.profiles(id) = new.id`.
+- The creation trigger is `create_profile_after_auth_user_insert` on `auth.users`.
+- `private.touch_profile_updated_at()` is `security definer`, uses `set search_path = ''`, and updates `updated_at` before `display_name` changes.
+- `execute` is explicitly revoked from `public`, `anon`, and `authenticated` for both helper functions.
+
+Table privilege behavior:
+
+```sql
+revoke all on table public.profiles from anon;
+revoke all on table public.profiles from authenticated;
+grant select on table public.profiles to authenticated;
+grant update (display_name) on table public.profiles to authenticated;
+```
+
+RLS policies:
+
+- `Users can select their own profile`: `for select to authenticated using ((select auth.uid()) = id)`.
+- `Users can update their own profile`: `for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id)`.
+
+No `anon`, `insert`, `delete`, broad authenticated select, service-role application, collection, catalog, AI, or storage policies were added.
+
+### Command Results
+
+| Check | Result |
+| --- | --- |
+| `npx supabase start` | Passed. Local API, DB, Studio, and Mailpit became available. |
+| `npx supabase db reset` | Passed. Migration `20260818134203_create_profiles.sql` applied from a clean local database. |
+| `npx supabase test db` | Passed: 1 database test file, 43 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+| `npm run typecheck` | Passed: `tsc -b --noEmit`. |
+| `npm run lint` | Passed: `eslint .`. |
+| `npm run test:run` | Passed: 3 test files, 11 tests. |
+| `npm run build` | Passed: Vite built `dist/` successfully. |
+| `git diff --check` | Passed during implementation checkpoints. |
+
+### Database/RLS/Privilege Evidence
+
+`supabase/tests/database/profiles_rls.test.sql` behaviorally verifies:
+
+- `public.profiles` exists.
+- `profiles.id` is primary key and references `auth.users(id)` with `on delete cascade`.
+- RLS is enabled.
+- Only the two expected policies exist.
+- `anon` cannot read profiles.
+- User A can select User A profile.
+- User A cannot select User B profile.
+- User A can update User A `display_name`.
+- User A cannot update User B profile.
+- Authenticated clients cannot directly insert or delete profiles.
+- Authenticated clients cannot update protected columns `id`, `created_at`, or `updated_at`.
+- Invalid display names fail at the database layer: blank, whitespace-only, untrimmed, and over 80 characters.
+- A valid display name succeeds.
+- New `auth.users` rows create exactly one profile row through the trigger.
+- Trigger-created profiles do not copy display-name metadata.
+- Normal API roles cannot execute privileged helper functions.
+- Helper function permissions are explicit.
+- Deleting an auth user cascades to its profile.
+- `updated_at` changes after an allowed display-name update.
+
+### Local Runtime and Auth Smoke
+
+Codex automated/local runtime verification:
+
+- Started the Vite/Netlify dev runtime with local browser-safe Supabase values passed as process environment variables.
+- Did not write or commit a real `.env`.
+- `curl -i http://127.0.0.1:5173/` returned `HTTP/1.1 200 OK`.
+- `curl -i http://127.0.0.1:5173/api/health` returned `HTTP/1.1 200 OK` with body `{"status":"ok"}`.
+- Mailpit was reachable at `http://127.0.0.1:54324`.
+
+Codex automated/local Auth smoke results:
+
+- `signup_status=200`
+- `signup_has_session=false`
+- `signup_confirmation_sent=true`
+- `mailpit_message_found=true`
+- `confirmation_link_found=true`
+- `confirmation_status=303`
+- `confirmation_redirect=true`
+- `signin_status=200`
+- `profile_select_status=200`
+- `profile_rows=1`
+- `profile_initial_display_name=null`
+- `profile_update_status=200`
+- `profile_updated_display_name=Smoke User`
+- `signout_status=204`
+
+This confirms the local email-confirmation flow, Mailpit delivery, redirect configuration, sign-in, trigger-created profile, profile read/update through RLS, and sign-out behavior.
+
+Human browser verification was not performed or claimed in this automated
+milestone evidence. It was completed later and is recorded separately below.
+
+### Environment and Secret Checks
+
+- `.env.example` contains only browser-safe placeholders: `VITE_APP_NAME`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+- No real `.env` file was created or committed.
+- No service-role key, secret key, database URL, JWT secret, SMTP password, OAuth secret, catalog key, or LLM key was introduced into application configuration.
+- Milestone 2 does not create a service-role Supabase client or Netlify Function for normal profile access.
+- Supabase generated local runtime artifacts are ignored under `supabase/.temp`.
+- Storage, S3 protocol, and storage vector features are disabled in local Supabase config for this milestone.
+
+### Scope Checks
+
+No Milestone 3 or later product functionality was implemented:
+
+- No `releases` or `collection_items` schema.
+- No collection CRUD.
+- No Discogs, MusicBrainz, or Cover Art Archive integration.
+- No Supabase Storage product workflow.
+- No OpenRouter, LLM calls, recommendations, image recognition, listening history, ratings, favorites, notes, RAG, vector database, or multi-agent system.
+- No OAuth, magic-link-only login, password reset, or MFA.
+
+Oxlint scan: no Oxlint dependency or configuration was introduced.
+
+### Production Audit
+
+`npm audit --omit=dev` result: passed, `found 0 vulnerabilities`.
+
+No high or critical production dependency vulnerability was reported.
+
+### Development Dependency Audit Triage
+
+`npm audit --json` reported 9 high-severity findings and 0 critical findings. All findings remain in development-only transitive dependencies reachable through the existing Netlify local-development tooling chain, consistent with Milestone 1 audit context.
+
+The direct vulnerable aggregate remains `@netlify/vite-plugin@2.12.9`. npm proposes `@netlify/vite-plugin@2.1.4` with `isSemVerMajor: true`, which is not a normal safe update and would be a forced/breaking remediation path. No `npm audit fix` or `npm audit fix --force` was run.
+
+| Finding | Advisory / Identifier | Severity | Dependency Path | Runtime or Dev-Only | Production Reachability | npm Fix | Decision |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `extract-zip` | `GHSA-jmr9-qjv8-65gv`; npm audit range `<=2.0.1` | High | `@netlify/vite-plugin -> @netlify/dev -> @netlify/functions-dev -> extract-zip` | Dev-only | Not bundled or reachable in deployed frontend/profile workflow. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `image-size` | `GHSA-w3rx-r6r6-pgpr`; `GHSA-5p2g-fcmc-qvqq` | High | `@netlify/vite-plugin -> @netlify/dev-utils -> image-size` | Dev-only | Not bundled or reachable in deployed frontend/profile workflow. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `sharp` | `GHSA-f88m-g3jw-g9cj`; CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591 | High | `@netlify/vite-plugin -> @netlify/dev -> @netlify/images -> ipx -> sharp` | Dev-only | Not bundled or reachable; milestone does not use image processing. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `ipx` | Transitive via `sharp` | High | `@netlify/vite-plugin -> @netlify/dev -> @netlify/images -> ipx` | Dev-only | Not bundled or reachable; milestone does not use image processing. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `@netlify/functions-dev` | Transitive via `extract-zip` | High | `@netlify/vite-plugin -> @netlify/dev -> @netlify/functions-dev` | Dev-only | Local function emulation only. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `@netlify/images` | Transitive via `ipx` / `sharp` | High | `@netlify/vite-plugin -> @netlify/dev -> @netlify/images` | Dev-only | Local/build tooling only; no image workflow in Milestone 2. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `@netlify/dev-utils` | Transitive via `image-size` | High | `@netlify/vite-plugin -> @netlify/dev-utils` | Dev-only | Local/build tooling only. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `@netlify/dev` | Transitive aggregate via `@netlify/functions-dev` and `@netlify/images` | High | `@netlify/vite-plugin -> @netlify/dev` | Dev-only | Local Netlify/Vite emulation only. | Forced/breaking via `@netlify/vite-plugin@2.1.4`. | Monitor upstream; no forced fix. |
+| `@netlify/vite-plugin` | Aggregates `@netlify/dev` and `@netlify/dev-utils` | High | Direct dev dependency | Dev-only/build tooling | Not bundled into deployed frontend/profile workflow. | Forced/breaking downgrade/remediation suggestion. | Keep approved integration; monitor upstream. |
+
+### Hosted Supabase Smoke Status
+
+Hosted Supabase smoke testing was not performed because hosted Supabase project credentials/access were not established in this workflow.
+
+Local Supabase CLI verification is the approved required verification path for Milestone 2 and passed.
+
+### Known Gaps
+
+- Hosted Supabase smoke testing remains pending until project access and non-production credentials are available.
+- Dev-only Netlify tooling audit findings remain pending upstream remediation.
+
+## Milestone 2 Human Review Correction Pass
+
+Date: 2026-08-18
+
+Branch: `codex/milestone-2-supabase-auth-profile-rls`
+
+Reviewed implementation baseline: `d334df01f1149901293be18f93f44cc37951aa74`
+
+Human review found two focused issues:
+
+- Recoverable auth/profile action errors moved the app into the fatal `error`
+  shell, preventing normal retry paths.
+- The Milestone 2 specification and plan were marked implemented but still
+  contained unresolved pre-approval wording at the bottom of each document.
+
+Corrections made:
+
+- Failed password sign-in now keeps the unauthenticated auth form visible and
+  shows the Supabase-safe error there.
+- Failed sign-up now keeps the unauthenticated auth form visible and allows
+  retry.
+- Failed profile update now keeps the authenticated protected profile UI visible
+  and shows the error there.
+- Failed sign-out no longer fabricates an unauthenticated state; the
+  authenticated profile UI remains visible and sign-out can be retried.
+- Initial/config/session-boundary failures may still use the fatal `error`
+  shell.
+- Milestone 2 spec/plan approval-gate sections now explicitly state that the
+  listed pre-implementation decisions were resolved through human review,
+  planning refinement commit `62fe536ef7b21a138bea383d1fbc1c2afddf4411`,
+  implementation approval commit `00937c73e7ccb8e67b151f6b0c7d3e3c22a68059`,
+  and subsequent approved implementation.
+- README local setup now explains how to read the local Supabase `API URL` and
+  browser-safe `anon key` from `npx supabase status`, and warns not to copy
+  service-role, JWT, database, or other privileged credentials into `VITE_`
+  variables.
+
+Additional frontend tests:
+
+- Failed password sign-in shows the error, leaves the sign-in form usable, and
+  supports retry.
+- Failed signup shows the error and keeps signup/sign-in controls available.
+- Failed profile update shows the error while the protected profile remains
+  visible.
+- Failed sign-out preserves the authenticated profile UI and supports retry.
+
+Command results:
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:run` | Passed: 3 test files, 15 tests. |
+| `npm run build` | Passed. |
+| `npx supabase test db` | Passed: 1 database test file, 43 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+
+Database migration/RLS architecture was not changed during this correction pass.
+
+## Milestone 2 Human Runtime Verification
+
+Date: 2026-08-18
+
+Branch: `codex/milestone-2-supabase-auth-profile-rls`
+
+Verified baseline before this documentation update:
+`6ec0b6cc36834a3cb550388b47237db48e8e1eae`
+
+This section records human browser/runtime verification performed personally by
+the human against the local Supabase development stack and local Vite/Netlify
+runtime.
+
+### Human-Verified Environment
+
+- Branch confirmed: `codex/milestone-2-supabase-auth-profile-rls`.
+- Working tree was clean before runtime verification.
+- `npx supabase status` confirmed the local Supabase development stack was
+  running.
+- Local Project/API URL: `http://127.0.0.1:54321`.
+- Local Studio: `http://127.0.0.1:54323`.
+- Local Mailpit: `http://127.0.0.1:54324`.
+- Vite/Netlify runtime started successfully at `http://127.0.0.1:5173`.
+
+### Human Browser Results
+
+- The unauthenticated Vinyl Intelligence auth screen rendered successfully.
+- The human created a new local test account:
+  `shlomi.m2.test@example.com`.
+- After Create account, the app remained unauthenticated and showed:
+  `Check your email to confirm your account before signing in.`
+- Mailpit at port `54324` contained the confirmation email.
+- The confirmation email recipient matched the test account.
+- The confirmation email subject was `Confirm your email address`.
+- Clicking the confirmation link completed confirmation, returned the browser to
+  the local Vinyl Intelligence app, and displayed the authenticated protected
+  profile UI.
+- The trigger-created profile was available automatically; no browser-side
+  profile creation was required.
+- Setting display name to `Shlomi Test` and saving showed `Profile saved.` and
+  left the value visible.
+- Refreshing the browser preserved the authenticated session and loaded
+  `Shlomi Test` again from the profile.
+- Signing out returned the application to the normal unauthenticated sign-in
+  screen.
+- The reviewed recoverable-login fix was verified: the human entered the correct
+  email with an intentionally wrong password, saw `Invalid login credentials`,
+  and the normal auth form remained visible and usable instead of entering the
+  fatal error shell.
+- Entering the correct password afterward succeeded, returned to the protected
+  profile UI, and loaded the persisted `Shlomi Test` display name.
+- Display-name input longer than 80 characters was rejected by the UI and Save
+  profile became disabled.
+- Clearing the display-name field completely and saving succeeded, showed
+  `Profile saved.`, and behaved as the approved nullable/`NULL` state.
+- Opening `http://127.0.0.1:5173/api/health` returned `{"status":"ok"}`.
+
+### Human Verification Boundary
+
+The human runtime pass did not manually test:
+
+- Cross-user RLS attacks.
+- Direct SQL grants.
+- Helper `EXECUTE` privileges.
+- Cascade behavior.
+- Failed profile-update network behavior.
+- Failed sign-out network behavior.
+
+Those behaviors remain covered by the automated frontend and database tests
+recorded above unless separately human-tested later.
+
+### Remaining Gaps
+
+- Hosted Supabase smoke testing remains pending until hosted project access and
+  non-production credentials are available.
+- Dev-only Netlify tooling audit findings remain pending upstream remediation.
