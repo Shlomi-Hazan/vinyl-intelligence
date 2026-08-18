@@ -81,6 +81,17 @@ npx supabase test db
 npx supabase db lint
 ```
 
+After `npx supabase start`, run:
+
+```bash
+npx supabase status
+```
+
+Use the local `API URL` as `VITE_SUPABASE_URL`. Use the local browser-safe
+`anon key` as the local value for `VITE_SUPABASE_PUBLISHABLE_KEY`. Do not copy
+the service-role key, JWT secret, database URL/password, or any other privileged
+credential into a `VITE_` variable.
+
 Local email confirmation is intentionally enabled. Mailpit is available at:
 
 ```text

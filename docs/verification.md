@@ -392,3 +392,62 @@ Local Supabase CLI verification is the approved required verification path for M
 - Human browser verification remains pending.
 - Hosted Supabase smoke testing remains pending until project access and non-production credentials are available.
 - Dev-only Netlify tooling audit findings remain pending upstream remediation.
+
+## Milestone 2 Human Review Correction Pass
+
+Date: 2026-08-18
+
+Branch: `codex/milestone-2-supabase-auth-profile-rls`
+
+Reviewed implementation baseline: `d334df01f1149901293be18f93f44cc37951aa74`
+
+Human review found two focused issues:
+
+- Recoverable auth/profile action errors moved the app into the fatal `error`
+  shell, preventing normal retry paths.
+- The Milestone 2 specification and plan were marked implemented but still
+  contained unresolved pre-approval wording at the bottom of each document.
+
+Corrections made:
+
+- Failed password sign-in now keeps the unauthenticated auth form visible and
+  shows the Supabase-safe error there.
+- Failed sign-up now keeps the unauthenticated auth form visible and allows
+  retry.
+- Failed profile update now keeps the authenticated protected profile UI visible
+  and shows the error there.
+- Failed sign-out no longer fabricates an unauthenticated state; the
+  authenticated profile UI remains visible and sign-out can be retried.
+- Initial/config/session-boundary failures may still use the fatal `error`
+  shell.
+- Milestone 2 spec/plan approval-gate sections now explicitly state that the
+  listed pre-implementation decisions were resolved through human review,
+  planning refinement commit `62fe536ef7b21a138bea383d1fbc1c2afddf4411`,
+  implementation approval commit `00937c73e7ccb8e67b151f6b0c7d3e3c22a68059`,
+  and subsequent approved implementation.
+- README local setup now explains how to read the local Supabase `API URL` and
+  browser-safe `anon key` from `npx supabase status`, and warns not to copy
+  service-role, JWT, database, or other privileged credentials into `VITE_`
+  variables.
+
+Additional frontend tests:
+
+- Failed password sign-in shows the error, leaves the sign-in form usable, and
+  supports retry.
+- Failed signup shows the error and keeps signup/sign-in controls available.
+- Failed profile update shows the error while the protected profile remains
+  visible.
+- Failed sign-out preserves the authenticated profile UI and supports retry.
+
+Command results:
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:run` | Passed: 3 test files, 15 tests. |
+| `npm run build` | Passed. |
+| `npx supabase test db` | Passed: 1 database test file, 43 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+
+Database migration/RLS architecture was not changed during this correction pass.

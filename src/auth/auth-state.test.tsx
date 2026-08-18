@@ -32,8 +32,12 @@ type FakeClientOptions = {
   session?: Session | null
   profile?: Profile | null
   getSessionError?: Error
+  signInError?: Error
   signInSession?: Session | null
+  signOutError?: Error
+  signUpError?: Error
   signUpSession?: Session | null
+  updateError?: Error
 }
 
 function createFakeClient(options: FakeClientOptions = {}) {
@@ -51,13 +55,19 @@ function createFakeClient(options: FakeClientOptions = {}) {
       updatePayload = payload
       return query
     }),
-    single: vi.fn(async () => ({
-      data: {
-        ...(options.profile ?? profileA),
-        display_name: updatePayload?.display_name ?? null,
-      },
-      error: null,
-    })),
+    single: vi.fn(async () => {
+      if (options.updateError) {
+        return { data: null, error: options.updateError }
+      }
+
+      return {
+        data: {
+          ...(options.profile ?? profileA),
+          display_name: updatePayload?.display_name ?? null,
+        },
+        error: null,
+      }
+    }),
   }
 
   const client = {
@@ -74,18 +84,18 @@ function createFakeClient(options: FakeClientOptions = {}) {
       })),
       signInWithPassword: vi.fn(async () => ({
         data: {
-          session: options.signInSession ?? sessionA,
-          user: userA,
+          session: options.signInError ? null : (options.signInSession ?? sessionA),
+          user: options.signInError ? null : userA,
         },
-        error: null,
+        error: options.signInError ?? null,
       })),
-      signOut: vi.fn(async () => ({ error: null })),
+      signOut: vi.fn(async () => ({ error: options.signOutError ?? null })),
       signUp: vi.fn(async () => ({
         data: {
-          session: options.signUpSession ?? null,
-          user: userA,
+          session: options.signUpError ? null : (options.signUpSession ?? null),
+          user: options.signUpError ? null : userA,
         },
-        error: null,
+        error: options.signUpError ?? null,
       })),
     },
     from: vi.fn(() => query),
@@ -148,6 +158,56 @@ describe('auth and profile workflow', () => {
     expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
   })
 
+  it('keeps the sign-in form usable after a failed password sign-in', async () => {
+    const client = createFakeClient({
+      signInError: new Error('Invalid login credentials'),
+    })
+    const user = userEvent.setup()
+
+    render(<App client={client} />)
+
+    await user.type(await screen.findByLabelText('Email'), 'user-a@example.test')
+    await user.type(screen.getByLabelText('Password'), 'wrong-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid login credentials')).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    expect(screen.queryByText('Something needs attention')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(client.auth.signInWithPassword).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps signup and sign-in controls available after failed signup', async () => {
+    const client = createFakeClient({
+      signUpError: new Error('User already registered'),
+    })
+    const user = userEvent.setup()
+
+    render(<App client={client} />)
+
+    await user.type(await screen.findByLabelText('Email'), 'new@example.test')
+    await user.type(screen.getByLabelText('Password'), 'password123')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('User already registered')).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    expect(screen.queryByText('Something needs attention')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(client.auth.signUp).toHaveBeenCalledTimes(2)
+  })
+
   it('signs out from an authenticated profile shell', async () => {
     const client = createFakeClient({ session: sessionA, profile: profileA })
     const user = userEvent.setup()
@@ -165,6 +225,34 @@ describe('auth and profile workflow', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
+  })
+
+  it('keeps the protected profile visible after failed sign-out and allows retry', async () => {
+    const client = createFakeClient({
+      session: sessionA,
+      profile: profileA,
+      signOutError: new Error('Sign-out service unavailable'),
+    })
+    const user = userEvent.setup()
+
+    render(<App client={client} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Protected profile')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-out service unavailable')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Protected profile')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    expect(client.auth.signOut).toHaveBeenCalledTimes(2)
   })
 
   it('validates display-name length before saving', async () => {
@@ -199,6 +287,30 @@ describe('auth and profile workflow', () => {
         display_name: 'Alice Updated',
       })
     })
+  })
+
+  it('keeps the protected profile visible after failed profile update', async () => {
+    const client = createFakeClient({
+      session: sessionA,
+      profile: profileA,
+      updateError: new Error('Profile update rejected'),
+    })
+    const user = userEvent.setup()
+
+    render(<App client={client} />)
+
+    const input = await screen.findByLabelText('Display name')
+    await user.clear(input)
+    await user.type(input, 'Alice Updated')
+    await user.click(screen.getByRole('button', { name: 'Save profile' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Profile update rejected')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Protected profile')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save profile' })).toBeEnabled()
+    expect(screen.queryByText('Something needs attention')).not.toBeInTheDocument()
   })
 
   it('shows a controlled missing-profile state without browser-side creation', async () => {

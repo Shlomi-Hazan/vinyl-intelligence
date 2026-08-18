@@ -153,7 +153,9 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
       const { data, error } = await client.auth.signUp({ email, password })
 
       if (error) {
-        setStatus('error')
+        setSession(null)
+        setProfile(null)
+        setStatus('unauthenticated')
         setErrorMessage(error.message)
         return
       }
@@ -189,7 +191,9 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
       })
 
       if (error) {
-        setStatus('error')
+        setSession(null)
+        setProfile(null)
+        setStatus('unauthenticated')
         setErrorMessage(error.message)
         return
       }
@@ -205,10 +209,12 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
       return
     }
 
+    setErrorMessage(null)
+    setNotice(null)
+
     const { error } = await client.auth.signOut({ scope: 'local' })
 
     if (error) {
-      setStatus('error')
       setErrorMessage(error.message)
       return
     }
@@ -241,7 +247,6 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
         setStatus('authenticated')
         setNotice('Profile saved.')
       } catch (error) {
-        setStatus('error')
         setErrorMessage(getErrorMessage(error))
       }
     },

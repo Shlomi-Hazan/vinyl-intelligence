@@ -418,17 +418,30 @@ Recommended database testing approach:
 - No collection, catalog, AI, image, recommendation, listening, rating, or favorite feature is implemented.
 - Type-check, lint, tests, build, migration verification, RLS verification, and secret scan pass before completion is claimed.
 
-## Human Approval Decisions Still Required
+## Resolved Human Approval Decisions
 
-- Approve adding `@supabase/supabase-js` as a runtime dependency during implementation.
-- Approve the exact pinned Supabase CLI version after implementation verifies the current stable version from the official source or npm registry.
-- Approve the exact SQL for the profile table display-name constraint.
-- Approve the exact SQL for grants/revokes, RLS policies, trigger helper schema, and function execute revokes during implementation review.
-- Confirm whether a hosted Supabase smoke test should be attempted in addition to required local verification if project access is available.
-- Grant explicit implementation approval for Milestone 2.
+These decisions were unresolved while this specification was proposed. They were
+resolved through human review, planning refinement commit
+`62fe536ef7b21a138bea383d1fbc1c2afddf4411`, implementation approval commit
+`00937c73e7ccb8e67b151f6b0c7d3e3c22a68059`, and subsequent approved
+implementation:
+
+- Adding `@supabase/supabase-js` as a runtime dependency was approved.
+- Pinning the Supabase CLI as a project-scoped npm dev dependency was approved.
+- The implemented display-name constraint was reviewed as part of the milestone
+  implementation.
+- The implemented grants/revokes, RLS policies, trigger helper schema, and
+  function execute revokes were reviewed as part of the milestone
+  implementation.
+- Hosted Supabase smoke testing remains conditional on hosted project access and
+  does not replace the required local Supabase CLI verification path.
+- Explicit implementation approval for Milestone 2 was granted before
+  implementation began.
 
 ## Stop Point
 
-Stop after this specification and the implementation plan are reviewed.
-
-Do not install dependencies, create Supabase client files, create migrations, write SQL, build auth UI, or implement Milestone 2 until the human explicitly approves implementation.
+This was the pre-implementation stop point. It preserved the approval gate:
+dependencies, Supabase client files, migrations, SQL, auth UI, and Milestone 2
+implementation were prohibited until explicit human implementation approval was
+granted. That gate has now been satisfied, and Milestone 2 implementation and
+verification have completed.

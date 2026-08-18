@@ -607,20 +607,32 @@ Because implementation should happen on a milestone branch:
 - If profile trigger blocks signup in a test environment, disable/drop the trigger in a corrective migration and update the strategy before merge.
 - Do not reset a linked remote database unless it is a disposable dev/staging project and the human explicitly approves.
 
-## Unresolved Human Approval Decisions
+## Resolved Pre-Implementation Approval Decisions
 
-Required before implementation:
+These decisions were required before implementation while this plan was still
+proposed. They were resolved through human review, planning refinement commit
+`62fe536ef7b21a138bea383d1fbc1c2afddf4411`, implementation approval commit
+`00937c73e7ccb8e67b151f6b0c7d3e3c22a68059`, and subsequent approved
+implementation:
 
-- Approve adding `@supabase/supabase-js`.
-- Approve the exact pinned Supabase CLI version after implementation verifies the current stable version.
-- Approve the exact SQL for the display-name constraint.
-- Approve the exact SQL for grants/revokes, RLS policies, trigger helper schema, and execute revokes.
-- Confirm whether a hosted Supabase smoke test should be attempted in addition to required local verification if project access is available.
-- Confirm whether any Netlify Function auth verification helper is needed in Milestone 2. Recommendation: no, not for the profile workflow.
-- Grant explicit implementation approval for Milestone 2.
+- Adding `@supabase/supabase-js` was approved.
+- Pinning the Supabase CLI as a project-scoped npm dev dependency was approved.
+- The implemented display-name constraint was reviewed as part of the milestone
+  implementation.
+- The implemented grants/revokes, RLS policies, trigger helper schema, and
+  execute revokes were reviewed as part of the milestone implementation.
+- Hosted Supabase smoke testing remains conditional on hosted project access and
+  does not replace the required local Supabase CLI verification path.
+- No Netlify Function auth verification helper was added for the normal profile
+  workflow.
+- Explicit implementation approval for Milestone 2 was granted before
+  implementation began.
 
 ## Stop Point
 
-Stop here until human approval.
-
-Do not install dependencies, create Supabase client files, create migrations, write SQL, create auth components, alter `.env.example`, or implement Milestone 2 until the human explicitly approves this specification and implementation plan.
+This was the pre-implementation stop point. It preserved the approval gate:
+dependencies, Supabase client files, migrations, SQL, auth components,
+`.env.example` changes, and Milestone 2 implementation were prohibited until the
+human explicitly approved this specification and implementation plan. That gate
+has now been satisfied, and Milestone 2 implementation and verification have
+completed.
