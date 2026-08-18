@@ -1,6 +1,8 @@
 # 002 Milestone 1 Stack Scaffold Implementation Plan
 
-Status: proposed for human approval
+Status: approved and implemented
+
+Approved: 2026-08-18
 
 Milestone: 1 - Vite/React/TypeScript + Netlify Functions Scaffold
 
@@ -503,9 +505,9 @@ Because this milestone should be implemented on its own branch:
 
 The human review decisions for Node.js 24, npm, Vitest, React Testing Library, jsdom, ESLint flat config, `/api/health`, and the planning branch name are reflected in this plan.
 
-Before implementation, the remaining required approval is explicit human approval to begin adding implementation commits to this branch.
+Human implementation approval was granted before implementation began. The approval gate was satisfied, and Milestone 1 implementation and verification have completed.
 
-The early Netlify preview deployment remains conditional on Netlify authentication and project access being available during implementation. If that access is unavailable, record it as a deployment verification dependency and continue with local scaffold verification.
+The early Netlify preview deployment remains conditional on Netlify authentication and project access being available. Remote Netlify preview remains pending because authenticated Netlify site/project access has not been established in this workflow; local scaffold and `/api/health` verification completed.
 
 ## Reference Documentation Checked
 
@@ -520,6 +522,6 @@ The early Netlify preview deployment remains conditional on Netlify authenticati
 
 ## Stop Point
 
-Stop here until human approval.
+This was the original stop point before human approval.
 
-Do not install dependencies, scaffold Vite, or modify application code yet. The branch may exist for specification and plan review only.
+Do not install dependencies, scaffold Vite, or modify application code until the human explicitly approves implementation. That approval was granted for Milestone 1, and the implementation and verification work has completed.
