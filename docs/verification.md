@@ -333,7 +333,8 @@ Codex automated/local Auth smoke results:
 
 This confirms the local email-confirmation flow, Mailpit delivery, redirect configuration, sign-in, trigger-created profile, profile read/update through RLS, and sign-out behavior.
 
-Human browser verification was not performed or claimed in this milestone evidence.
+Human browser verification was not performed or claimed in this automated
+milestone evidence. It was completed later and is recorded separately below.
 
 ### Environment and Secret Checks
 
@@ -389,7 +390,6 @@ Local Supabase CLI verification is the approved required verification path for M
 
 ### Known Gaps
 
-- Human browser verification remains pending.
 - Hosted Supabase smoke testing remains pending until project access and non-production credentials are available.
 - Dev-only Netlify tooling audit findings remain pending upstream remediation.
 
@@ -451,3 +451,80 @@ Command results:
 | `npx supabase db lint` | Passed: no schema errors found. |
 
 Database migration/RLS architecture was not changed during this correction pass.
+
+## Milestone 2 Human Runtime Verification
+
+Date: 2026-08-18
+
+Branch: `codex/milestone-2-supabase-auth-profile-rls`
+
+Verified baseline before this documentation update:
+`6ec0b6cc36834a3cb550388b47237db48e8e1eae`
+
+This section records human browser/runtime verification performed personally by
+the human against the local Supabase development stack and local Vite/Netlify
+runtime.
+
+### Human-Verified Environment
+
+- Branch confirmed: `codex/milestone-2-supabase-auth-profile-rls`.
+- Working tree was clean before runtime verification.
+- `npx supabase status` confirmed the local Supabase development stack was
+  running.
+- Local Project/API URL: `http://127.0.0.1:54321`.
+- Local Studio: `http://127.0.0.1:54323`.
+- Local Mailpit: `http://127.0.0.1:54324`.
+- Vite/Netlify runtime started successfully at `http://127.0.0.1:5173`.
+
+### Human Browser Results
+
+- The unauthenticated Vinyl Intelligence auth screen rendered successfully.
+- The human created a new local test account:
+  `shlomi.m2.test@example.com`.
+- After Create account, the app remained unauthenticated and showed:
+  `Check your email to confirm your account before signing in.`
+- Mailpit at port `54324` contained the confirmation email.
+- The confirmation email recipient matched the test account.
+- The confirmation email subject was `Confirm your email address`.
+- Clicking the confirmation link completed confirmation, returned the browser to
+  the local Vinyl Intelligence app, and displayed the authenticated protected
+  profile UI.
+- The trigger-created profile was available automatically; no browser-side
+  profile creation was required.
+- Setting display name to `Shlomi Test` and saving showed `Profile saved.` and
+  left the value visible.
+- Refreshing the browser preserved the authenticated session and loaded
+  `Shlomi Test` again from the profile.
+- Signing out returned the application to the normal unauthenticated sign-in
+  screen.
+- The reviewed recoverable-login fix was verified: the human entered the correct
+  email with an intentionally wrong password, saw `Invalid login credentials`,
+  and the normal auth form remained visible and usable instead of entering the
+  fatal error shell.
+- Entering the correct password afterward succeeded, returned to the protected
+  profile UI, and loaded the persisted `Shlomi Test` display name.
+- Display-name input longer than 80 characters was rejected by the UI and Save
+  profile became disabled.
+- Clearing the display-name field completely and saving succeeded, showed
+  `Profile saved.`, and behaved as the approved nullable/`NULL` state.
+- Opening `http://127.0.0.1:5173/api/health` returned `{"status":"ok"}`.
+
+### Human Verification Boundary
+
+The human runtime pass did not manually test:
+
+- Cross-user RLS attacks.
+- Direct SQL grants.
+- Helper `EXECUTE` privileges.
+- Cascade behavior.
+- Failed profile-update network behavior.
+- Failed sign-out network behavior.
+
+Those behaviors remain covered by the automated frontend and database tests
+recorded above unless separately human-tested later.
+
+### Remaining Gaps
+
+- Hosted Supabase smoke testing remains pending until hosted project access and
+  non-production credentials are available.
+- Dev-only Netlify tooling audit findings remain pending upstream remediation.
