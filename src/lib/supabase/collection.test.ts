@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   addManualCollectionItem,
+  deleteCollectionItem,
   normalizeManualReleaseInput,
   validateManualReleaseInput,
   type ManualReleaseInput,
@@ -83,6 +84,46 @@ function createAddClient(options: { itemInsertError?: Error } = {}) {
     itemQuery,
     releaseDelete,
     releaseQuery,
+  }
+}
+
+function createDeleteClient(options: {
+  deleteError?: Error
+  deletedId?: string | null
+} = {}) {
+  const releaseDelete = vi.fn()
+  const collectionDelete = vi.fn(() => collectionQuery)
+  const collectionQuery = {
+    delete: collectionDelete,
+    eq: vi.fn(() => collectionQuery),
+    select: vi.fn(() => collectionQuery),
+    single: vi.fn(async () => {
+      if (options.deleteError) {
+        return { data: null, error: options.deleteError }
+      }
+
+      return {
+        data: options.deletedId === null
+          ? null
+          : { id: options.deletedId ?? 'item-1' },
+        error: null,
+      }
+    }),
+  }
+  const releaseQuery = {
+    delete: releaseDelete,
+  }
+  const client = {
+    from: vi.fn((table: string) =>
+      table === 'collection_items' ? collectionQuery : releaseQuery,
+    ),
+  }
+
+  return {
+    client: client as unknown as BrowserSupabaseClient,
+    collectionDelete,
+    collectionQuery,
+    releaseDelete,
   }
 }
 
@@ -171,6 +212,41 @@ describe('manual collection service', () => {
 
     await expect(addManualCollectionItem(client, manualInput())).rejects.toThrow(
       'collection item insert rejected',
+    )
+
+    expect(releaseDelete).not.toHaveBeenCalled()
+  })
+
+  it('confirms a collection item delete by requesting the deleted id back', async () => {
+    const { client, collectionDelete, collectionQuery, releaseDelete } =
+      createDeleteClient()
+
+    await expect(deleteCollectionItem(client, 'item-1')).resolves.toBeUndefined()
+
+    expect(collectionDelete).toHaveBeenCalledOnce()
+    expect(collectionQuery.eq).toHaveBeenCalledWith('id', 'item-1')
+    expect(collectionQuery.select).toHaveBeenCalledWith('id')
+    expect(collectionQuery.single).toHaveBeenCalledOnce()
+    expect(releaseDelete).not.toHaveBeenCalled()
+  })
+
+  it('treats a zero-row or not-visible delete as an error', async () => {
+    const { client, releaseDelete } = createDeleteClient({ deletedId: null })
+
+    await expect(deleteCollectionItem(client, 'item-1')).rejects.toThrow(
+      'Collection item was not deleted.',
+    )
+
+    expect(releaseDelete).not.toHaveBeenCalled()
+  })
+
+  it('propagates Supabase delete errors', async () => {
+    const { client, releaseDelete } = createDeleteClient({
+      deleteError: new Error('delete rejected by RLS'),
+    })
+
+    await expect(deleteCollectionItem(client, 'item-1')).rejects.toThrow(
+      'delete rejected by RLS',
     )
 
     expect(releaseDelete).not.toHaveBeenCalled()

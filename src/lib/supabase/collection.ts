@@ -61,6 +61,10 @@ type CollectionItemRow = CollectionItemWithRelease | {
   release: CollectionItemWithRelease['release'] | CollectionItemWithRelease['release'][]
 }
 
+type DeletedCollectionItemRow = {
+  id: string
+}
+
 function nullIfBlank(value: string): string | null {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
@@ -278,12 +282,20 @@ export async function deleteCollectionItem(
   client: BrowserSupabaseClient,
   collectionItemId: string,
 ): Promise<void> {
-  const { error } = await client
+  const { data, error } = await client
     .from('collection_items')
     .delete()
     .eq('id', collectionItemId)
+    .select('id')
+    .single()
 
   if (error) {
     throw error
+  }
+
+  const deletedItem = data as DeletedCollectionItemRow | null
+
+  if (deletedItem?.id !== collectionItemId) {
+    throw new Error('Collection item was not deleted.')
   }
 }

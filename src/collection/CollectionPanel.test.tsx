@@ -151,7 +151,7 @@ describe('CollectionPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Add record' }))
 
     await waitFor(() => {
-      expect(screen.getAllByText('release rejected')).toHaveLength(2)
+      expect(screen.getByText('release rejected')).toBeInTheDocument()
     })
 
     expect(screen.getByLabelText('Artist')).toHaveValue('Alice Coltrane')
@@ -170,7 +170,7 @@ describe('CollectionPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Add record' }))
 
     await waitFor(() => {
-      expect(screen.getAllByText('collection item rejected')).toHaveLength(2)
+      expect(screen.getByText('collection item rejected')).toBeInTheDocument()
     })
 
     expect(screen.queryByText('Record removed.')).not.toBeInTheDocument()
@@ -241,7 +241,7 @@ describe('CollectionPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Save record' }))
 
     await waitFor(() => {
-      expect(screen.getAllByText('update rejected')).toHaveLength(2)
+      expect(screen.getByText('update rejected')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Save record' })).toBeEnabled()

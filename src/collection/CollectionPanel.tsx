@@ -104,7 +104,6 @@ export function CollectionPanel({ client }: CollectionPanelProps) {
       setNotice('Record added.')
     } catch (error) {
       const message = getErrorMessage(error)
-      setActionError(message)
       throw new Error(message, { cause: error })
     }
   }
@@ -134,7 +133,6 @@ export function CollectionPanel({ client }: CollectionPanelProps) {
       setNotice('Record saved.')
     } catch (error) {
       const message = getErrorMessage(error)
-      setActionError(message)
       throw new Error(message, { cause: error })
     }
   }
