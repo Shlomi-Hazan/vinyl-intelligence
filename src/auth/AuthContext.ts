@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import type { Profile } from '../lib/supabase/client.ts'
+import type { BrowserSupabaseClient, Profile } from '../lib/supabase/client.ts'
 
 export type AuthStatus =
   | 'loading'
@@ -11,6 +11,7 @@ export type AuthStatus =
 
 export type AuthContextValue = {
   status: AuthStatus
+  client: BrowserSupabaseClient | null
   session: Session | null
   user: User | null
   profile: Profile | null

@@ -7,9 +7,59 @@ export type Profile = {
   updated_at: string
 }
 
+export type Release = {
+  id: string
+  created_by: string | null
+  source: 'manual'
+  artist: string
+  title: string
+  release_year: number | null
+  label: string | null
+  catalog_number: string | null
+  country: string | null
+  format: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CollectionItem = {
+  id: string
+  user_id: string
+  release_id: string
+  added_at: string
+  created_at: string
+}
+
 type Database = {
   public: {
     Tables: {
+      collection_items: {
+        Row: CollectionItem
+        Insert: {
+          id?: string
+          user_id?: string
+          release_id: string
+          added_at?: string
+          created_at?: string
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: 'collection_items_release_id_fkey'
+            columns: ['release_id']
+            isOneToOne: false
+            referencedRelation: 'releases'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'collection_items_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       profiles: {
         Row: Profile
         Insert: {
@@ -27,6 +77,41 @@ type Database = {
             columns: ['id']
             isOneToOne: true
             referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      releases: {
+        Row: Release
+        Insert: {
+          id?: string
+          created_by?: string | null
+          source?: 'manual'
+          artist: string
+          title: string
+          release_year?: number | null
+          label?: string | null
+          catalog_number?: string | null
+          country?: string | null
+          format?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          artist?: string
+          title?: string
+          release_year?: number | null
+          label?: string | null
+          catalog_number?: string | null
+          country?: string | null
+          format?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'releases_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
         ]

@@ -33,7 +33,9 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 2 authentication/profile foundation implemented on the active milestone branch.
+Current status: Milestone 3 Manual Collection CRUD is implemented and verified on the active milestone branch `codex/milestone-3-manual-collection-crud`.
+
+Milestone 3 pull-request and merge state are tracked in GitHub history.
 
 Implemented:
 
@@ -48,11 +50,16 @@ Implemented:
 - Local email confirmation flow using Mailpit
 - User-owned `profiles` table with RLS and least-privilege grants
 - Minimal authenticated profile workflow for editing `display_name`
+- Manual collection schema: `releases` and `collection_items`
+- Browser-authoritative Supabase RLS and least-privilege access for manual collection data
+- Authenticated manual add, view, edit, and remove workflow
+- Manual release validation and recoverable CRUD error behavior
+- Milestone 3 automated verification, spec-driven test remediation, and human runtime verification
 
 Planned:
 
 - Catalog search/add flow
-- Collection browsing
+- Browse/search/filter milestone beyond the basic Milestone 3 collection list
 - Listening history
 - AI recommendation workflow
 - Photo recognition workflow
@@ -68,7 +75,7 @@ npm install
 npm run dev
 ```
 
-Milestone 2 requires browser-safe Supabase settings. Copy `.env.example` to a
+The current Supabase-backed milestones require browser-safe Supabase settings. Copy `.env.example` to a
 local `.env` file and fill in local or hosted Supabase values. Do not commit
 `.env`.
 
@@ -115,8 +122,9 @@ npm run build
 npm run preview
 ```
 
-No service-role key is required for Milestone 2. Browser code must use only
-`VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+No service-role key is required for the current browser auth/profile/collection
+workflows. Browser code must use only `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_PUBLISHABLE_KEY`.
 
 Expected future requirements:
 

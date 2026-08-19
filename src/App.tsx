@@ -1,6 +1,7 @@
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { AuthForm } from './auth/AuthForm.tsx'
 import { useAuth } from './auth/useAuth.ts'
+import { CollectionPanel } from './collection/CollectionPanel.tsx'
 import type { BrowserSupabaseClient } from './lib/supabase/client.ts'
 import { ProfilePanel } from './profile/ProfilePanel.tsx'
 
@@ -11,6 +12,7 @@ type AppProps = {
 function AuthenticatedShell() {
   const {
     status,
+    client,
     user,
     profile,
     notice,
@@ -94,14 +96,17 @@ function AuthenticatedShell() {
 
   return (
     <main className="app-shell">
-      <ProfilePanel
-        email={user?.email ?? null}
-        errorMessage={errorMessage}
-        notice={notice}
-        onSaveDisplayName={updateDisplayName}
-        onSignOut={signOut}
-        profile={profile}
-      />
+      <div className="authenticated-layout">
+        <ProfilePanel
+          email={user?.email ?? null}
+          errorMessage={errorMessage}
+          notice={notice}
+          onSaveDisplayName={updateDisplayName}
+          onSignOut={signOut}
+          profile={profile}
+        />
+        {client ? <CollectionPanel client={client} /> : null}
+      </div>
     </main>
   )
 }

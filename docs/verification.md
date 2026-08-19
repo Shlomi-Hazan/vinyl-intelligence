@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-18.
+Last updated: 2026-08-19.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -528,3 +528,427 @@ recorded above unless separately human-tested later.
 - Hosted Supabase smoke testing remains pending until hosted project access and
   non-production credentials are available.
 - Dev-only Netlify tooling audit findings remain pending upstream remediation.
+
+## Milestone 3 Automated/Local Verification - Manual Collection CRUD
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+Milestone 3 status in this section: database/RLS foundation and frontend/service
+implementation passed Codex automated/local verification. Human runtime
+verification was pending at the time of this automated section and is recorded
+separately below after human completion.
+
+Implementation commits:
+
+- `381aed84e3e9c5753c993a20cb4a9ae0e1d015a9` - `docs: approve milestone 3 implementation`
+- `71aab2a6a2cdce3922eeff7f87cdd9d1c2e6cc01` - `db: add manual collection schema and RLS`
+- `b972c0809dc6936e5572ad2da1f4c5b0a5cd5d3e` - `feat: add manual collection workflow`
+
+### Implemented Frontend/Service Scope
+
+Frontend files created:
+
+- `src/lib/supabase/collection.ts`
+- `src/lib/supabase/collection.test.ts`
+- `src/collection/CollectionPanel.tsx`
+- `src/collection/CollectionForm.tsx`
+- `src/collection/CollectionItemCard.tsx`
+- `src/collection/CollectionPanel.test.tsx`
+
+Milestone 3 UI was integrated into the existing authenticated shell alongside
+the Milestone 2 profile/sign-out controls. No router, service-role client,
+Netlify Function, catalog API, image recognition, AI, ratings, favorites, notes,
+listening history, or search/filter implementation was added.
+
+The collection service uses the existing browser Supabase client and keeps raw
+Supabase query details out of presentation components. It implements:
+
+- `normalizeManualReleaseInput`
+- `validateManualReleaseInput`
+- `loadCollection`
+- `addManualCollectionItem`
+- `updateManualRelease`
+- `deleteCollectionItem`
+
+The approved two-step manual add flow is preserved: insert a creator-owned
+manual release first, then insert the collection item. If the second insert
+fails, the UI shows a recoverable error and does not claim release cleanup.
+
+### Command Results
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed: `tsc -b --noEmit`. |
+| `npm run lint` | Passed: `eslint .`. |
+| `npm run test:run` | Passed: 5 test files, 31 tests. |
+| `npm run build` | Passed: Vite built `dist/` successfully. |
+| `npx supabase start` | Passed. Local Supabase stack was running. |
+| `npx supabase db reset` | Passed. Migrations `20260818134203_create_profiles.sql` and `20260819000100_create_manual_collection.sql` applied from a clean local database. The expected no-seed-file warning was emitted. |
+| `npx supabase test db` | Passed: 2 database test files, 128 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities`. |
+| `npm audit --json` | Completed with 9 high, 0 critical, all in development-only Netlify tooling dependencies. |
+| `git diff --check` | Passed before implementation commit. |
+
+### Frontend Test Evidence
+
+The Vitest/React Testing Library suite verifies:
+
+- Authenticated empty collection state.
+- Loading existing collection records.
+- Deterministic collection ordering by `added_at desc, id desc`.
+- Add success.
+- Add input normalization.
+- Add validation.
+- Recoverable release-insert failure.
+- Recoverable collection-item insert failure without cleanup claims.
+- Edit success.
+- Edit validation.
+- Recoverable edit failure.
+- Same-release duplicate UI consistency after edit.
+- Delete confirmation.
+- Delete success removing only the selected collection item.
+- Recoverable delete failure leaving the item visible.
+- Optional metadata display.
+- Blank optional string normalization to `null`.
+- Load/session-boundary failure recovery through retry.
+- Existing Milestone 2 auth/profile tests continue to pass.
+
+### Database/RLS Evidence
+
+The previously approved Milestone 3 database/RLS foundation was retained without
+frontend-driven security changes.
+
+`supabase/tests/database/collection_rls.test.sql` and
+`supabase/tests/database/profiles_rls.test.sql` passed together with 128 tests.
+They cover the approved profile boundary plus manual release and collection-item
+schema, constraints, least-privilege grants, RLS ownership behavior, duplicate
+semantics, orphan semantics, protected columns, helper permissions, and
+timestamp behavior.
+
+### Local Runtime Smoke
+
+Codex automated/local runtime verification:
+
+- Started the Vite/Netlify dev runtime with local browser-safe Supabase values
+  passed as process environment variables.
+- Did not write or commit a real `.env`.
+- `curl -i http://127.0.0.1:5173/` returned `HTTP/1.1 200 OK`.
+- `curl -i http://127.0.0.1:5173/api/health` returned `HTTP/1.1 200 OK` with
+  body `{"status":"ok"}`.
+
+This was an automated smoke check only. Human browser/runtime verification was
+performed later and is recorded separately below.
+
+### Security And Scope Checks
+
+Secret scan result: passed. No service-role key, secret key, database URL, JWT
+secret, SMTP password, OAuth secret, catalog key, LLM key, real `.env`, or local
+generated Supabase runtime artifact was staged or committed.
+
+Scope scan result: passed. No Discogs, MusicBrainz, Cover Art Archive,
+OpenRouter, LLM/model call, recommendation, image recognition, listening
+history, rating, favorite, note, search/filter, RAG, vector database, or
+multi-agent functionality was added.
+
+No Oxlint dependency or configuration was introduced.
+
+### Development Dependency Audit Triage
+
+The full development audit remains consistent with the previously documented
+Netlify tooling risk: 9 high-severity findings, 0 critical findings, all in
+development-only transitive dependencies reachable through
+`@netlify/vite-plugin`.
+
+`npm audit` again proposed remediation through `@netlify/vite-plugin@2.1.4`
+with `isSemVerMajor: true`. No `npm audit fix` or `npm audit fix --force` was
+run, and no dependency or architecture change was made for this dev-only
+tooling chain.
+
+### Known Gaps
+
+- Human runtime verification for Milestone 3 was pending at the time of this
+  automated verification section and is now recorded separately below.
+- Hosted Supabase smoke testing remains pending until hosted project access and
+  non-production credentials are available.
+- Dev-only Netlify tooling audit findings remain pending upstream remediation.
+
+## Milestone 3 Frontend Review Correction
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+Corrective commit:
+
+- `c67bcfce6f990a87f79a62e7d51061c949e9e422` - `fix: verify collection deletion result`
+
+Independent frontend/service review identified two issues before Milestone 3
+human runtime verification:
+
+- Collection-item deletion could treat a zero-row or RLS-filtered delete as
+  success because the service only checked for a Supabase error.
+- Recoverable add/edit failures were rendered twice because both the panel and
+  the active form owned the same error message.
+
+Corrections:
+
+- `deleteCollectionItem` now performs `delete().eq('id', collectionItemId)
+  .select('id').single()`, propagates Supabase/PostgREST errors, and verifies
+  the returned deleted row id matches the requested collection item id.
+- Zero-row/not-visible deletes are treated as recoverable failures, not success.
+- Release deletion is still never attempted by the collection-item delete
+  service.
+- Collection form submission errors are now owned by `CollectionForm`; panel
+  `actionError` remains for non-form actions such as delete failures.
+
+Correction verification:
+
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm run test:run`: passed, 5 test files / 34 tests.
+- `npm run build`: passed.
+- `npx supabase db reset`: passed.
+- `npx supabase test db`: passed, 2 database test files / 128 tests.
+- `npx supabase db lint`: passed, no schema errors found.
+- `npm audit --omit=dev`: passed, `found 0 vulnerabilities`.
+- `git diff --check`: passed.
+- The approved Milestone 3 migration remained byte-for-byte unchanged.
+
+Human runtime verification for Milestone 3 was pending at the time of this
+frontend review correction and is now recorded separately below.
+
+## Milestone 3 Human Runtime Verification
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+Verified baseline after correction:
+`007b599d520354de4be77c53655edb5fc35a493f`
+
+Result: PASSED.
+
+This section records human-observed browser/runtime verification performed
+against the local Supabase development stack and local Vite/Netlify runtime.
+
+### Human-Observed Results
+
+- The app loaded successfully at `http://127.0.0.1:5173/`.
+- The initial unauthenticated screen displayed the expected sign-in/create-account UI.
+- Fresh local account signup succeeded.
+- The confirmation email was received in local Mailpit.
+- The confirmation link returned to the app.
+- The authenticated profile and collection shell loaded.
+- The initial collection empty state displayed correctly.
+- Manual add succeeded for:
+  - Artist: `Pink Floyd`
+  - Title: `The Dark Side of the Moon`
+  - Release year: `1973`
+  - Label: `Harvest`
+  - Catalog number: `SHVL 804`
+  - Country: `UK`
+  - Format: `LP`
+- During human verification, a UX defect was found: after successful add, the
+  cleared form incorrectly displayed `Artist is required.`
+- That defect was corrected in
+  `007b599d520354de4be77c53655edb5fc35a493f` -
+  `fix: reset add form validation after success`.
+- After the correction, refreshing preserved `The Dark Side of the Moon`.
+- After the correction, the cleared add form showed no erroneous validation
+  message.
+- Edit succeeded by changing Label from `Harvest` to `Harvest Records`.
+- Refresh confirmed the edited metadata persisted.
+- A second record was successfully added:
+  - Artist: `Radiohead`
+  - Title: `OK Computer`
+  - Release year: `1997`
+- Both records appeared together.
+- Removing `OK Computer` succeeded after confirmation.
+- `The Dark Side of the Moon` remained after removing `OK Computer`.
+- Sign out and sign back in succeeded.
+- After re-authentication, `The Dark Side of the Moon` was still present.
+- After re-authentication, `OK Computer` remained deleted.
+- Invalid release-year validation was verified using year `2201`.
+- The UI displayed:
+  `Release year must be a whole number from 1900 to 2100.`
+- Add Record remained disabled for the invalid release year.
+- The health endpoint was manually verified at `/api/health`.
+- Exact health response: `{"status":"ok"}`.
+
+### Human Verification Boundary
+
+The human runtime pass verified the intended Milestone 3 manual collection user
+workflow and the reviewed add-form validation correction. Cross-user RLS,
+direct grants, protected helper behavior, duplicate semantics, orphan behavior,
+and column privilege behavior remain covered by the automated database tests
+recorded above unless separately human-tested later.
+
+### Conclusion
+
+Milestone 3 Human Runtime Verification: PASSED.
+
+## Milestone 3 Spec-Driven Test Quality Remediation
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+An independent, spec-driven Milestone 3 test-quality audit was performed in a
+fresh Codex session. The audit verdict was `PASS WITH TARGETED GAPS`. The human
+reviewed the audit and approved targeted test remediation only, without
+broadening Milestone 3 scope.
+
+Strengthened test areas:
+
+- App/auth integration now verifies that an authenticated session with a loaded
+  profile renders both the protected profile capability and the collection
+  capability.
+- App/auth state handling now verifies that a Supabase signed-out auth-state
+  callback removes protected profile and collection UI and returns to the
+  unauthenticated sign-in boundary.
+- Collection service tests now verify `loadCollection()` reads
+  `collection_items`, requests joined release metadata, requests
+  `added_at desc` and `id desc` ordering, normalizes returned rows, and
+  propagates Supabase read errors.
+- Collection service tests now verify `updateManualRelease()` normalizes manual
+  input, scopes updates to the requested release ID, returns editable release
+  metadata, propagates Supabase update errors, and rejects invalid input before
+  persistence.
+- Database pgTAP tests now explicitly verify authenticated browser users cannot
+  insert protected/system-managed release columns: `id`, `created_by`, `source`,
+  `created_at`, and `updated_at`.
+- Database pgTAP tests now explicitly verify authenticated browser users cannot
+  insert protected/system-managed collection item columns: `id`, `user_id`,
+  `added_at`, and `created_at`.
+- Database pgTAP tests now cover additional representative validation
+  boundaries for overlong artist, blank/whitespace-only title, blank optional
+  text, catalog number normalization/length, country normalization/length,
+  format normalization/length, and valid release-year boundaries `1900` and
+  `2100`.
+
+Resulting test totals:
+
+- Vitest/frontend-unit suite: 5 test files, 41 tests.
+- Supabase database suite: 2 test files, 153 tests.
+- Combined automated test assertions reported by the runners: 194 tests.
+
+Verification commands run:
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:run` | Passed: 5 test files, 41 tests. |
+| `npm run build` | Passed. |
+| `npx supabase db reset` | Passed. |
+| `npx supabase test db` | Passed: 2 database test files, 153 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities`. |
+
+The first sandboxed `npm audit --omit=dev` attempt could not resolve the npm
+registry because network access was restricted; the approved rerun completed
+successfully. A concurrent Supabase reset/test attempt was rerun serially after
+the local database restart completed; the final database test gate passed.
+
+Scope confirmation:
+
+- Production code changed: no.
+- Migration changed: no.
+- Dependencies changed: no.
+- Milestone 4 work started: no.
+
+## Lessons 1-7 Course Requirements Evidence Audit
+
+Date: 2026-08-19
+
+Branch/HEAD under review:
+`codex/milestone-3-manual-collection-crud` at
+`129a5ee07e5bd5e83f807af62ee6656370fc0261`.
+
+An independent external repository review was performed against university
+course Lessons 1-7. The external verdict was:
+
+`COURSE EVIDENCE STRONG WITH TARGETED DOCUMENTATION GAPS`
+
+The findings were independently checked against GitHub repository evidence and
+course materials before remediation.
+
+Confirmed findings:
+
+- The Milestone 3 implementation plan had stale human-runtime-verification
+  status language.
+- The README still described Milestone 2 as the current implemented state.
+- Stakeholder framing existed implicitly but was not explicit in `intent.txt`.
+- PRD-equivalent content already exists in `intent.txt`; duplicating it in a
+  new PRD file would reduce clarity.
+- `AGENTS.md` already fulfills the persistent agent-context role.
+- Current Milestones 1-3 needs are covered by Git/GitHub, Node/npm,
+  Vite/React/TypeScript, Vitest/React Testing Library, Supabase CLI, pgTAP, DB
+  lint, Netlify local integration, browser/manual runtime verification, and
+  official documentation/research when required.
+- No current capability gap justifies adding an MCP. Adding one now would add
+  context, permissions, maintenance, and blast radius without a concrete
+  engineering benefit.
+
+Corrected interpretation of external specification finding:
+
+- The initial follow-up review interpreted the claim that the Milestone 3
+  specification contradicted itself as a false positive because the
+  specification's Human Runtime Verification Plan is historical
+  pre-implementation planning evidence and should remain preserved.
+- That interpretation remains correct for the historical verification-plan
+  section.
+- A later full PR merge-readiness review identified a separate lower
+  current-state section, `Remaining verification gate`, that still said human
+  runtime verification was pending after it had passed.
+- That lower current-state wording was genuinely stale, so the previous blanket
+  false-positive classification was incomplete and is superseded by the
+  correction below.
+
+Approved remediation:
+
+- Documentation-only synchronization of README, `intent.txt`, `AGENTS.md`,
+  the Milestone 3 implementation plan, and this verification record.
+- No production code, tests, migrations, dependencies, Supabase/Netlify config,
+  or Milestone 1 history changes were justified.
+
+Human decisions:
+
+- Do not create `PRD.md`.
+- Do not create `CLAUDE.md`.
+- Do not install or configure an MCP merely for course visibility.
+- Do not rewrite Milestone 1 history.
+- Do not add tests merely because of this audit.
+- Preserve historical planning artifacts honestly while keeping current status
+  fields truthful.
+
+## Milestone 3 PR Merge-Readiness Documentation Correction
+
+Date: 2026-08-19
+
+PR: `#3`
+
+Reviewed head before correction:
+`c6d8f14fa10aa5144b3da5500ac5efbfbb31ae08`.
+
+Independent full PR merge-readiness review verdict: `NOT MERGE READY` due to
+one documentation contradiction. The code, security model, and tests had no
+merge-blocking finding.
+
+Documentation contradiction found:
+
+- The top of `docs/specs/0004-milestone-3-manual-collection-crud.md` correctly
+  stated that human runtime verification passed.
+- A lower current-state section still said `Remaining verification gate` and
+  claimed human runtime verification was pending.
+
+The previous false-positive interpretation was incomplete: it was correct for
+the historical Human Runtime Verification Plan, but not for the later
+current-state gate. The approved remedy was documentation-only. No production
+code, tests, migration, dependencies, security model, or Milestone 3 scope
+changed.
+
+PR `#3` must be re-checked at the corrected head before merge authorization.

@@ -1,12 +1,22 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Session, User } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import App from '../App.tsx'
 import type {
   BrowserSupabaseClient,
   Profile,
 } from '../lib/supabase/client.ts'
+
+vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../lib/supabase/collection.ts')>()
+
+  return {
+    ...actual,
+    loadCollection: vi.fn(async () => []),
+  }
+})
 
 const userA = {
   id: '00000000-0000-4000-8000-0000000000a1',
@@ -40,8 +50,14 @@ type FakeClientOptions = {
   updateError?: Error
 }
 
+type AuthStateCallback = (
+  event: AuthChangeEvent,
+  session: Session | null,
+) => void
+
 function createFakeClient(options: FakeClientOptions = {}) {
   let updatePayload: { display_name?: string | null } | null = null
+  let authStateCallback: AuthStateCallback | null = null
   const unsubscribe = vi.fn()
 
   const query = {
@@ -79,9 +95,13 @@ function createFakeClient(options: FakeClientOptions = {}) {
 
         return { data: { session: options.session ?? null }, error: null }
       }),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe } },
-      })),
+      onAuthStateChange: vi.fn((callback: AuthStateCallback) => {
+        authStateCallback = callback
+
+        return {
+          data: { subscription: { unsubscribe } },
+        }
+      }),
       signInWithPassword: vi.fn(async () => ({
         data: {
           session: options.signInError ? null : (options.signInSession ?? sessionA),
@@ -99,10 +119,18 @@ function createFakeClient(options: FakeClientOptions = {}) {
       })),
     },
     from: vi.fn(() => query),
+    __emitAuthStateChange(nextSession: Session | null) {
+      if (!authStateCallback) {
+        throw new Error('Auth state callback was not registered.')
+      }
+
+      authStateCallback(nextSession ? 'SIGNED_IN' : 'SIGNED_OUT', nextSession)
+    },
     __query: query,
   }
 
   return client as unknown as BrowserSupabaseClient & {
+    __emitAuthStateChange: (nextSession: Session | null) => void
     __query: typeof query
   }
 }
@@ -137,6 +165,21 @@ describe('auth and profile workflow', () => {
       email: 'user-a@example.test',
       password: 'password123',
     })
+  })
+
+  it('renders profile and collection capabilities for an authenticated user with a loaded profile', async () => {
+    const client = createFakeClient({ session: sessionA, profile: profileA })
+
+    render(<App client={client} />)
+
+    expect(await screen.findByText('Protected profile')).toBeInTheDocument()
+    expect(screen.getByText('user-a@example.test')).toBeInTheDocument()
+    expect(await screen.findByText('Your records')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Your collection is empty. Add a record manually to start the shelf.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('shows the confirmation-pending state after sign-up without a session', async () => {
@@ -225,6 +268,25 @@ describe('auth and profile workflow', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
+  })
+
+  it('returns to the unauthenticated boundary when Supabase emits a signed-out auth state', async () => {
+    const client = createFakeClient({ session: sessionA, profile: profileA })
+
+    render(<App client={client} />)
+
+    expect(await screen.findByText('Protected profile')).toBeInTheDocument()
+    expect(await screen.findByText('Your records')).toBeInTheDocument()
+
+    act(() => {
+      client.__emitAuthStateChange(null)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your records')).not.toBeInTheDocument()
   })
 
   it('keeps the protected profile visible after failed sign-out and allows retry', async () => {
