@@ -789,3 +789,73 @@ recorded above unless separately human-tested later.
 ### Conclusion
 
 Milestone 3 Human Runtime Verification: PASSED.
+
+## Milestone 3 Spec-Driven Test Quality Remediation
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+An independent, spec-driven Milestone 3 test-quality audit was performed in a
+fresh Codex session. The audit verdict was `PASS WITH TARGETED GAPS`. The human
+reviewed the audit and approved targeted test remediation only, without
+broadening Milestone 3 scope.
+
+Strengthened test areas:
+
+- App/auth integration now verifies that an authenticated session with a loaded
+  profile renders both the protected profile capability and the collection
+  capability.
+- App/auth state handling now verifies that a Supabase signed-out auth-state
+  callback removes protected profile and collection UI and returns to the
+  unauthenticated sign-in boundary.
+- Collection service tests now verify `loadCollection()` reads
+  `collection_items`, requests joined release metadata, requests
+  `added_at desc` and `id desc` ordering, normalizes returned rows, and
+  propagates Supabase read errors.
+- Collection service tests now verify `updateManualRelease()` normalizes manual
+  input, scopes updates to the requested release ID, returns editable release
+  metadata, propagates Supabase update errors, and rejects invalid input before
+  persistence.
+- Database pgTAP tests now explicitly verify authenticated browser users cannot
+  insert protected/system-managed release columns: `id`, `created_by`, `source`,
+  `created_at`, and `updated_at`.
+- Database pgTAP tests now explicitly verify authenticated browser users cannot
+  insert protected/system-managed collection item columns: `id`, `user_id`,
+  `added_at`, and `created_at`.
+- Database pgTAP tests now cover additional representative validation
+  boundaries for overlong artist, blank/whitespace-only title, blank optional
+  text, catalog number normalization/length, country normalization/length,
+  format normalization/length, and valid release-year boundaries `1900` and
+  `2100`.
+
+Resulting test totals:
+
+- Vitest/frontend-unit suite: 5 test files, 41 tests.
+- Supabase database suite: 2 test files, 153 tests.
+- Combined automated test assertions reported by the runners: 194 tests.
+
+Verification commands run:
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:run` | Passed: 5 test files, 41 tests. |
+| `npm run build` | Passed. |
+| `npx supabase db reset` | Passed. |
+| `npx supabase test db` | Passed: 2 database test files, 153 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities`. |
+
+The first sandboxed `npm audit --omit=dev` attempt could not resolve the npm
+registry because network access was restricted; the approved rerun completed
+successfully. A concurrent Supabase reset/test attempt was rerun serially after
+the local database restart completed; the final database test gate passed.
+
+Scope confirmation:
+
+- Production code changed: no.
+- Migration changed: no.
+- Dependencies changed: no.
+- Milestone 4 work started: no.

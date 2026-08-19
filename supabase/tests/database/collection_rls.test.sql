@@ -211,6 +211,16 @@ select ok(not has_table_privilege('anon', 'public.collection_items', 'delete'), 
 select ok(has_table_privilege('authenticated', 'public.releases', 'select'), 'authenticated can select releases subject to RLS');
 select ok(has_column_privilege('authenticated', 'public.releases', 'artist', 'insert'), 'authenticated can insert release artist');
 select ok(has_column_privilege('authenticated', 'public.releases', 'title', 'insert'), 'authenticated can insert release title');
+select ok(has_column_privilege('authenticated', 'public.releases', 'release_year', 'insert'), 'authenticated can insert release release_year');
+select ok(has_column_privilege('authenticated', 'public.releases', 'label', 'insert'), 'authenticated can insert release label');
+select ok(has_column_privilege('authenticated', 'public.releases', 'catalog_number', 'insert'), 'authenticated can insert release catalog_number');
+select ok(has_column_privilege('authenticated', 'public.releases', 'country', 'insert'), 'authenticated can insert release country');
+select ok(has_column_privilege('authenticated', 'public.releases', 'format', 'insert'), 'authenticated can insert release format');
+select ok(not has_column_privilege('authenticated', 'public.releases', 'id', 'insert'), 'authenticated cannot insert release id');
+select ok(not has_column_privilege('authenticated', 'public.releases', 'created_by', 'insert'), 'authenticated cannot insert release created_by');
+select ok(not has_column_privilege('authenticated', 'public.releases', 'source', 'insert'), 'authenticated cannot insert release source');
+select ok(not has_column_privilege('authenticated', 'public.releases', 'created_at', 'insert'), 'authenticated cannot insert release created_at');
+select ok(not has_column_privilege('authenticated', 'public.releases', 'updated_at', 'insert'), 'authenticated cannot insert release updated_at');
 select ok(has_column_privilege('authenticated', 'public.releases', 'format', 'update'), 'authenticated can update release format');
 select ok(not has_column_privilege('authenticated', 'public.releases', 'id', 'update'), 'authenticated cannot update release id');
 select ok(not has_column_privilege('authenticated', 'public.releases', 'created_by', 'update'), 'authenticated cannot update release created_by');
@@ -221,7 +231,10 @@ select ok(not has_table_privilege('authenticated', 'public.releases', 'delete'),
 
 select ok(has_table_privilege('authenticated', 'public.collection_items', 'select'), 'authenticated can select collection_items subject to RLS');
 select ok(has_column_privilege('authenticated', 'public.collection_items', 'release_id', 'insert'), 'authenticated can insert collection_item release_id');
+select ok(not has_column_privilege('authenticated', 'public.collection_items', 'id', 'insert'), 'authenticated cannot insert collection_item id directly');
 select ok(not has_column_privilege('authenticated', 'public.collection_items', 'user_id', 'insert'), 'authenticated cannot insert collection_item user_id directly');
+select ok(not has_column_privilege('authenticated', 'public.collection_items', 'added_at', 'insert'), 'authenticated cannot insert collection_item added_at directly');
+select ok(not has_column_privilege('authenticated', 'public.collection_items', 'created_at', 'insert'), 'authenticated cannot insert collection_item created_at directly');
 select ok(not has_table_privilege('authenticated', 'public.collection_items', 'update'), 'authenticated cannot update collection_items');
 select ok(has_table_privilege('authenticated', 'public.collection_items', 'delete'), 'authenticated can delete own collection_items subject to RLS');
 
@@ -475,6 +488,27 @@ select throws_ok(
 );
 
 select throws_ok(
+  $$ insert into public.releases (artist, title) values (repeat('a', 161), 'Valid Title') $$,
+  '23514',
+  null,
+  'overlong artist fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title) values ('Valid Artist', '') $$,
+  '23514',
+  null,
+  'blank title fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title) values ('Valid Artist', '   ') $$,
+  '23514',
+  null,
+  'whitespace-only title fails database constraint'
+);
+
+select throws_ok(
   $$ insert into public.releases (artist, title) values ('Valid Artist', ' Title ') $$,
   '23514',
   null,
@@ -502,11 +536,70 @@ select throws_ok(
   'release year after 2100 fails database constraint'
 );
 
+select lives_ok(
+  $$ insert into public.releases (artist, title, release_year) values ('Boundary Artist', 'Boundary Year 1900', 1900) $$,
+  'release year boundary 1900 succeeds'
+);
+
+select lives_ok(
+  $$ insert into public.releases (artist, title, release_year) values ('Boundary Artist', 'Boundary Year 2100', 2100) $$,
+  'release year boundary 2100 succeeds'
+);
+
 select throws_ok(
   $$ insert into public.releases (artist, title, label) values ('Valid Artist', 'Valid Title', ' Label ') $$,
   '23514',
   null,
   'untrimmed optional label fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, label) values ('Valid Artist', 'Valid Title', '') $$,
+  '23514',
+  null,
+  'blank optional label fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, catalog_number) values ('Valid Artist', 'Valid Title', ' CAT-1 ') $$,
+  '23514',
+  null,
+  'untrimmed catalog_number fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, catalog_number) values ('Valid Artist', 'Valid Title', repeat('c', 121)) $$,
+  '23514',
+  null,
+  'overlong catalog_number fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, country) values ('Valid Artist', 'Valid Title', ' US ') $$,
+  '23514',
+  null,
+  'untrimmed country fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, country) values ('Valid Artist', 'Valid Title', repeat('u', 81)) $$,
+  '23514',
+  null,
+  'overlong country fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, format) values ('Valid Artist', 'Valid Title', ' LP ') $$,
+  '23514',
+  null,
+  'untrimmed format fails database constraint'
+);
+
+select throws_ok(
+  $$ insert into public.releases (artist, title, format) values ('Valid Artist', 'Valid Title', repeat('f', 81)) $$,
+  '23514',
+  null,
+  'overlong format fails database constraint'
 );
 
 select lives_ok(
