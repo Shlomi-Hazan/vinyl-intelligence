@@ -537,7 +537,8 @@ Branch: `codex/milestone-3-manual-collection-crud`
 
 Milestone 3 status in this section: database/RLS foundation and frontend/service
 implementation passed Codex automated/local verification. Human runtime
-verification remains pending and is not claimed here.
+verification was pending at the time of this automated section and is recorded
+separately below after human completion.
 
 Implementation commits:
 
@@ -638,8 +639,8 @@ Codex automated/local runtime verification:
 - `curl -i http://127.0.0.1:5173/api/health` returned `HTTP/1.1 200 OK` with
   body `{"status":"ok"}`.
 
-This was an automated smoke check only. Human browser/runtime verification is
-pending.
+This was an automated smoke check only. Human browser/runtime verification was
+performed later and is recorded separately below.
 
 ### Security And Scope Checks
 
@@ -668,7 +669,8 @@ tooling chain.
 
 ### Known Gaps
 
-- Human runtime verification for Milestone 3 is pending.
+- Human runtime verification for Milestone 3 was pending at the time of this
+  automated verification section and is now recorded separately below.
 - Hosted Supabase smoke testing remains pending until hosted project access and
   non-production credentials are available.
 - Dev-only Netlify tooling audit findings remain pending upstream remediation.
@@ -715,4 +717,75 @@ Correction verification:
 - `git diff --check`: passed.
 - The approved Milestone 3 migration remained byte-for-byte unchanged.
 
-Human runtime verification for Milestone 3 remains PENDING.
+Human runtime verification for Milestone 3 was pending at the time of this
+frontend review correction and is now recorded separately below.
+
+## Milestone 3 Human Runtime Verification
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+Verified baseline after correction:
+`007b599d520354de4be77c53655edb5fc35a493f`
+
+Result: PASSED.
+
+This section records human-observed browser/runtime verification performed
+against the local Supabase development stack and local Vite/Netlify runtime.
+
+### Human-Observed Results
+
+- The app loaded successfully at `http://127.0.0.1:5173/`.
+- The initial unauthenticated screen displayed the expected sign-in/create-account UI.
+- Fresh local account signup succeeded.
+- The confirmation email was received in local Mailpit.
+- The confirmation link returned to the app.
+- The authenticated profile and collection shell loaded.
+- The initial collection empty state displayed correctly.
+- Manual add succeeded for:
+  - Artist: `Pink Floyd`
+  - Title: `The Dark Side of the Moon`
+  - Release year: `1973`
+  - Label: `Harvest`
+  - Catalog number: `SHVL 804`
+  - Country: `UK`
+  - Format: `LP`
+- During human verification, a UX defect was found: after successful add, the
+  cleared form incorrectly displayed `Artist is required.`
+- That defect was corrected in
+  `007b599d520354de4be77c53655edb5fc35a493f` -
+  `fix: reset add form validation after success`.
+- After the correction, refreshing preserved `The Dark Side of the Moon`.
+- After the correction, the cleared add form showed no erroneous validation
+  message.
+- Edit succeeded by changing Label from `Harvest` to `Harvest Records`.
+- Refresh confirmed the edited metadata persisted.
+- A second record was successfully added:
+  - Artist: `Radiohead`
+  - Title: `OK Computer`
+  - Release year: `1997`
+- Both records appeared together.
+- Removing `OK Computer` succeeded after confirmation.
+- `The Dark Side of the Moon` remained after removing `OK Computer`.
+- Sign out and sign back in succeeded.
+- After re-authentication, `The Dark Side of the Moon` was still present.
+- After re-authentication, `OK Computer` remained deleted.
+- Invalid release-year validation was verified using year `2201`.
+- The UI displayed:
+  `Release year must be a whole number from 1900 to 2100.`
+- Add Record remained disabled for the invalid release year.
+- The health endpoint was manually verified at `/api/health`.
+- Exact health response: `{"status":"ok"}`.
+
+### Human Verification Boundary
+
+The human runtime pass verified the intended Milestone 3 manual collection user
+workflow and the reviewed add-form validation correction. Cross-user RLS,
+direct grants, protected helper behavior, duplicate semantics, orphan behavior,
+and column privilege behavior remain covered by the automated database tests
+recorded above unless separately human-tested later.
+
+### Conclusion
+
+Milestone 3 Human Runtime Verification: PASSED.
