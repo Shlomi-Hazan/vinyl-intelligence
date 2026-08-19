@@ -859,3 +859,60 @@ Scope confirmation:
 - Migration changed: no.
 - Dependencies changed: no.
 - Milestone 4 work started: no.
+
+## Lessons 1-7 Course Requirements Evidence Audit
+
+Date: 2026-08-19
+
+Branch/HEAD under review:
+`codex/milestone-3-manual-collection-crud` at
+`129a5ee07e5bd5e83f807af62ee6656370fc0261`.
+
+An independent external repository review was performed against university
+course Lessons 1-7. The external verdict was:
+
+`COURSE EVIDENCE STRONG WITH TARGETED DOCUMENTATION GAPS`
+
+The findings were independently checked against GitHub repository evidence and
+course materials before remediation.
+
+Confirmed findings:
+
+- The Milestone 3 implementation plan had stale human-runtime-verification
+  status language.
+- The README still described Milestone 2 as the current implemented state.
+- Stakeholder framing existed implicitly but was not explicit in `intent.txt`.
+- PRD-equivalent content already exists in `intent.txt`; duplicating it in a
+  new PRD file would reduce clarity.
+- `AGENTS.md` already fulfills the persistent agent-context role.
+- Current Milestones 1-3 needs are covered by Git/GitHub, Node/npm,
+  Vite/React/TypeScript, Vitest/React Testing Library, Supabase CLI, pgTAP, DB
+  lint, Netlify local integration, browser/manual runtime verification, and
+  official documentation/research when required.
+- No current capability gap justifies adding an MCP. Adding one now would add
+  context, permissions, maintenance, and blast radius without a concrete
+  engineering benefit.
+
+Rejected external finding:
+
+- The claim that the Milestone 3 specification contradicted itself was a false
+  positive. The specification's Human Runtime Verification Plan is historical
+  pre-implementation planning evidence and should remain preserved. It is not a
+  stale current-status contradiction.
+
+Approved remediation:
+
+- Documentation-only synchronization of README, `intent.txt`, `AGENTS.md`,
+  the Milestone 3 implementation plan, and this verification record.
+- No production code, tests, migrations, dependencies, Supabase/Netlify config,
+  or Milestone 1 history changes were justified.
+
+Human decisions:
+
+- Do not create `PRD.md`.
+- Do not create `CLAUDE.md`.
+- Do not install or configure an MCP merely for course visibility.
+- Do not rewrite Milestone 1 history.
+- Do not add tests merely because of this audit.
+- Preserve historical planning artifacts honestly while keeping current status
+  fields truthful.

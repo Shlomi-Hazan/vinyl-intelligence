@@ -1,6 +1,6 @@
 # 004 Milestone 3 Manual Collection CRUD Implementation Plan
 
-Status: approved and implemented (automated verification complete; human runtime verification pending)
+Status: approved and implemented (automated verification complete; human runtime verification passed)
 
 Milestone: 3 - Manual Collection CRUD
 
@@ -29,7 +29,7 @@ Planning started from:
 - Working tree clean before creating this planning branch.
 - Planning branch: `codex/milestone-3-manual-collection-crud`.
 
-Current implementation baseline:
+Implementation baseline before Milestone 3 execution:
 
 - Vite + React + TypeScript.
 - Netlify Functions health endpoint at `/api/health`.
@@ -532,15 +532,15 @@ Implementation approval gate:
   this corrected specification and implementation plan were independently
   reviewed.
 
-Remaining verification gate:
+Runtime verification gate:
 
-- Human runtime verification is still pending and must be recorded separately
-  before Milestone 3 is considered fully complete.
+- Satisfied. Human runtime verification passed and is recorded separately in
+  `docs/verification.md`.
 
 ## Stop Point
 
 This historical stop point was satisfied before implementation began.
 
-No further Milestone 3 work should begin until the implemented database/RLS and
-frontend/service changes receive the next required human review and runtime
-verification.
+The planned implementation, automated verification, review corrections, and
+human runtime verification gates have been satisfied. The next milestone action
+is independent review authorization before opening the Milestone 3 PR.

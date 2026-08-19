@@ -54,6 +54,25 @@ Pull request descriptions should include:
 
 Keep commits small and coherent. Do not combine unrelated milestones in one branch or pull request.
 
+## Pre-PR Repository Evidence Gate
+
+Before opening any future milestone pull request, perform a repository evidence consistency review. This gate exists so reviewers can reconstruct the engineering process directly from the repository without end-of-project documentation archaeology.
+
+Check at least:
+
+- Specification: approved scope still matches implementation, historical planning/test plans remain preserved, and current status metadata is accurate.
+- Implementation plan: current milestone/gate status reflects what actually occurred, while historical stop points are not rewritten as though they never existed.
+- README: current milestone/status is accurate, implemented and planned capabilities are clearly separated, and no future feature is represented as implemented.
+- Verification evidence: commands, tests, and human checks actually performed are recorded; known gaps remain visible; agent claims are distinguished from independently verified evidence; no verification is claimed before it happened.
+- Intent/product requirements: update only if product intent, stakeholders, constraints, definition of done, or scope genuinely changed; do not create duplicate PRD/context artifacts.
+- Course/reviewability evidence: when course requirements or review criteria materially change, confirm the repository visibly demonstrates them and distinguish mandatory requirements from recommendations/examples.
+- Tooling/skills/MCP assessment: ask whether the next milestone needs capabilities not already available. Add a tool or MCP only for a concrete missing capability; do not install tools merely to demonstrate tool usage. Consider permissions, context cost, maintenance, and blast radius.
+- Git/scope: the branch contains only the intended milestone, no next-milestone work has started, and the PR is not opened until the evidence gate passes.
+- Contradiction scan: search docs for stale phrases such as `pending`, `proposed`, `current milestone`, `remaining gate`, and `not implemented`. Review matches semantically; do not blindly replace historical wording. Distinguish historical planning language from stale current-state claims.
+- Human gate: if the review finds an ambiguity or contradiction that changes project meaning, security, architecture, scope, or claimed verification, stop and ask the human. Minor factual status synchronization may be proposed, but implementation of new scope still requires human approval.
+
+Historical artifacts should show what was known or planned at the time. Current status fields should show what is true now. Do not "clean up" history by rewriting past planning evidence.
+
 ## AI Boundaries
 
 Use an LLM only where cognition adds value.

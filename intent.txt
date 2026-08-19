@@ -7,6 +7,10 @@ VINYL INTELLIGENCE — PROJECT INTENT Agentic Software Engineering
 
 This file is the source-of-truth intent for the project.
 
+For course and reviewer purposes, this file is the project's product
+requirements / PRD-equivalent source of truth. Milestone-specific,
+testable requirements live in docs/specs/.
+
 It is deliberately more detailed than a normal README. Its job is to
 give an agentic coding system enough direction to build the project
 without silently inventing the product. It should be read before
@@ -91,6 +95,18 @@ Primary user:
 
 A vinyl collector with a personal physical record collection who wants
 an easy way to catalog, rediscover, browse, and choose records.
+
+Stakeholders:
+
+-   Primary user: vinyl collector using the application.
+-   Human engineer / project owner: defines intent, approves
+    specifications and architecture, verifies agent output, and owns
+    quality decisions.
+-   Course reviewer / professor: evaluates repository-visible evidence
+    and the engineering process.
+-   External service providers: Supabase, Netlify, and future
+    music-catalog/model providers affect reliability and security but
+    are not product users.
 
 Core problems:
 
