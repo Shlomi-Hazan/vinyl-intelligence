@@ -1,12 +1,14 @@
 # 0004 Milestone 3 Manual Collection CRUD Specification
 
-Status: approved for implementation
+Status: approved and implemented (automated verification complete; human runtime verification pending)
 
 Milestone: 3 - Manual Collection CRUD
 
 Date: 2026-08-19
 
 Approved: 2026-08-19
+
+Implemented: 2026-08-19
 
 Implementation approval granted after human review of corrected planning commit
 `b9b641667e4bbfffb95f87a2b383f47fbb806613`.
@@ -661,15 +663,21 @@ Resolved by human review before implementation approval:
 - Collection and existing profile/sign-out controls stay in the same
   authenticated screen/shell.
 
-Remaining gate:
+Implementation approval gate:
 
-- Grant explicit implementation approval for Milestone 3 after this corrected
-  specification and implementation plan are independently reviewed.
+- Satisfied. Explicit implementation approval for Milestone 3 was granted after
+  this corrected specification and implementation plan were independently
+  reviewed.
+
+Remaining verification gate:
+
+- Human runtime verification is still pending and must be recorded separately
+  before Milestone 3 is considered fully complete.
 
 ## Stop Point
 
-Stop after this specification and the matching implementation plan are reviewed.
+This historical stop point was satisfied before implementation began.
 
-Do not install dependencies, create migrations, write SQL, create collection
-components, alter Supabase types, or implement Milestone 3 until the human
-explicitly approves implementation.
+No further Milestone 3 work should begin until the implemented database/RLS and
+frontend/service changes receive the next required human review and runtime
+verification.

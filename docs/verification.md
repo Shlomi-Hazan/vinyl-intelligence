@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-18.
+Last updated: 2026-08-19.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -525,6 +525,150 @@ recorded above unless separately human-tested later.
 
 ### Remaining Gaps
 
+- Hosted Supabase smoke testing remains pending until hosted project access and
+  non-production credentials are available.
+- Dev-only Netlify tooling audit findings remain pending upstream remediation.
+
+## Milestone 3 Automated/Local Verification - Manual Collection CRUD
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+Milestone 3 status in this section: database/RLS foundation and frontend/service
+implementation passed Codex automated/local verification. Human runtime
+verification remains pending and is not claimed here.
+
+Implementation commits:
+
+- `381aed84e3e9c5753c993a20cb4a9ae0e1d015a9` - `docs: approve milestone 3 implementation`
+- `71aab2a6a2cdce3922eeff7f87cdd9d1c2e6cc01` - `db: add manual collection schema and RLS`
+- `b972c08` - `feat: add manual collection workflow`
+
+### Implemented Frontend/Service Scope
+
+Frontend files created:
+
+- `src/lib/supabase/collection.ts`
+- `src/lib/supabase/collection.test.ts`
+- `src/collection/CollectionPanel.tsx`
+- `src/collection/CollectionForm.tsx`
+- `src/collection/CollectionItemCard.tsx`
+- `src/collection/CollectionPanel.test.tsx`
+
+Milestone 3 UI was integrated into the existing authenticated shell alongside
+the Milestone 2 profile/sign-out controls. No router, service-role client,
+Netlify Function, catalog API, image recognition, AI, ratings, favorites, notes,
+listening history, or search/filter implementation was added.
+
+The collection service uses the existing browser Supabase client and keeps raw
+Supabase query details out of presentation components. It implements:
+
+- `normalizeManualReleaseInput`
+- `validateManualReleaseInput`
+- `loadCollection`
+- `addManualCollectionItem`
+- `updateManualRelease`
+- `deleteCollectionItem`
+
+The approved two-step manual add flow is preserved: insert a creator-owned
+manual release first, then insert the collection item. If the second insert
+fails, the UI shows a recoverable error and does not claim release cleanup.
+
+### Command Results
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed: `tsc -b --noEmit`. |
+| `npm run lint` | Passed: `eslint .`. |
+| `npm run test:run` | Passed: 5 test files, 31 tests. |
+| `npm run build` | Passed: Vite built `dist/` successfully. |
+| `npx supabase start` | Passed. Local Supabase stack was running. |
+| `npx supabase db reset` | Passed. Migrations `20260818134203_create_profiles.sql` and `20260819000100_create_manual_collection.sql` applied from a clean local database. The expected no-seed-file warning was emitted. |
+| `npx supabase test db` | Passed: 2 database test files, 128 tests. |
+| `npx supabase db lint` | Passed: no schema errors found. |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities`. |
+| `npm audit --json` | Completed with 9 high, 0 critical, all in development-only Netlify tooling dependencies. |
+| `git diff --check` | Passed before implementation commit. |
+
+### Frontend Test Evidence
+
+The Vitest/React Testing Library suite verifies:
+
+- Authenticated empty collection state.
+- Loading existing collection records.
+- Deterministic collection ordering by `added_at desc, id desc`.
+- Add success.
+- Add input normalization.
+- Add validation.
+- Recoverable release-insert failure.
+- Recoverable collection-item insert failure without cleanup claims.
+- Edit success.
+- Edit validation.
+- Recoverable edit failure.
+- Same-release duplicate UI consistency after edit.
+- Delete confirmation.
+- Delete success removing only the selected collection item.
+- Recoverable delete failure leaving the item visible.
+- Optional metadata display.
+- Blank optional string normalization to `null`.
+- Load/session-boundary failure recovery through retry.
+- Existing Milestone 2 auth/profile tests continue to pass.
+
+### Database/RLS Evidence
+
+The previously approved Milestone 3 database/RLS foundation was retained without
+frontend-driven security changes.
+
+`supabase/tests/database/collection_rls.test.sql` and
+`supabase/tests/database/profiles_rls.test.sql` passed together with 128 tests.
+They cover the approved profile boundary plus manual release and collection-item
+schema, constraints, least-privilege grants, RLS ownership behavior, duplicate
+semantics, orphan semantics, protected columns, helper permissions, and
+timestamp behavior.
+
+### Local Runtime Smoke
+
+Codex automated/local runtime verification:
+
+- Started the Vite/Netlify dev runtime with local browser-safe Supabase values
+  passed as process environment variables.
+- Did not write or commit a real `.env`.
+- `curl -i http://127.0.0.1:5173/` returned `HTTP/1.1 200 OK`.
+- `curl -i http://127.0.0.1:5173/api/health` returned `HTTP/1.1 200 OK` with
+  body `{"status":"ok"}`.
+
+This was an automated smoke check only. Human browser/runtime verification is
+pending.
+
+### Security And Scope Checks
+
+Secret scan result: passed. No service-role key, secret key, database URL, JWT
+secret, SMTP password, OAuth secret, catalog key, LLM key, real `.env`, or local
+generated Supabase runtime artifact was staged or committed.
+
+Scope scan result: passed. No Discogs, MusicBrainz, Cover Art Archive,
+OpenRouter, LLM/model call, recommendation, image recognition, listening
+history, rating, favorite, note, search/filter, RAG, vector database, or
+multi-agent functionality was added.
+
+No Oxlint dependency or configuration was introduced.
+
+### Development Dependency Audit Triage
+
+The full development audit remains consistent with the previously documented
+Netlify tooling risk: 9 high-severity findings, 0 critical findings, all in
+development-only transitive dependencies reachable through
+`@netlify/vite-plugin`.
+
+`npm audit` again proposed remediation through `@netlify/vite-plugin@2.1.4`
+with `isSemVerMajor: true`. No `npm audit fix` or `npm audit fix --force` was
+run, and no dependency or architecture change was made for this dev-only
+tooling chain.
+
+### Known Gaps
+
+- Human runtime verification for Milestone 3 is pending.
 - Hosted Supabase smoke testing remains pending until hosted project access and
   non-production credentials are available.
 - Dev-only Netlify tooling audit findings remain pending upstream remediation.
