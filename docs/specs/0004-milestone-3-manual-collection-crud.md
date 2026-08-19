@@ -1,10 +1,15 @@
 # 0004 Milestone 3 Manual Collection CRUD Specification
 
-Status: proposed for human review / implementation approval
+Status: approved for implementation
 
 Milestone: 3 - Manual Collection CRUD
 
 Date: 2026-08-19
+
+Approved: 2026-08-19
+
+Implementation approval granted after human review of corrected planning commit
+`b9b641667e4bbfffb95f87a2b383f47fbb806613`.
 
 ## Intent
 
