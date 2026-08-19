@@ -543,7 +543,7 @@ Implementation commits:
 
 - `381aed84e3e9c5753c993a20cb4a9ae0e1d015a9` - `docs: approve milestone 3 implementation`
 - `71aab2a6a2cdce3922eeff7f87cdd9d1c2e6cc01` - `db: add manual collection schema and RLS`
-- `b972c08` - `feat: add manual collection workflow`
+- `b972c0809dc6936e5572ad2da1f4c5b0a5cd5d3e` - `feat: add manual collection workflow`
 
 ### Implemented Frontend/Service Scope
 
@@ -672,3 +672,47 @@ tooling chain.
 - Hosted Supabase smoke testing remains pending until hosted project access and
   non-production credentials are available.
 - Dev-only Netlify tooling audit findings remain pending upstream remediation.
+
+## Milestone 3 Frontend Review Correction
+
+Date: 2026-08-19
+
+Branch: `codex/milestone-3-manual-collection-crud`
+
+Corrective commit:
+
+- `c67bcfce6f990a87f79a62e7d51061c949e9e422` - `fix: verify collection deletion result`
+
+Independent frontend/service review identified two issues before Milestone 3
+human runtime verification:
+
+- Collection-item deletion could treat a zero-row or RLS-filtered delete as
+  success because the service only checked for a Supabase error.
+- Recoverable add/edit failures were rendered twice because both the panel and
+  the active form owned the same error message.
+
+Corrections:
+
+- `deleteCollectionItem` now performs `delete().eq('id', collectionItemId)
+  .select('id').single()`, propagates Supabase/PostgREST errors, and verifies
+  the returned deleted row id matches the requested collection item id.
+- Zero-row/not-visible deletes are treated as recoverable failures, not success.
+- Release deletion is still never attempted by the collection-item delete
+  service.
+- Collection form submission errors are now owned by `CollectionForm`; panel
+  `actionError` remains for non-form actions such as delete failures.
+
+Correction verification:
+
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm run test:run`: passed, 5 test files / 34 tests.
+- `npm run build`: passed.
+- `npx supabase db reset`: passed.
+- `npx supabase test db`: passed, 2 database test files / 128 tests.
+- `npx supabase db lint`: passed, no schema errors found.
+- `npm audit --omit=dev`: passed, `found 0 vulnerabilities`.
+- `git diff --check`: passed.
+- The approved Milestone 3 migration remained byte-for-byte unchanged.
+
+Human runtime verification for Milestone 3 remains PENDING.
