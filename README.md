@@ -35,7 +35,7 @@ The recommended baseline is:
 
 Current status: Milestone 3 Manual Collection CRUD is implemented and verified on the active milestone branch `codex/milestone-3-manual-collection-crud`.
 
-Milestone 3 has not yet been opened as a PR or merged to `main`.
+Milestone 3 pull-request and merge state are tracked in GitHub history.
 
 Implemented:
 

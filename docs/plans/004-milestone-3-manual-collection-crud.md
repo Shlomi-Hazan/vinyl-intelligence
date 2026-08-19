@@ -542,5 +542,6 @@ Runtime verification gate:
 This historical stop point was satisfied before implementation began.
 
 The planned implementation, automated verification, review corrections, and
-human runtime verification gates have been satisfied. The next milestone action
-is independent review authorization before opening the Milestone 3 PR.
+human runtime verification gates have been satisfied. Opening the Milestone 3
+PR is gated on independent review authorization; PR and merge state are tracked
+in GitHub history.
