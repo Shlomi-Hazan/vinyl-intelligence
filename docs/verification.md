@@ -893,12 +893,20 @@ Confirmed findings:
   context, permissions, maintenance, and blast radius without a concrete
   engineering benefit.
 
-Rejected external finding:
+Corrected interpretation of external specification finding:
 
-- The claim that the Milestone 3 specification contradicted itself was a false
-  positive. The specification's Human Runtime Verification Plan is historical
-  pre-implementation planning evidence and should remain preserved. It is not a
-  stale current-status contradiction.
+- The initial follow-up review interpreted the claim that the Milestone 3
+  specification contradicted itself as a false positive because the
+  specification's Human Runtime Verification Plan is historical
+  pre-implementation planning evidence and should remain preserved.
+- That interpretation remains correct for the historical verification-plan
+  section.
+- A later full PR merge-readiness review identified a separate lower
+  current-state section, `Remaining verification gate`, that still said human
+  runtime verification was pending after it had passed.
+- That lower current-state wording was genuinely stale, so the previous blanket
+  false-positive classification was incomplete and is superseded by the
+  correction below.
 
 Approved remediation:
 
@@ -916,3 +924,31 @@ Human decisions:
 - Do not add tests merely because of this audit.
 - Preserve historical planning artifacts honestly while keeping current status
   fields truthful.
+
+## Milestone 3 PR Merge-Readiness Documentation Correction
+
+Date: 2026-08-19
+
+PR: `#3`
+
+Reviewed head before correction:
+`c6d8f14fa10aa5144b3da5500ac5efbfbb31ae08`.
+
+Independent full PR merge-readiness review verdict: `NOT MERGE READY` due to
+one documentation contradiction. The code, security model, and tests had no
+merge-blocking finding.
+
+Documentation contradiction found:
+
+- The top of `docs/specs/0004-milestone-3-manual-collection-crud.md` correctly
+  stated that human runtime verification passed.
+- A lower current-state section still said `Remaining verification gate` and
+  claimed human runtime verification was pending.
+
+The previous false-positive interpretation was incomplete: it was correct for
+the historical Human Runtime Verification Plan, but not for the later
+current-state gate. The approved remedy was documentation-only. No production
+code, tests, migration, dependencies, security model, or Milestone 3 scope
+changed.
+
+PR `#3` must be re-checked at the corrected head before merge authorization.

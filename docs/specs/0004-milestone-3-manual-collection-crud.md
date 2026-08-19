@@ -669,15 +669,16 @@ Implementation approval gate:
   this corrected specification and implementation plan were independently
   reviewed.
 
-Remaining verification gate:
+Runtime verification gate:
 
-- Human runtime verification is still pending and must be recorded separately
-  before Milestone 3 is considered fully complete.
+- Satisfied. Human runtime verification passed and is recorded in
+  `docs/verification.md`.
 
 ## Stop Point
 
 This historical stop point was satisfied before implementation began.
 
-No further Milestone 3 work should begin until the implemented database/RLS and
-frontend/service changes receive the next required human review and runtime
-verification.
+At that historical point, no further Milestone 3 work was to begin until the
+implemented database/RLS and frontend/service changes received the required
+human review and runtime verification. Those gates were subsequently satisfied
+and are recorded in `docs/verification.md`.
