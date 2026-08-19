@@ -139,6 +139,7 @@ describe('CollectionPanel', () => {
     })
     expect(screen.getByText('Journey in Satchidananda')).toBeInTheDocument()
     expect(screen.getByLabelText('Artist')).toHaveValue('')
+    expect(screen.queryByText('Artist is required.')).not.toBeInTheDocument()
   })
 
   it('keeps add input usable after release insert failure', async () => {

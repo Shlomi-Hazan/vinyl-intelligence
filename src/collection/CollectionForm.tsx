@@ -83,6 +83,8 @@ export function CollectionForm({
       await onSubmit(input)
       if (mode === 'add') {
         setInput(emptyInput)
+        setHasInteracted(false)
+        setSubmitError(null)
       }
     } catch (error) {
       setSubmitError(
