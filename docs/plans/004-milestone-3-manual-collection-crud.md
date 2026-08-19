@@ -109,16 +109,12 @@ Proposed fields:
 - `catalog_number text`.
 - `country text`.
 - `format text`.
-- `provider text`.
-- `provider_release_id text`.
-- `provider_master_id text`.
 - `created_at timestamptz not null default now()`.
 - `updated_at timestamptz not null default now()`.
 
 Proposed constraints:
 
 - `source = 'manual'` for Milestone 3 rows.
-- Manual rows must have provider fields null.
 - `artist = btrim(artist)` and length `1..160`.
 - `title = btrim(title)` and length `1..200`.
 - Optional string fields are either null or trim-normalized/nonblank within
@@ -134,15 +130,16 @@ Proposed fields:
 - `id uuid primary key default gen_random_uuid()`.
 - `user_id uuid not null references public.profiles(id) on delete cascade`.
 - `release_id uuid not null references public.releases(id) on delete restrict`.
-- `source text not null default 'manual'`.
 - `added_at timestamptz not null default now()`.
 - `created_at timestamptz not null default now()`.
 
 Proposed constraints:
 
-- `source = 'manual'` for Milestone 3 rows.
 - No unique constraint on `(user_id, release_id)` so multiple physical copies
   can be represented.
+- Do not add `source` to `collection_items` in Milestone 3. If a later
+  milestone needs to record how an item was entered, introduce a clearly named
+  field such as `entry_method` after that requirement is specified.
 
 ### Indexes
 
@@ -173,8 +170,8 @@ Proposed grants:
 - `anon`: no access.
 - `authenticated`: `select`.
 - `authenticated`: `insert` only on manually writable metadata columns, not
-  provider IDs, timestamps, or immutable ownership/provenance columns if DB
-  defaults can set them safely.
+  timestamps or immutable ownership/provenance columns if DB defaults can set
+  them safely.
 - `authenticated`: `update` only on manual metadata columns:
   `artist`, `title`, `release_year`, `label`, `catalog_number`, `country`,
   `format`.
@@ -182,18 +179,21 @@ Proposed grants:
 
 Proposed policies:
 
-- SELECT when:
-  - `created_by = auth.uid()`, or
-  - a `collection_items` row owned by `auth.uid()` references the release.
+- SELECT when `created_by = auth.uid()` and `source = 'manual'`.
 - INSERT when:
   - row is manual,
-  - current user is the creator via default/check,
-  - provider fields are null.
+  - current user is the creator via default/check.
 - UPDATE when:
   - row is manual,
   - `created_by = auth.uid()`,
-  - provider/source/provenance fields are unchanged,
-  - no other user's `collection_items` row references the release.
+  - source/provenance fields are unchanged.
+
+Do not implement a cross-user
+`not exists (select 1 from collection_items ...)` release edit policy. Do not
+add a `security definer` authorization helper merely to determine whether
+another user references a release. Milestone 3 should keep the RLS graph simple
+and non-recursive. Future provider-backed/canonical releases may introduce
+broader sharing with separately reviewed policies in Milestone 4.
 
 ### Collection Items
 
@@ -201,8 +201,8 @@ Proposed grants:
 
 - `anon`: no access.
 - `authenticated`: `select`.
-- `authenticated`: `insert` on `release_id` if `user_id` and source can be set
-  safely by defaults.
+- `authenticated`: `insert` on `release_id` if `user_id` can be set safely by
+  default.
 - `authenticated`: no update in Milestone 3.
 - `authenticated`: `delete`.
 
@@ -211,8 +211,7 @@ Proposed policies:
 - SELECT when `user_id = auth.uid()`.
 - INSERT when:
   - `user_id = auth.uid()`,
-  - source is manual,
-  - referenced release is allowed for the current manual add flow.
+  - referenced release is an own manual release where `created_by = auth.uid()`.
 - DELETE when `user_id = auth.uid()`.
 
 The implementation must ensure a user cannot insert a collection item pointing
@@ -242,18 +241,21 @@ Recommended service behavior:
 2. Insert a `public.releases` manual row.
 3. Insert a `public.collection_items` row referencing the returned release ID.
 4. If step 2 fails, show a recoverable add error.
-5. If step 3 fails, show a recoverable add error and attempt safe cleanup only
-   if the final approved SQL supports deleting the just-created unreferenced
-   manual release.
-6. If cleanup is unavailable or fails, leave the orphan release row; it is not
-   collection ownership and should not appear in the collection list.
+5. If step 3 fails, show a recoverable add error.
+6. Do not attempt browser deletion/cleanup of the release because authenticated
+   users are not granted release `DELETE`.
+7. A creator-owned orphan manual release may remain. This is an accepted
+   Milestone 3 tradeoff.
+8. Collection UI loads from `collection_items`, so orphan releases must not
+   appear as owned records.
 
 Reasoning:
 
 - Ordinary RLS/table operations keep the browser authorization model visible and
   testable.
 - A transaction RPC can be considered later if the human rejects orphan manual
-  releases, but it should not be introduced without approval.
+  releases in a future milestone, but it should not be introduced in Milestone
+  3.
 - A Netlify Function is not justified for this milestone.
 
 ## React Implementation Plan
@@ -340,20 +342,28 @@ Tests should verify:
 - Expected policies exist and broad unintended policies do not.
 - `anon` has no access to either table.
 - `authenticated` grants are column-limited.
+- User A cannot select User B manual release.
+- User A cannot update User B manual release.
 - User A can insert/select/delete User A collection items.
 - User A cannot select/delete User B collection items.
 - User A cannot insert a collection item for User B.
 - User A cannot attach a collection item to User B's hidden manual release.
 - User A can edit allowed metadata on User A manual release.
-- User A cannot update source/provider/ownership/timestamp fields.
+- User A cannot update source/ownership/timestamp fields.
 - User A cannot edit User B release metadata.
-- User A cannot edit a release referenced by another user's collection item.
 - Direct release delete is denied to authenticated users.
+- `collection_items` UPDATE remains denied.
 - Duplicate collection items for the same user/release are allowed.
 - Deleting one duplicate leaves the other.
+- Entering identical metadata twice may create two manual release rows and two
+  collection items.
+- An orphan manual release does not appear in a collection-items-based
+  collection query.
 - Invalid artist/title/year/optional-string metadata is rejected by database
   constraints.
 - `decade` is not a persisted column.
+- No provider fields are present in the Milestone 3 schema.
+- No unintended RLS recursion or cross-table policy dependency is introduced.
 
 Retain the existing profile tests.
 
@@ -482,18 +492,37 @@ Do not squash or rewrite existing milestone history.
 
 ## Human Decisions Required Before Implementation
 
-- Approve or revise the recommended manual release ownership/edit model.
-- Approve allowing duplicate collection items for the same user/release.
-- Approve deferring release orphan cleanup.
-- Approve ordinary browser Supabase inserts with RLS and best-effort cleanup
-  rather than adding a transaction RPC/helper.
-- Approve the proposed minimal release fields.
-- Approve deferring `genres`, `styles`, and `cover_url` from Milestone 3.
-- Approve denying normal `collection_items` UPDATE in Milestone 3.
-- Approve the proposed RLS/privilege matrix.
-- Approve whether the authenticated UI should show collection and profile
-  controls on one screen for Milestone 3.
-- Grant explicit implementation approval for Milestone 3.
+Resolved by human review before implementation approval:
+
+- Manual release rows are creator-owned data inside the future-compatible
+  shared `releases` table.
+- Normal authenticated users may select and update only their own manual
+  releases in Milestone 3.
+- Another user must not be able to attach a collection item to a manual release
+  by guessing its UUID.
+- Milestone 3 must not implement cross-user `not exists` release edit policies
+  or `security definer` authorization helpers for release reference checks.
+- Provider columns are deferred to Milestone 4.
+- `collection_items.source` is removed from the Milestone 3 schema.
+- Text-based release deduplication is not performed in Milestone 3.
+- Duplicate collection items for the same user/release remain allowed.
+- Ordinary browser Supabase inserts with RLS are used; no transaction RPC or
+  Netlify Function is added for manual add.
+- Browser users are not granted release delete; orphan manual release cleanup is
+  explicitly deferred.
+- Minimal release metadata is limited to artist, title, release year, label,
+  catalog number, country, and format.
+- `genres`, `styles`, `cover_url`, provider fields, tracklists, raw metadata,
+  and persisted decade are deferred.
+- `collection_items` permissions are own-only select/insert/delete, with update
+  denied.
+- Collection and existing profile/sign-out controls stay in the same
+  authenticated screen/shell.
+
+Remaining gate:
+
+- Grant explicit implementation approval for Milestone 3 after this corrected
+  specification and implementation plan are independently reviewed.
 
 ## Stop Point
 
