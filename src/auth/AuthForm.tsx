@@ -42,11 +42,10 @@ export function AuthForm({
 
   return (
     <section className="auth-panel" aria-labelledby="auth-title">
-      <p className="eyebrow">Milestone 2 auth foundation</p>
+      <p className="eyebrow">Private collection</p>
       <h1 id="auth-title">Vinyl Intelligence</h1>
       <p className="lede">
-        Sign in to verify the private profile boundary before collection
-        features begin.
+        Sign in to manage your personal vinyl collection.
       </p>
 
       <form className="auth-form" onSubmit={handleSubmit}>

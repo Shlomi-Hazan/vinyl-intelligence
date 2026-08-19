@@ -8,6 +8,16 @@ import type {
   Profile,
 } from '../lib/supabase/client.ts'
 
+vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../lib/supabase/collection.ts')>()
+
+  return {
+    ...actual,
+    loadCollection: vi.fn(async () => []),
+  }
+})
+
 const userA = {
   id: '00000000-0000-4000-8000-0000000000a1',
   email: 'user-a@example.test',

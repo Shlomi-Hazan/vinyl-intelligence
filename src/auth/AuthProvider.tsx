@@ -256,6 +256,7 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
   const value = useMemo<AuthContextValue>(
     () => ({
       status: clientState.configErrorMessage ? 'error' : status,
+      client,
       session,
       user: session?.user ?? null,
       profile,
@@ -268,6 +269,7 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
     }),
     [
       status,
+      client,
       session,
       profile,
       notice,
