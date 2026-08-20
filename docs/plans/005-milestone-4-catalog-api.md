@@ -57,6 +57,8 @@ Required now:
 - Safe browser/server trust boundary.
 - Provider API error/rate-limit handling.
 - Database/RLS evolution for provider-backed releases.
+- Completion or explicit human disposition of API spike 0001 before
+  implementation.
 
 Future-compatible concerns:
 
@@ -93,7 +95,11 @@ Findings:
 - Read-only non-commercial API access is free and currently does not require an
   API key.
 - Meaningful User-Agent is required.
+- Intended M4 User-Agent format:
+  `VinylIntelligence/<version> (<contact URL or contact email>)`.
+- The User-Agent is application identification, not a sensitive credential.
 - Default public rate expectation is one request per second per source IP.
+- Excessive requests can receive HTTP `503`.
 - Search, lookup, and browse are supported.
 - `release` and `release-group` fit the M4 release-level/canonical model.
 - `inc=` supports related metadata such as labels, recordings, release groups,
@@ -109,8 +115,14 @@ Findings:
 - `/release/{mbid}/` returns JSON cover metadata.
 - `/release/{mbid}/front` can redirect to a front image.
 - Missing art and rate-limit cases have normal HTTP failure responses.
-- M4 may store optional provider cover references without implementing user
-  image upload or recognition.
+- Cover images are legally distinct from MusicBrainz metadata and should be
+  treated carefully as copyrighted media hosted through Cover Art Archive /
+  Internet Archive infrastructure; cover images are copyrighted by their
+  respective copyright owners.
+- M4 may derive transient provider cover display from a MusicBrainz release
+  MBID without implementing user image upload or recognition.
+- Default M4 should not persist direct Cover Art Archive image or thumbnail URLs
+  in the database.
 
 Discogs official docs checked:
 
@@ -118,27 +130,39 @@ Discogs official docs checked:
 - Attempted <https://www.discogs.com/developers>, but automated lookup could
   not retrieve the current developer reference in this session.
 
-Findings:
+Findings from official Terms of Use, last updated May 27 2025:
 
 - Discogs API data includes CC0 and restricted categories.
 - Release metadata such as titles, notes, dates, formats, track listings,
   identifiers, artist names, and labels is listed as CC0 data.
 - Images, user data, and marketplace data are restricted.
 - Discogs may apply rate limits and data-field restrictions per application.
+- Discogs terms say API content may not be displayed if it is more than six
+  hours older than Discogs' own information.
+- API content should not be cached or stored longer than necessary for the
+  service.
+- Public-facing Discogs API data has attribution obligations, including "Data
+  provided by Discogs" next to the data with a link.
 - Current endpoint/auth/rate-limit details must be manually verified before a
   Discogs implementation is approved.
+- Persistent canonical Discogs-backed rows would need explicit freshness,
+  caching, attribution, and restricted-data design.
 
-## Proposed Provider Strategy
+## Provisional Provider Strategy
 
-Use a staged provider design:
+`PROVISIONAL RECOMMENDATION:` Use a staged provider design, subject to
+completion or explicit human disposition of API spike 0001:
 
 1. M4 primary provider: MusicBrainz.
-2. M4 optional cover metadata: Cover Art Archive for MusicBrainz releases.
+2. M4 optional transient cover display: Cover Art Archive for MusicBrainz
+   releases.
 3. Discogs: deferred pending manual official developer-doc verification and
    explicit human approval.
 
 This avoids adding multiple providers for show, avoids storing Discogs tokens in
 M4, and still demonstrates a real catalog API integration.
+
+This is not a final provider selection.
 
 ## Proposed Files And Directories For Implementation
 
@@ -178,11 +202,11 @@ Implementation shape:
 - Accept query input such as `q`, optional `artist`, optional `title`, and
   optional `limit`.
 - Validate query length and limit.
-- Require authenticated user if search should be limited to signed-in users.
+- Require a valid authenticated Supabase user session/JWT.
 - Call MusicBrainz with a configured User-Agent.
-- Limit outgoing provider calls and enforce timeout.
+- Apply bounded per-instance request pacing and enforce timeout.
 - Normalize provider response into `CatalogCandidate[]`.
-- Optionally enrich candidate with Cover Art Archive thumbnail metadata.
+- Optionally enrich candidate with transient Cover Art Archive display metadata.
 - Return sanitized errors and structured failure categories.
 
 ### `POST /api/catalog/add`
@@ -193,6 +217,7 @@ Implementation shape:
 - Require authenticated Supabase user.
 - Accept only `{ provider: 'musicbrainz', providerReleaseId: string }`.
 - Do not accept browser-supplied metadata for persistence.
+- Derive the user ID only from the verified Supabase token.
 - Re-fetch MusicBrainz release details by MBID.
 - Validate and normalize provider details.
 - Upsert provider-backed release by `(provider, provider_release_id)`.
@@ -202,11 +227,18 @@ Implementation shape:
 
 ### Rate Limit And Timeout
 
-- Start with a simple in-process throttle/queue suitable for local/university
-  demo traffic.
+- Require authenticated search; do not expose an unauthenticated public proxy to
+  MusicBrainz.
+- Add client debounce.
 - Keep result limits small.
+- Use per-instance server request pacing.
 - Treat MusicBrainz `503` as a rate-limit/unavailable condition.
+- Avoid retry storms.
 - Do not add background polling.
+- Do not claim strong distributed/global one-request-per-second enforcement: a
+  Netlify serverless function may run in multiple instances. M4 accepts a
+  low-concurrency university/demo assumption. If hard global enforcement becomes
+  a requirement, stop and propose shared coordination options for human review.
 
 ## Schema Migration Proposal
 
@@ -220,18 +252,20 @@ Proposed changes:
 - Add `provider text`.
 - Add `provider_release_id text`.
 - Add `provider_release_group_id text`.
-- Add `external_url text`.
-- Add `cover_image_url text` nullable if cover art is approved.
-- Add `cover_thumbnail_url text` nullable if cover art is approved.
 - Keep existing `artist`, `title`, `release_year`, `label`,
   `catalog_number`, `country`, and `format`.
 - Keep `created_by` for manual provenance; provider-backed rows may have
   `created_by = null`.
+- Do not add `external_url`, `cover_image_url`, or `cover_thumbnail_url` by
+  default. Provider page URLs and cover display URLs can be derived transiently
+  from provider IDs unless a concrete persistence need is approved.
 
 Constraints:
 
-- Manual rows: `source = 'manual'`, `created_by is not null`, provider fields
-  are null.
+- Manual rows: `source = 'manual'`, provider fields are null, and `created_by`
+  is set for normal newly created manual rows through existing defaults/RLS.
+  `created_by` may be null after profile/account deletion, preserving the
+  Milestone 3 `ON DELETE SET NULL` behavior.
 - Catalog rows: `source = 'catalog'`, provider and provider release ID are not
   null, normalized metadata constraints still hold.
 - `provider` initially constrained to `musicbrainz` if MusicBrainz is the only
@@ -301,7 +335,7 @@ Do not implement full collection browse/filter in M4.
 
 ## Normalized Candidate Contract
 
-Use the contract from the specification:
+Use the transient browser-facing contract from the specification:
 
 ```ts
 type CatalogProvider = 'musicbrainz'
@@ -318,13 +352,20 @@ type CatalogCandidate = {
   catalogNumber: string | null
   country: string | null
   format: string | null
-  coverImageUrl: string | null
-  coverThumbnailUrl: string | null
-  externalUrl: string
+  transientCoverDisplayUrl: string | null
+  derivedProviderPageUrl: string
 }
 ```
 
-Do not expose raw provider payloads to React components.
+Do not expose raw provider payloads to React components. Do not persist a field
+merely because the search response displays it.
+
+Default durable database fields remain narrower:
+
+- `provider`
+- `provider_release_id`
+- `provider_release_group_id`
+- existing M3 normalized factual metadata
 
 ## Error Handling
 
@@ -374,6 +415,28 @@ Expected server-only variables if implementation uses service-role persistence:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `MUSICBRAINZ_USER_AGENT`
 
+`MUSICBRAINZ_USER_AGENT` is application identification, not a secret. It should
+use a format like:
+
+```text
+VinylIntelligence/<version> (<contact URL or contact email>)
+```
+
+If service-role access remains approved during implementation, the function
+security sequence must be:
+
+1. Receive the Authorization bearer token from the browser.
+2. Validate the Supabase user token server-side.
+3. Derive the authenticated user ID from the verified token.
+4. Never accept `user_id` from the request body as authority.
+5. Only after authentication may privileged/service-role DB operations occur.
+6. Keep the service-role key server-only.
+7. Normalize/revalidate provider-backed release writes server-side.
+8. Assign the collection item to the verified authenticated user.
+
+Service-role bypasses RLS, so this function authorization sequence is part of
+the security boundary, not optional application logic.
+
 Discogs variables should not be added unless Discogs is approved:
 
 - `DISCOGS_TOKEN`
@@ -402,6 +465,7 @@ Rules:
 
 ### Netlify Function Tests
 
+- Rejects unauthenticated search requests.
 - Rejects unauthenticated add requests.
 - Validates search query length and limit.
 - Returns normalized candidates.
@@ -422,6 +486,11 @@ Rules:
   human.
 - User-owned `collection_items` remain own-only.
 - Manual CRUD database tests still pass.
+- Existing profile deletion still succeeds.
+- Existing manual release `created_by` becomes null on profile deletion.
+- Null-owner manual releases remain inaccessible to normal authenticated users.
+- No `external_url`, `cover_image_url`, or `cover_thumbnail_url` columns exist
+  unless the human explicitly approves them.
 
 ### Frontend / Component Tests
 
@@ -518,17 +587,21 @@ the audit trail.
   service-role bypasses RLS.
 - Shared provider-backed rows require clean grants/RLS so browser users cannot
   mutate metadata seen by others.
-- In-process throttling is enough for a demo but not a robust distributed
-  production rate limiter.
+- Per-instance request pacing is enough for a low-concurrency demo but not a
+  robust distributed production rate limiter.
 - Discogs may become necessary if MusicBrainz search quality is poor for vinyl
   editions, but Discogs requires current developer-doc and terms verification.
 
 ## Human Decisions Required Before Implementation
 
 - Primary M4 provider: approve MusicBrainz or choose another path.
-- Cover Art Archive: approve optional cover reference storage or defer it.
-- Discogs: approve deferral or require Discogs-first verification before M4.
+- Cover Art Archive: approve transient cover display without durable URL
+  persistence, or explicitly approve another cover-art persistence design.
+- Discogs: approve deferral or require completion of the Discogs empirical spike
+  before M4.
 - Trust boundary: approve Netlify Functions for all catalog provider calls.
+- Authentication: approve requiring a valid Supabase user session/JWT for both
+  catalog search and catalog add.
 - Persistence boundary: approve server-side provider revalidation before add.
 - Service-role: approve server-only Supabase service-role use for catalog upsert
   and collection item creation.
@@ -539,6 +612,9 @@ the audit trail.
   need.
 - Config: approve server-only variables such as `MUSICBRAINZ_USER_AGENT` and,
   if service-role is approved, `SUPABASE_SERVICE_ROLE_KEY`.
+- API spike 0001: approve completion before implementation or explicitly
+  disposition the current Discogs blocker with a recorded reason for accepting a
+  MusicBrainz-first path.
 
 ## Pre-PR Repository Evidence Gate
 
@@ -555,5 +631,10 @@ Before opening the M4 PR, verify:
 
 ## Stop Point
 
-Stop here. Do not implement Milestone 4 until the human explicitly approves this
-plan, the M4 specification, and the listed human decisions.
+Stop here. Do not implement Milestone 4 until both are true:
+
+1. The human explicitly approves this corrected plan, the M4 specification, the
+   proposed ADR, and the listed human decisions.
+2. API spike 0001 is either completed according to its original rubric or
+   explicitly dispositioned by the human with a recorded reason for accepting
+   MusicBrainz without the remaining Discogs empirical comparison.

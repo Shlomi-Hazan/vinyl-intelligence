@@ -22,6 +22,9 @@ Proposed decisions:
 Initial decisions still pending:
 
 - Catalog provider/boundary/sharing model: see proposed ADR 0002
+- Music catalog API spike 0001: in progress; MusicBrainz samples recorded and
+  Discogs empirical comparison blocked on current official developer/API
+  verification unless explicitly dispositioned by the human
 - AI provider and exact models
 - Exact duplicate-copy representation
 - Whether bounded structured conversation state is persisted or kept ephemeral for MVP implementation
