@@ -1,0 +1,439 @@
+# 0005 Milestone 4 Catalog API Specification
+
+Status: proposed for human approval
+
+Milestone: 4 - Catalog API
+
+Date: 2026-08-20
+
+Branch: `codex/milestone-4-catalog-api`
+
+Baseline: `e5909e729106483d156a462b1e575479e7ef008a`
+
+## Intent
+
+Milestone 4 should add the first external music catalog integration so an
+authenticated user can search a music metadata provider, review normalized
+candidate releases, choose one, and add the confirmed release to their personal
+collection.
+
+This milestone should demonstrate deterministic API integration, provider
+normalization, server-side trust boundaries, and safe persistence. It must not
+become photo recognition, AI recommendation, full browse/search/filter, ratings,
+favorites, notes, listening history, production deployment, or a multi-provider
+showcase.
+
+## Repository Context
+
+`intent.txt` requires external music metadata APIs for record search/add and
+states that catalog/API work belongs behind server-side boundaries when secrets,
+rate limiting, validation, or privileged writes are involved.
+
+Milestone 3 created:
+
+- `public.releases`
+- `public.collection_items`
+- creator-owned manual release rows
+- browser-authoritative RLS for manual CRUD
+
+Milestone 3 explicitly deferred provider columns, canonical/provider-backed
+release sharing, genres/styles, cover references, and catalog normalization to a
+reviewed later milestone.
+
+## Current Official API Research
+
+### MusicBrainz
+
+Official documentation checked:
+
+- <https://musicbrainz.org/doc/MusicBrainz_API>
+- <https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting>
+- <https://musicbrainz.org/doc/MusicBrainz_API/Search>
+- <https://musicbrainz.org/doc/MusicBrainz_API/Authentication>
+
+Current findings:
+
+- API root is `https://musicbrainz.org/ws/2/`.
+- Read-only API use is free for non-commercial use.
+- No API key is currently required for normal metadata reads.
+- A meaningful `User-Agent` is required.
+- MusicBrainz asks applications to stay at or below one request per second per
+  source IP unless otherwise agreed.
+- Responses can be JSON by using `fmt=json` or an `Accept: application/json`
+  header.
+- Search, lookup, and browse operations are supported.
+- `release` and `release-group` are core entities.
+- Release lookups can include related data such as artist credits, labels,
+  recordings, release groups, media, tags, and genres through `inc=`.
+- Some user-specific requests and submissions require authentication, but M4
+  should not submit data to MusicBrainz or access MusicBrainz user data.
+
+Design inference:
+
+- MusicBrainz is suitable as the primary M4 provider because it supports
+  release-level MBIDs, release-group IDs, labels, media formats, release dates,
+  countries, and open read-only access without a provider secret.
+- M4 should still call MusicBrainz through Netlify Functions so the app can
+  consistently set a meaningful User-Agent, centralize throttling, validate
+  provider responses, normalize output, and preserve the approved backend
+  boundary for catalog APIs.
+
+### Cover Art Archive
+
+Official documentation checked:
+
+- <https://musicbrainz.org/doc/Cover_Art_Archive/API>
+
+Current findings:
+
+- Cover Art Archive is the MusicBrainz-linked cover-art service.
+- `/release/{mbid}/` returns JSON metadata for cover art associated with a
+  MusicBrainz release.
+- `/release/{mbid}/front` can redirect to a selected front image when available.
+- JSON metadata includes image URLs, thumbnail URLs, front/back flags, approval
+  status, image IDs, and a linked MusicBrainz release.
+- Missing cover art is represented with normal HTTP error states such as `404`.
+
+Design inference:
+
+- M4 may store a provider cover-art reference or thumbnail URL from Cover Art
+  Archive for a confirmed catalog release.
+- This is provider album artwork, not user-uploaded photo recognition. It does
+  not create Supabase Storage objects and does not start the Milestone 5 image
+  recognition/upload pipeline.
+- Cover art should be optional. Missing artwork must not block adding a catalog
+  release.
+
+### Discogs
+
+Official documentation checked:
+
+- <https://support.discogs.com/hc/en-us/articles/360009334593-API-Terms-of-Use>
+- <https://www.discogs.com/developers> was attempted but was not retrievable by
+  automated documentation lookup in this session.
+
+Current findings from official Terms of Use:
+
+- Discogs API content includes a mix of CC0 data and restricted data.
+- CC0 data includes release titles, notes, dates, formats, track listings,
+  barcodes and identifiers, credits, versions, external URL links, artist names,
+  and label-related metadata.
+- Restricted data includes user data, marketplace data, and images.
+- Discogs may apply rate limits and restrictions to data fields per application
+  or service.
+- API users must not circumvent rate limits or technical limitations.
+
+Design inference:
+
+- Discogs remains a strong vinyl/release-oriented candidate, but M4 should not
+  implement Discogs until the official developer reference can be manually
+  verified for current authentication, endpoint behavior, rate-limit headers,
+  image usage, and token requirements.
+- Do not add Discogs credentials or Discogs-specific schema in M4 unless the
+  human explicitly approves a Discogs-first or dual-provider design after that
+  verification.
+
+## Provider Strategy Recommendation
+
+Recommended M4 provider strategy:
+
+1. Use MusicBrainz as the primary catalog metadata provider.
+2. Use Cover Art Archive only for optional cover-art references associated with
+   selected MusicBrainz releases.
+3. Defer Discogs implementation until its current official developer reference
+   and token/terms constraints are manually verified.
+
+This is the smallest justified design because it satisfies the first catalog
+search/add flow without provider secrets, while keeping the architecture open
+for Discogs if vinyl-specific coverage is later necessary.
+
+Human approval is required before implementation.
+
+## In Scope
+
+- Authenticated catalog search screen or panel inside the existing authenticated
+  app shell.
+- Search by artist/title/free-text query.
+- Server-side catalog search through Netlify Functions.
+- Normalized candidate list from the provider response.
+- User confirmation before persistence.
+- Server-side selected-release lookup/revalidation before persistence.
+- Persist confirmed provider-backed release metadata.
+- Create a `collection_item` for the authenticated user.
+- Show recoverable error states for provider/API/persistence failures.
+- Store release-level provider identifiers.
+- Optional provider cover-art reference from Cover Art Archive if available.
+- Database/RLS/grant updates needed for provider-backed releases.
+- Tests for provider adapters, function behavior, normalization, database
+  security, and UI/service behavior.
+
+## Out Of Scope
+
+- Discogs implementation unless separately approved after current developer-doc
+  verification.
+- Photo/image recognition.
+- User image upload or Supabase Storage workflow.
+- AI curator or model calls.
+- Recommendations.
+- Conversational refinement.
+- Listening history.
+- Ratings.
+- Favorites.
+- Notes.
+- Full browse/search/filter milestone.
+- Production deployment.
+- RAG.
+- Vector database.
+- Multi-agent runtime.
+- Final visual redesign.
+
+## User Flow
+
+1. Authenticated user opens the existing authenticated app shell.
+2. User enters a catalog search query such as artist and album title.
+3. Browser calls a Netlify Function, not the provider directly.
+4. Function validates input, applies provider throttling rules, calls
+   MusicBrainz, optionally checks Cover Art Archive for cover metadata, and
+   returns normalized candidates.
+5. UI displays candidates with enough metadata to choose a release.
+6. User selects one exact candidate.
+7. Browser sends the selected provider/release identifier to a Netlify Function.
+8. Function re-fetches or verifies the selected release from the provider,
+   normalizes the trusted response, upserts the provider-backed release, and
+   creates a `collection_item` for the authenticated user.
+9. UI updates the collection list and shows a success notice.
+
+Ambiguous candidates must not be persisted without user confirmation.
+
+## Provider Boundary
+
+Recommended trust boundary:
+
+- Browser: renders UI, collects search input, displays candidates, sends the
+  selected provider/release ID after confirmation.
+- Netlify Functions: provider HTTP calls, User-Agent, throttling, timeout,
+  response validation, normalization, sanitized errors, and privileged
+  provider-backed persistence.
+- Supabase: stores normalized releases and user-owned collection items; RLS
+  continues to protect user-owned rows.
+
+Even though MusicBrainz read-only calls do not require a provider secret, server
+functions are recommended because M4 needs central rate limiting, provider
+response validation, and trusted writes for shared provider-backed release rows.
+
+## Normalized Catalog Candidate Contract
+
+Provider responses should be normalized before reaching React components.
+
+Proposed candidate shape:
+
+```ts
+type CatalogProvider = 'musicbrainz'
+
+type CatalogCandidate = {
+  provider: CatalogProvider
+  providerReleaseId: string
+  providerReleaseGroupId: string | null
+  score: number | null
+  artist: string
+  title: string
+  releaseYear: number | null
+  label: string | null
+  catalogNumber: string | null
+  country: string | null
+  format: string | null
+  coverImageUrl: string | null
+  coverThumbnailUrl: string | null
+  externalUrl: string
+}
+```
+
+The browser should not depend on raw MusicBrainz or Cover Art Archive payloads.
+
+## Persistence Behavior
+
+Recommended M4 persistence model:
+
+- Provider-backed releases are canonical/shared reference rows.
+- Manual releases remain creator-owned rows from Milestone 3.
+- Normal authenticated browser users should not directly insert or update
+  provider-backed releases.
+- A Netlify Function should revalidate the selected provider release before
+  persistence.
+- The function should upsert by `(provider, provider_release_id)`.
+- The function should create a `collection_item` for the authenticated user.
+- Duplicate owned copies remain allowed unless a later reviewed UX adds an
+  intentional duplicate warning.
+
+Proposed `releases` evolution:
+
+- Expand `source` from `manual` only to at least `manual` and `catalog`.
+- Add nullable `provider`.
+- Add nullable `provider_release_id`.
+- Add nullable `provider_release_group_id`.
+- Add nullable `external_url`.
+- Add nullable `cover_image_url` and/or `cover_thumbnail_url` only if M4 owns
+  provider album artwork.
+- Keep existing artist/title/year/label/catalog_number/country/format columns.
+- Do not add `genres`, `styles`, `tracklist`, raw provider JSON, embeddings, or
+  persisted `decade` in M4 unless human review expands scope.
+
+Recommended uniqueness:
+
+- A unique partial index on `(provider, provider_release_id)` where both are
+  present.
+
+## Provider-Backed Release Sharing Model
+
+Recommended model: shared canonical provider-backed releases.
+
+Rationale:
+
+- Provider identifiers make the row stable enough to share.
+- Shared rows reduce duplicate imported metadata across users.
+- Future photo recognition can map candidates to the same canonical release.
+- Future browse/search/filter can query normalized provider-backed metadata.
+- Writes can stay behind Netlify Functions so one browser user cannot modify
+  shared metadata seen by another user.
+
+Alternative: creator-owned provider copies.
+
+- Simpler RLS, but duplicates provider metadata per user and delays the
+  canonical release architecture already anticipated by M3.
+
+Human approval is required before implementation.
+
+## Security And Credential Rules
+
+- Do not expose provider tokens, Supabase service-role keys, or any privileged
+  credentials to the browser.
+- MusicBrainz M4 does not require a provider API key.
+- If server-side Supabase service-role access is used for canonical release
+  upsert, it must exist only as a Netlify/server environment variable.
+- The function must authenticate the user via Supabase Auth/JWT before creating
+  a collection item.
+- Never trust candidate metadata echoed from the browser for persistence.
+- Re-fetch or verify the selected provider release server-side by provider ID.
+- Validate provider response shape and normalize only allowed fields.
+- Sanitize provider errors before returning them to the browser.
+- Enforce request size limits and minimum/maximum query lengths.
+- Respect MusicBrainz User-Agent and rate-limit guidance.
+- Keep raw provider payloads out of database storage unless a later reviewed
+  decision justifies them.
+
+## Failure States
+
+The UI and server API must handle:
+
+- Empty or too-short query.
+- No results.
+- MusicBrainz unavailable.
+- Cover Art Archive unavailable or no cover art.
+- Rate limit or `503`.
+- Timeout.
+- Malformed or incomplete provider response.
+- Missing optional metadata.
+- Server configuration error.
+- Unauthorized user.
+- Selected provider release no longer resolves.
+- Database upsert failure.
+- Collection item creation failure.
+
+Failures should be recoverable and should not push the whole authenticated app
+into a fatal shell unless the authentication/session boundary itself fails.
+
+## Rate-Limit Behavior
+
+M4 should plan for:
+
+- Server-side throttle of MusicBrainz calls to respect one request per second
+  per source IP.
+- Client-side debounce before search requests.
+- Small result limits for interactive search.
+- Timeout and retry-after handling where available.
+- Clear user messaging when rate limited.
+
+Do not add background polling.
+
+## Testable Acceptance Criteria
+
+- Human-approved spec and implementation plan exist before code begins.
+- Provider strategy and trust boundary are approved before code begins.
+- Search uses a Netlify Function and not direct browser calls to providers.
+- Function sets a meaningful MusicBrainz User-Agent.
+- Function enforces query validation, timeout, throttling, and sanitized errors.
+- Search returns normalized candidates, not raw provider payloads.
+- Candidate persistence requires user confirmation.
+- Add flow revalidates selected provider release server-side before persistence.
+- Provider-backed release is upserted by provider identifier.
+- User-owned `collection_item` is created for the authenticated user.
+- Browser cannot mutate provider-backed shared release metadata.
+- Anonymous users cannot add catalog records.
+- Existing manual CRUD remains working.
+- Missing cover art does not block catalog add.
+- No Discogs, AI, image recognition, ratings, favorites, notes, listening
+  history, RAG, vector database, or M5 scope is introduced unless explicitly
+  approved.
+
+## Compatibility With Later Milestones
+
+Milestone 5 photo recognition:
+
+- Vision output can later produce search clues and call the same catalog search
+  boundary.
+- Candidate confirmation can reuse provider-backed release persistence.
+
+Milestone 6 browse/search/filter:
+
+- Provider-backed releases provide normalized artist/title/year/label/country/
+  format fields for deterministic browsing.
+- Decade should still be derived from `release_year`.
+
+Milestones 7-10:
+
+- Ratings, favorites, notes, and listening history remain user-owned data on or
+  near `collection_items`.
+- AI curator candidate sets remain limited to user-owned collection items.
+
+## Tool / Skill / MCP Assessment
+
+Existing capabilities are sufficient for M4 planning and likely implementation:
+
+- Git/GitHub for version control and PR workflow.
+- Node/npm, Vite, React, TypeScript, Vitest, and React Testing Library.
+- Netlify Functions for the server boundary.
+- Supabase CLI, Postgres/RLS, and pgTAP for database verification.
+- Browser/manual runtime verification.
+- Standard HTTP clients and official provider documentation.
+
+No MCP is justified for M4 at this time. A MusicBrainz or Discogs MCP would add
+permissions, context cost, and maintenance without a concrete missing capability
+because M4 only needs a narrow provider HTTP integration behind explicit service
+boundaries.
+
+Reassess tooling only if implementation reveals a concrete gap such as needing
+repeatable provider fixture capture, hosted secret management automation, or
+large-scale catalog reconciliation.
+
+## Human Decisions Required Before Implementation
+
+- Approve or reject MusicBrainz as the primary M4 provider.
+- Approve or reject Cover Art Archive cover reference storage in M4.
+- Approve or reject deferring Discogs until official developer docs and token
+  requirements are manually verified.
+- Approve or reject Netlify Functions as the required M4 catalog boundary even
+  for no-secret MusicBrainz calls.
+- Approve or reject shared canonical provider-backed release rows.
+- Approve or reject server-side service-role use for provider-backed release
+  upsert and collection-item creation.
+- Approve exact schema additions.
+- Approve whether M4 adds `cover_image_url` and/or `cover_thumbnail_url`.
+- Approve any server-only environment variables.
+- Approve that genres/styles, tracklists, raw JSON, and persisted decade remain
+  out of scope for M4.
+
+## Stop Point
+
+Stop after this specification and implementation plan are reviewed. Do not begin
+Milestone 4 implementation until the human explicitly approves the spec, plan,
+and listed decisions.
