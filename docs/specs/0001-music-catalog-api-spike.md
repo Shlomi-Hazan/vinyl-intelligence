@@ -3,7 +3,12 @@
 Status: dispositioned for M4 - MusicBrainz-first approved; remaining Discogs
 empirical comparison deferred by explicit human decision
 
-This spike must be completed before implementing the music catalog integration milestone.
+Original gate:
+
+When this spike was created, it was required to be completed before catalog
+implementation. The 2026-08-25 human disposition recorded below explicitly
+satisfies that gate for Milestone 4 by approving MusicBrainz-first and deferring
+the remaining Discogs empirical comparison.
 
 ## Objective
 

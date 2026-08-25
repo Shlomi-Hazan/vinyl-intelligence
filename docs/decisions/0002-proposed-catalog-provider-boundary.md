@@ -71,9 +71,9 @@ the incomplete Discogs empirical comparison:
   deduplication, and browse/filter behavior.
 - Discogs vinyl-specific coverage remains available as a future option but is
   not added before current official developer details are verified.
-- Service-role usage, if approved for implementation, raises the importance of
-  function-level authentication and explicit tests because service-role bypasses
-  RLS.
+- Approved-in-principle service-role usage, where necessary for catalog
+  persistence, raises the importance of function-level authentication and
+  explicit tests because service-role bypasses RLS.
 - A Netlify serverless in-memory throttle is not a hard distributed/global
   rate-limit guarantee. M4 should rely on authenticated search, client debounce,
   small result limits, per-instance pacing, no background polling, `503`
