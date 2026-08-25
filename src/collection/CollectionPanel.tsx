@@ -13,6 +13,7 @@ import {
 
 type CollectionPanelProps = {
   client: BrowserSupabaseClient
+  refreshKey?: number
 }
 
 function getErrorMessage(error: unknown): string {
@@ -37,7 +38,7 @@ function sortCollection(
   })
 }
 
-export function CollectionPanel({ client }: CollectionPanelProps) {
+export function CollectionPanel({ client, refreshKey = 0 }: CollectionPanelProps) {
   const [items, setItems] = useState<CollectionItemWithRelease[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -90,7 +91,7 @@ export function CollectionPanel({ client }: CollectionPanelProps) {
     return () => {
       isActive = false
     }
-  }, [client])
+  }, [client, refreshKey])
 
   const sortedItems = useMemo(() => sortCollection(items), [items])
 

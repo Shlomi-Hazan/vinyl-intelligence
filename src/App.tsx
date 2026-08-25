@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { AuthForm } from './auth/AuthForm.tsx'
 import { useAuth } from './auth/useAuth.ts'
+import { CatalogPanel } from './catalog/CatalogPanel.tsx'
 import { CollectionPanel } from './collection/CollectionPanel.tsx'
 import type { BrowserSupabaseClient } from './lib/supabase/client.ts'
 import { ProfilePanel } from './profile/ProfilePanel.tsx'
@@ -10,6 +12,7 @@ type AppProps = {
 }
 
 function AuthenticatedShell() {
+  const [collectionRefreshKey, setCollectionRefreshKey] = useState(0)
   const {
     status,
     client,
@@ -105,7 +108,20 @@ function AuthenticatedShell() {
           onSignOut={signOut}
           profile={profile}
         />
-        {client ? <CollectionPanel client={client} /> : null}
+        {client ? (
+          <>
+            <CatalogPanel
+              client={client}
+              onCatalogItemAdded={() =>
+                setCollectionRefreshKey((current) => current + 1)
+              }
+            />
+            <CollectionPanel
+              client={client}
+              refreshKey={collectionRefreshKey}
+            />
+          </>
+        ) : null}
       </div>
     </main>
   )
