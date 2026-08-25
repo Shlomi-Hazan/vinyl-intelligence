@@ -1,10 +1,12 @@
 # 0005 Milestone 4 Catalog API Specification
 
-Status: proposed for human approval
+Status: approved
 
 Milestone: 4 - Catalog API
 
 Date: 2026-08-20
+
+Approved: 2026-08-25
 
 Branch: `codex/milestone-4-catalog-api`
 
@@ -153,10 +155,9 @@ Design inference:
   human explicitly approves a Discogs-first or dual-provider design after that
   verification.
 
-## Provisional Provider Strategy Recommendation
+## Approved Provider Strategy
 
-`PROVISIONAL RECOMMENDATION:` M4 should use the following provider strategy,
-subject to completion or explicit human disposition of API spike 0001:
+Human-approved M4 provider strategy:
 
 1. Use MusicBrainz as the primary catalog metadata provider.
 2. Use Cover Art Archive only for optional transient cover display associated
@@ -168,8 +169,9 @@ This is the smallest justified design because it satisfies the first catalog
 search/add flow without provider secrets, while keeping the architecture open
 for Discogs if vinyl-specific coverage is later necessary.
 
-This is not a final provider selection. Human approval is required before
-implementation.
+API spike 0001 was dispositioned on 2026-08-25: MusicBrainz-first is accepted
+for M4 without completing the remaining Discogs empirical comparison now.
+Discogs is deferred, not rejected.
 
 ## In Scope
 
@@ -490,34 +492,51 @@ Reassess tooling only if implementation reveals a concrete gap such as needing
 repeatable provider fixture capture, hosted secret management automation, or
 large-scale catalog reconciliation.
 
-## Human Decisions Required Before Implementation
+## Human Decisions Resolved Before Implementation
 
-- Approve or reject MusicBrainz as the primary M4 provider.
-- Approve or reject treating Cover Art Archive as transient display only in M4.
-- Approve or reject deferring Discogs until official developer docs and token
-  requirements are manually verified.
-- Approve or reject Netlify Functions as the required M4 catalog boundary even
-  for no-secret MusicBrainz calls.
-- Approve or reject shared canonical provider-backed release rows.
-- Approve or reject server-side service-role use for provider-backed release
-  upsert and collection-item creation.
-- Approve exact schema additions.
-- Approve not adding `cover_image_url`, `cover_thumbnail_url`, or `external_url`
-  by default.
-- Approve any server-only environment variables.
-- Approve that genres/styles, tracklists, raw JSON, and persisted decade remain
-  out of scope for M4.
-- Approve that API spike 0001 is either completed before implementation or
-  explicitly dispositioned with a recorded reason for accepting MusicBrainz
-  without the remaining Discogs empirical comparison.
+Resolved by human approval on 2026-08-25:
+
+- MusicBrainz is the primary M4 catalog metadata provider.
+- Cover Art Archive may be used only for optional transient cover display tied
+  to MusicBrainz release MBIDs.
+- Discogs implementation is deferred, not rejected.
+- API spike 0001 is dispositioned for M4; MusicBrainz-first is accepted without
+  completing the remaining Discogs empirical comparison now.
+- Both `GET /api/catalog/search` and `POST /api/catalog/add` require an
+  authenticated Supabase user session/JWT.
+- Provider calls go through Netlify Functions.
+- Server-side service-role access is approved in principle only where necessary
+  for provider-backed canonical release persistence, under the mandatory
+  verified-token boundary described above.
+- Provider-backed catalog releases are shared canonical reference rows.
+- Manual Milestone 3 releases remain creator-owned and preserve existing account
+  deletion semantics.
+- The default durable schema additions are limited to `source` supporting
+  `manual | catalog`, nullable `provider`, nullable `provider_release_id`, and
+  nullable `provider_release_group_id`, plus the existing normalized factual
+  metadata.
+- Do not add `external_url`, `cover_image_url`, `cover_thumbnail_url`, raw
+  provider JSON, genres, styles, tracklists, embeddings, or persisted decade by
+  default.
+- Transient response fields such as score, cover display URL, and derived
+  provider page URL do not automatically justify durable database columns.
+- The university/demo rate-limit model is authenticated search, client debounce,
+  small result limits, per-instance server pacing, no background polling,
+  explicit MusicBrainz `503` handling, no retry storms, and a low-concurrency
+  assumption.
+- The MusicBrainz User-Agent is application identification, not a secret.
+- No new runtime dependency, MCP, or tool is approved in advance.
+
+Remaining implementation-level details:
+
+- Exact SQL, RLS policy names, function file structure, and tests must still be
+  reviewed during implementation.
+- If implementation proves a concrete need for a new dependency, tool, or
+  stronger distributed rate-limit mechanism, stop and request human approval
+  before adding it.
 
 ## Stop Point
 
-Stop after this specification and implementation plan are reviewed. Do not begin
-Milestone 4 implementation until both are true:
-
-1. The human explicitly approves the corrected spec, plan, proposed ADR, and
-   listed decisions.
-2. API spike 0001 is either completed according to its original rubric or
-   explicitly dispositioned by the human with a recorded reason for accepting
-   MusicBrainz without the remaining Discogs empirical comparison.
+This specification is approved. Do not begin Milestone 4 implementation until
+the approval-recording commit is independently reviewed against GitHub, as
+required by the approved implementation plan.

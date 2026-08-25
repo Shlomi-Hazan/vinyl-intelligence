@@ -1,8 +1,10 @@
-# 0002 Proposed Catalog Provider Boundary
+# 0002 Catalog Provider Boundary
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-20
+
+Accepted: 2026-08-25
 
 ## Context
 
@@ -30,16 +32,18 @@ Official documentation reviewed during planning indicates:
   response-shape details still need manual verification before any Discogs
   implementation.
 
-## Proposed Decision
+## Decision
 
-`PROVISIONAL RECOMMENDATION:` If approved for Milestone 4, subject to completion
-or explicit human disposition of API spike 0001:
+Accepted for Milestone 4 after corrected planning, official provider/terms
+review, MusicBrainz empirical spike evidence, and explicit human disposition of
+the incomplete Discogs empirical comparison:
 
 - Use MusicBrainz as the primary catalog metadata provider.
 - Use Cover Art Archive only for optional transient cover display associated
   with MusicBrainz releases.
-- Defer Discogs implementation until current official developer documentation
-  and token requirements are manually verified.
+- Defer Discogs implementation. Discogs is deferred, not rejected, and may be
+  reopened in a later reviewed milestone if MusicBrainz coverage proves
+  insufficient for physical/vinyl editions.
 - Route catalog search and add through authenticated Netlify Functions.
 - Revalidate selected provider releases server-side before persistence.
 - Store provider-backed releases as shared canonical reference rows.
@@ -104,9 +108,18 @@ or explicit human disposition of API spike 0001:
 - Cons: duplicates canonical provider metadata per user and delays the shared
   release model already anticipated by Milestone 3.
 
-## Approval Required
+## Acceptance Record
 
-This ADR is not accepted yet. It exists to make the provider, trust-boundary, and
-provider-backed sharing decisions reviewable before Milestone 4 implementation.
-Implementation may not begin until the human approves this ADR and API spike
-0001 is completed or explicitly dispositioned.
+The human accepted this ADR on 2026-08-25.
+
+Acceptance basis:
+
+- Corrected Milestone 4 specification and implementation plan.
+- Official MusicBrainz, Cover Art Archive, and Discogs Terms review.
+- MusicBrainz empirical spike evidence for the four planned sample searches.
+- Explicit human disposition of the incomplete Discogs empirical comparison.
+- Human approval that M4 should prove one safe deterministic catalog integration
+  rather than maximize provider count.
+
+Implementation may begin only after the approval-recording commit containing
+this accepted ADR is independently reviewed against GitHub.

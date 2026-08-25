@@ -1,7 +1,7 @@
 # 0001 Music Catalog API Spike
 
-Status: in progress - MusicBrainz samples recorded; Discogs empirical
-comparison blocked on current official developer/API verification
+Status: dispositioned for M4 - MusicBrainz-first approved; remaining Discogs
+empirical comparison deferred by explicit human decision
 
 This spike must be completed before implementing the music catalog integration milestone.
 
@@ -72,15 +72,16 @@ official developer page returned an automated-access `403` Cloudflare challenge,
 and no Discogs credential or current official API reference was available in
 this workflow.
 
-Current spike status:
+Spike status before the 2026-08-25 human disposition:
 
 `IN PROGRESS - BLOCKED ON CURRENT DISCOGS DEVELOPER/API VERIFICATION`
 
 This section records the evidence currently available without treating the spike
-as complete. Milestone 4 implementation may not begin until this spike is either
-completed according to the original rubric or explicitly dispositioned by the
-human with a recorded reason for accepting a MusicBrainz-first path without the
-remaining Discogs empirical comparison.
+as complete. Before the 2026-08-25 human disposition, Milestone 4 implementation
+could not begin until this spike was either completed according to the original
+rubric or explicitly dispositioned by the human with a recorded reason for
+accepting a MusicBrainz-first path without the remaining Discogs empirical
+comparison.
 
 ### Exact Sample Searches
 
@@ -261,14 +262,50 @@ Impact on M4:
 - Persistent shared canonical release rows based on Discogs data would need a
   freshness, caching, attribution, and restricted-data design before Discogs can
   be implemented safely.
-- Discogs remains pending/deferred, not rejected.
+- Discogs remains deferred, not rejected.
 
-### Provisional Recommendation
+### Pre-Disposition Provisional Recommendation
 
 `PROVISIONAL RECOMMENDATION:` MusicBrainz plus optional Cover Art Archive
 appears to be the smallest M4 path, subject to completion or explicit human
 disposition of this spike.
 
-This is not a final provider selection. The human must either approve completing
-the Discogs empirical comparison later or explicitly accept the MusicBrainz-first
-path despite the current Discogs verification blocker.
+At that point, this was not a final provider selection. The human still needed
+to either approve completing the Discogs empirical comparison later or
+explicitly accept the MusicBrainz-first path despite the Discogs verification
+blocker. That explicit disposition is now recorded below.
+
+## Human Disposition For Milestone 4 - 2026-08-25
+
+The human reviewed the corrected Milestone 4 planning package, the independent
+verification, the MusicBrainz empirical evidence above, and the current Discogs
+verification blocker.
+
+Decision:
+
+- MusicBrainz-first is accepted for Milestone 4.
+- The remaining Discogs empirical comparison is explicitly deferred.
+- Discogs is deferred, not rejected.
+- The Discogs comparison may be reopened in a later reviewed milestone if
+  MusicBrainz coverage proves insufficient for physical/vinyl editions.
+
+Reason:
+
+- MusicBrainz was empirically exercised against the four planned sample
+  searches.
+- MusicBrainz provides the release-level identifiers and normalized factual
+  metadata required for the first catalog-add vertical slice.
+- Normal read-only MusicBrainz use requires no provider API key.
+- The current official Discogs developer reference could not be independently
+  retrieved in this workflow due to HTTP `403` / Cloudflare challenge.
+- Current official Discogs Terms introduce freshness, caching, attribution, and
+  restricted-data obligations that add unnecessary complexity to the first
+  catalog milestone.
+- Milestone 4 is intended to prove one safe deterministic catalog integration,
+  not to maximize provider count.
+
+Current implementation impact:
+
+- This spike is no longer an implementation blocker for Milestone 4.
+- The original comparison rubric remains preserved as historical planning
+  evidence and as a guide if Discogs is revisited later.

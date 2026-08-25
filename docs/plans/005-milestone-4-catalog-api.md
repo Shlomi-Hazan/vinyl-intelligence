@@ -1,10 +1,12 @@
 # 005 Milestone 4 Catalog API Implementation Plan
 
-Status: proposed for human approval
+Status: approved for implementation
 
 Milestone: 4 - Catalog API
 
 Date: 2026-08-20
+
+Approved: 2026-08-25
 
 Branch: `codex/milestone-4-catalog-api`
 
@@ -148,21 +150,22 @@ Findings from official Terms of Use, last updated May 27 2025:
 - Persistent canonical Discogs-backed rows would need explicit freshness,
   caching, attribution, and restricted-data design.
 
-## Provisional Provider Strategy
+## Approved Provider Strategy
 
-`PROVISIONAL RECOMMENDATION:` Use a staged provider design, subject to
-completion or explicit human disposition of API spike 0001:
+Human-approved M4 staged provider design:
 
 1. M4 primary provider: MusicBrainz.
 2. M4 optional transient cover display: Cover Art Archive for MusicBrainz
    releases.
-3. Discogs: deferred pending manual official developer-doc verification and
-   explicit human approval.
+3. Discogs: deferred, not rejected.
 
 This avoids adding multiple providers for show, avoids storing Discogs tokens in
 M4, and still demonstrates a real catalog API integration.
 
-This is not a final provider selection.
+API spike 0001 was dispositioned on 2026-08-25: MusicBrainz-first is accepted
+for M4 without completing the remaining Discogs empirical comparison now. The
+Discogs comparison may be reopened in a later reviewed milestone if MusicBrainz
+coverage proves insufficient for physical/vinyl editions.
 
 ## Proposed Files And Directories For Implementation
 
@@ -592,29 +595,44 @@ the audit trail.
 - Discogs may become necessary if MusicBrainz search quality is poor for vinyl
   editions, but Discogs requires current developer-doc and terms verification.
 
-## Human Decisions Required Before Implementation
+## Human Decisions Resolved Before Implementation
 
-- Primary M4 provider: approve MusicBrainz or choose another path.
-- Cover Art Archive: approve transient cover display without durable URL
-  persistence, or explicitly approve another cover-art persistence design.
-- Discogs: approve deferral or require completion of the Discogs empirical spike
-  before M4.
-- Trust boundary: approve Netlify Functions for all catalog provider calls.
-- Authentication: approve requiring a valid Supabase user session/JWT for both
-  catalog search and catalog add.
-- Persistence boundary: approve server-side provider revalidation before add.
-- Service-role: approve server-only Supabase service-role use for catalog upsert
-  and collection item creation.
-- Sharing model: approve shared canonical provider-backed releases.
-- Schema: approve exact columns and constraints.
-- RLS: approve catalog release read visibility.
-- Dependency policy: approve no new dependencies unless implementation proves a
-  need.
-- Config: approve server-only variables such as `MUSICBRAINZ_USER_AGENT` and,
-  if service-role is approved, `SUPABASE_SERVICE_ROLE_KEY`.
-- API spike 0001: approve completion before implementation or explicitly
-  disposition the current Discogs blocker with a recorded reason for accepting a
-  MusicBrainz-first path.
+Resolved by human approval on 2026-08-25:
+
+- MusicBrainz is the primary M4 catalog metadata provider.
+- Cover Art Archive may be used only for optional transient cover display tied
+  to MusicBrainz release MBIDs.
+- Discogs is deferred, not rejected.
+- API spike 0001 is dispositioned for M4; MusicBrainz-first is accepted without
+  completing the remaining Discogs empirical comparison now.
+- Netlify Functions are the required boundary for catalog provider calls.
+- Both catalog search and catalog add require a valid Supabase user session/JWT.
+- Selected provider releases must be re-fetched/revalidated server-side before
+  persistence.
+- Server-side service-role access is approved in principle only where necessary
+  for provider-backed canonical release persistence, under the mandatory
+  verified-token boundary described above.
+- Provider-backed catalog releases are shared canonical reference rows.
+- Browser users may not directly insert, update, or delete shared catalog
+  release metadata.
+- Manual Milestone 3 releases remain creator-owned and preserve existing account
+  deletion semantics.
+- The default durable schema additions are limited to `source` supporting
+  `manual | catalog`, nullable `provider`, nullable `provider_release_id`, and
+  nullable `provider_release_group_id`, plus existing normalized factual
+  metadata.
+- Do not add `external_url`, `cover_image_url`, `cover_thumbnail_url`, raw
+  provider JSON, genres, styles, tracklists, embeddings, or persisted decade by
+  default.
+- No new runtime dependency, MCP, or tool is approved in advance.
+
+Remaining implementation-level details:
+
+- Exact SQL, RLS policy names, function code structure, and tests must still be
+  reviewed during implementation.
+- If implementation proves a concrete need for a new dependency, tool, or
+  stronger distributed rate-limit mechanism, stop and request human approval
+  before adding it.
 
 ## Pre-PR Repository Evidence Gate
 
@@ -631,10 +649,6 @@ Before opening the M4 PR, verify:
 
 ## Stop Point
 
-Stop here. Do not implement Milestone 4 until both are true:
-
-1. The human explicitly approves this corrected plan, the M4 specification, the
-   proposed ADR, and the listed human decisions.
-2. API spike 0001 is either completed according to its original rubric or
-   explicitly dispositioned by the human with a recorded reason for accepting
-   MusicBrainz without the remaining Discogs empirical comparison.
+Stop here. This implementation plan is approved, but Milestone 4 implementation
+may begin only after this approval-recording commit is independently reviewed
+against GitHub.
