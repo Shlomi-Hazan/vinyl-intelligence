@@ -152,6 +152,61 @@ function normalizeConfidence(value: unknown): number {
   return Math.min(1, Math.max(0, value))
 }
 
+function isStringOrNull(value: unknown): boolean {
+  return value === null || typeof value === 'string'
+}
+
+/**
+ * Strict field-level validation of the untrusted structured model output.
+ * Every field in the CoverRecognition contract must be present with the right
+ * type; a missing or wrongly typed required field is rejected rather than
+ * silently coerced. Unknown extra fields are ignored during normalization.
+ */
+function assertRecognitionContract(raw: Record<string, unknown>): void {
+  const reject = (): never => {
+    throw new RecognitionError(
+      'provider_bad_response',
+      'The recognition service returned data in an unexpected shape.',
+    )
+  }
+
+  for (const key of ['artist', 'albumTitle', 'label', 'catalogNumber', 'notes']) {
+    if (!(key in raw) || !isStringOrNull(raw[key])) {
+      reject()
+    }
+  }
+
+  if (
+    !('visibleText' in raw)
+    || !Array.isArray(raw.visibleText)
+    || !raw.visibleText.every((entry) => typeof entry === 'string')
+  ) {
+    reject()
+  }
+
+  if (
+    !('releaseYearHint' in raw)
+    || !(
+      raw.releaseYearHint === null
+      || (typeof raw.releaseYearHint === 'number' && Number.isFinite(raw.releaseYearHint))
+    )
+  ) {
+    reject()
+  }
+
+  if (
+    !('confidence' in raw)
+    || typeof raw.confidence !== 'number'
+    || !Number.isFinite(raw.confidence)
+  ) {
+    reject()
+  }
+
+  if (!('identified' in raw) || typeof raw.identified !== 'boolean') {
+    reject()
+  }
+}
+
 function normalizeRecognition(raw: unknown): CoverRecognition {
   if (!isRecord(raw)) {
     throw new RecognitionError(
@@ -159,6 +214,8 @@ function normalizeRecognition(raw: unknown): CoverRecognition {
       'The recognition service returned an unexpected result.',
     )
   }
+
+  assertRecognitionContract(raw)
 
   return {
     artist: cleanText(raw.artist, MAX_TEXT_LENGTH),
@@ -277,7 +334,8 @@ export async function recognizeCoverWithOpenRouter({
         model,
         temperature: 0,
         max_tokens: MAX_OUTPUT_TOKENS,
-        usage: { include: true },
+        // OpenRouter returns usage accounting automatically; an explicit
+        // usage.include flag is deprecated and has no effect.
         response_format: { type: 'json_schema', json_schema: RECOGNITION_JSON_SCHEMA },
         messages: [
           {

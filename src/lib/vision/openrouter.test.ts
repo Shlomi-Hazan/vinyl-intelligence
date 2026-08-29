@@ -168,11 +168,40 @@ describe('recognizeCoverWithOpenRouter', () => {
     ).rejects.toMatchObject({ code: 'provider_bad_response' })
   })
 
-  it('maps a shape mismatch to provider_bad_response', async () => {
+  it('rejects a non-object root with provider_bad_response', async () => {
     const fetchImpl = vi.fn<VisionFetch>(async () => chatResponse([1, 2, 3]))
     await expect(
       recognizeCoverWithOpenRouter({ imageDataUrl, apiKey, fetchImpl }),
     ).rejects.toMatchObject({ code: 'provider_bad_response' })
+  })
+
+  it('rejects field-level contract violations with provider_bad_response', async () => {
+    const missingRequiredField: Record<string, unknown> = { ...validClues() }
+    delete missingRequiredField.label
+
+    const invalidPayloads: Record<string, unknown>[] = [
+      missingRequiredField,
+      validClues({ artist: 123 }),
+      validClues({ visibleText: ['PINK FLOYD', 5] }),
+      validClues({ identified: 'yes' }),
+      validClues({ confidence: 'high' }),
+    ]
+
+    for (const payload of invalidPayloads) {
+      const fetchImpl = vi.fn<VisionFetch>(async () => chatResponse(payload))
+      await expect(
+        recognizeCoverWithOpenRouter({ imageDataUrl, apiKey, fetchImpl }),
+      ).rejects.toMatchObject({ code: 'provider_bad_response' })
+    }
+  })
+
+  it('ignores unknown extra fields on an otherwise valid payload', async () => {
+    const fetchImpl = vi.fn<VisionFetch>(async () =>
+      chatResponse(validClues({ extraneous: 'ignored', anotherOne: 42 })),
+    )
+
+    const result = await recognizeCoverWithOpenRouter({ imageDataUrl, apiKey, fetchImpl })
+    expect(result.recognition.artist).toBe('Pink Floyd')
   })
 
   it('never leaks the api key in a thrown error', async () => {
