@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-19.
+Last updated: 2026-08-29.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -952,3 +952,259 @@ code, tests, migration, dependencies, security model, or Milestone 3 scope
 changed.
 
 PR `#3` must be re-checked at the corrected head before merge authorization.
+
+## Milestone 4 Evidence - Catalog API
+
+Date: 2026-08-26 through 2026-08-29
+
+Branch: `codex/milestone-4-catalog-api`
+
+Baseline (Milestone 3 merge on `main`):
+`e5909e729106483d156a462b1e575479e7ef008a`
+
+Implementation commits:
+
+- `fa4befcb7b85b484085306fab325d97b7e211457` - `db: add catalog release schema and RLS`
+- `d3ceb323906742e57f16b04f857c41b5f36d3ce0` - `feat: add authenticated MusicBrainz catalog functions`
+- `918cd8e116603746efe738dd50b6a29e887e1b77` - `feat: add catalog search and add workflow`
+
+Primary-agent transition commit (not Milestone 4 feature work):
+
+- `f73561ea62445a8d395a8fd2205e5567f5a9f239` - `chore: add Claude Code project instructions`
+  (adds `CLAUDE.md`; makes `AGENTS.md` tool-neutral; historical decisions preserved)
+
+Runtime correction commits (found during human verification, see below):
+
+- `adfc5c241849f66e239414552dcc1cbeca1409ae` - `fix: grant catalog persistence privileges to service role`
+- `0d1e69c2d10e573be205fa69f0bc3dae56243d25` - `fix: reduce MusicBrainz request bursts`
+
+### Implemented Scope
+
+- `public.releases` evolved for provider-backed catalog rows: `source` now
+  `manual | catalog`, nullable `provider` / `provider_release_id` /
+  `provider_release_group_id`, clean-text and manual/catalog identity
+  constraints, a unique `(provider, provider_release_id)` index, and an
+  authenticated `SELECT` policy for `source = 'catalog'` rows.
+- `GET /api/catalog/search` and `POST /api/catalog/add` Netlify Functions,
+  both requiring a valid Supabase user JWT, with a meaningful MusicBrainz
+  User-Agent, query validation, timeout, best-effort per-instance pacing,
+  normalized candidates, and sanitized provider errors.
+- Add revalidates the selected release server-side by MBID, upserts the shared
+  canonical `catalog` release with the service role, and creates a
+  `collection_item` for the verified user only.
+- Browser catalog panel: explicit-submit search, normalized candidate cards,
+  add-to-collection, and recoverable search/add error states.
+- No Discogs, Cover Art Archive persistence, AI, image recognition, ratings,
+  favorites, notes, listening history, or browse/filter milestone scope was
+  introduced.
+
+### Automated / Agent-Run Verification
+
+These results were produced by the implementation agent in the local
+development environment. They are agent-run/local evidence, not human runtime
+verification.
+
+Latest results, at branch head `0d1e69c` (reliability fix):
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` (`tsc -b --noEmit`) | Passed |
+| `npm run lint` (`eslint .`) | Passed |
+| `npm run test:run` (`vitest run`) | Passed: 9 test files, 84 tests |
+| `npm run build` (`tsc -b && vite build`) | Passed |
+| `npx supabase db lint` | Passed: no schema errors found |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities` |
+
+Database tests:
+
+- An initial `npx supabase test db` run against a local database that still
+  contained residual catalog rows from human runtime testing failed one
+  assertion in `supabase/tests/database/catalog_releases_rls.test.sql`
+  (`have: 3, want: 1` on a `source = 'catalog'` count). This is a
+  test-isolation limitation of that file, not a product or runtime failure.
+- After the canonical clean flow:
+  - `npx supabase db reset` - Passed; migrations `20260818134203`,
+    `20260819000100`, `20260826000100`, and `20260829120000` apply in order.
+  - `npx supabase test db` - Passed: 4 test files, 210 tests.
+
+Frontend/adapter/function test coverage added for Milestone 4 includes:
+MusicBrainz URL building and User-Agent, candidate normalization and malformed
+/ no-result / 503 / 429 / timeout handling, function auth rejection before
+provider calls, query/limit validation, provider-identity-only add body,
+server-side revalidation and ownership assignment, recoverable
+database-error surfacing, the bounded add retry paths, and the
+explicit-submit / no-auto-search / duplicate-submit-guard behavior.
+
+Database security tests (`catalog_releases_rls.test.sql`,
+`service_role_catalog_privileges.test.sql`, plus the retained M2/M3 suites)
+verify catalog provider columns and constraints, the unique provider identity,
+anonymous denial, authenticated read-only access to catalog rows, browser
+inability to insert/update/delete catalog rows or mutate provider/source
+columns, the exact least-privilege `service_role` grant set (see blocker
+section), and preserved M3 manual-CRUD and profile-deletion semantics.
+
+### Runtime Blocker: service_role Table Privileges (PostgreSQL 42501)
+
+Discovered during human runtime testing: catalog search reached real
+MusicBrainz results, but "Add to collection" failed. The browser showed
+"Catalog release could not be saved."; the server path returned HTTP 403 with
+PostgreSQL `42501 permission denied for table releases`.
+
+Independent local diagnosis confirmed:
+
+- `SUPABASE_SERVICE_ROLE_KEY` was present and valid.
+- `service_role` has the `BYPASSRLS` attribute.
+- `service_role` nevertheless lacked ordinary `SELECT`/`INSERT`/`UPDATE`
+  privileges on `public.releases` and `SELECT`/`INSERT` on
+  `public.collection_items`. The Milestone 3 and Milestone 4 migrations granted
+  table privileges only to `anon`/`authenticated`, and Supabase's default-ACL
+  grant for `service_role` applies only to objects created by `supabase_admin`,
+  not migration tables owned by `postgres`.
+- PostgreSQL enforces ordinary table privileges independently of RLS, so
+  `BYPASSRLS` does not substitute for a missing `GRANT`.
+
+Fix: `adfc5c2` adds forward migration
+`supabase/migrations/20260829120000_grant_service_role_catalog_privileges.sql`:
+
+```sql
+grant select, insert, update on table public.releases to service_role;
+grant select, insert on table public.collection_items to service_role;
+```
+
+No `DELETE` on `releases`; no `UPDATE`/`DELETE` on `collection_items`; no RLS
+policy or browser grant changed. `supabase/tests/database/service_role_catalog_privileges.test.sql`
+adds regression coverage: `has_table_privilege` assertions for the exact
+allowed and disallowed privileges, and behavioral proof under
+`SET LOCAL ROLE service_role` (insert/select/update a catalog release and its
+collection item succeed; `DELETE` on `releases` and `UPDATE`/`DELETE` on
+`collection_items` throw `42501`).
+
+Post-fix verification:
+
+- Automated: `supabase db reset` + `supabase test db` pass 210 tests including
+  the new file.
+- Real PostgREST probe with the configured local service-role key (agent-run):
+  upsert a synthetic catalog release, select it, insert a `collection_items`
+  row for a runtime test user, select it, then clean up; all steps succeeded
+  and the synthetic rows were removed. MusicBrainz was not called.
+- Human runtime after the fix: catalog Add succeeds; the catalog record
+  persists across a browser refresh; two duplicate physical copies of the same
+  provider release are allowed; deleting one owned copy leaves the other
+  intact.
+
+### Runtime Finding: MusicBrainz Intermittent 503
+
+Observed during human runtime: MusicBrainz search intermittently returned the
+sanitized message "MusicBrainz is rate limiting or temporarily unavailable."
+while a near-identical retry shortly afterward succeeded.
+
+Diagnostic verdict: BOTH / CANNOT GUARANTEE.
+
+- MusicBrainz's public endpoint returns intermittent `503` even to compliant
+  clients.
+- The old frontend also generated additional sub-second provider requests: a
+  450 ms live re-search fired on every query edit after the first search, Add
+  performs a fresh server-side MusicBrainz lookup, and the in-memory pacing
+  counter is per module instance / per function bundle. In the local
+  Netlify dev runtime each function invocation runs in a fresh worker with a
+  fresh module, so the counter resets to zero and applies no delay.
+
+Human-approved correction: `0d1e69c`.
+
+- Typing or editing the query never calls `/api/catalog/search`.
+- A provider search happens only on an explicit Search / Enter submit.
+- A duplicate submit while a search is in flight is ignored.
+- Add still revalidates server-side, and now retries a
+  `provider_rate_limited` lookup exactly once after ~1200 ms; a second
+  rate-limit surfaces the normal recoverable HTTP 503. No other error is
+  retried. No loop.
+- MusicBrainz HTTP `429` is treated like `503` (`provider_rate_limited`).
+- No distributed/global rate limiter, KV, or Blobs coordination was added.
+
+Documented limitation (accepted for Milestone 4 scope): the in-memory
+per-instance pacing is best-effort. Milestone 4 does not claim a hard
+one-request-per-second guarantee across function bundles, concurrent
+serverless instances, cold starts, or the local worker-per-invocation runtime.
+Distributed/global coordination was explicitly deferred as unnecessary for the
+low-concurrency university/demo scope.
+
+### Milestone 4 Human Runtime Verification
+
+The human performed browser/runtime verification against the local Supabase
+stack and local Vite/Netlify runtime.
+
+Initial pass (before the runtime corrections):
+
+- Authenticated app shell: PASS.
+- Real MusicBrainz search returned candidates: PASS, with the intermittent
+  `503` behavior described above.
+- Manual collection add/edit/remove still worked: PASS.
+- Release-year validation and recoverable error states: PASS.
+- Authentication boundary (anonymous cannot use catalog): PASS.
+- `/api/health` returned `{"status":"ok"}`: PASS.
+- Catalog Add: FAILED with PostgreSQL `42501` (see blocker section).
+
+After `adfc5c2` (service-role grant fix):
+
+- Catalog Add succeeds: PASS.
+- Catalog record persists after a browser refresh: PASS.
+- Duplicate physical copies of the same MusicBrainz release are allowed: PASS.
+- Deleting one owned copy leaves the other copy intact: PASS.
+
+Final smoke after `0d1e69c` (reliability fix):
+
+1. Typed "Pink Floyd The Dark Side of the Moon" and waited without submitting.
+   No search, no spinner, no provider error, no results. PASS.
+2. Explicitly clicked "Search catalog". Real MusicBrainz candidates returned.
+   PASS.
+3. Clicked "Add to collection" on Vitamin String Quartet feat. The Section -
+   "The String Quartet Tribute to Pink Floyd's The Dark Side of the Moon".
+   Catalog Add succeeded. PASS.
+
+Conclusion: Milestone 4 Human Runtime Verification: PASS.
+
+### Human Verification Boundary
+
+The human runtime pass exercised the intended catalog search/add user
+workflow, persistence, duplicate semantics, single-copy deletion, the
+explicit-search behavior, and the health endpoint. Cross-user RLS attacks,
+direct SQL grant inspection, `service_role` privilege behavior, and the
+provider adapter failure branches remain covered by the automated database and
+Vitest suites recorded above unless separately human-tested later.
+
+### Security And Scope Checks
+
+- `.env` is git-ignored and untracked; no real credential is committed.
+  `.env.example` gained placeholder-only `SUPABASE_SERVICE_ROLE_KEY="sb_secret_..."`
+  and `MUSICBRAINZ_USER_AGENT="VinylIntelligence/0.0.0 (contact@example.com)"`.
+- The service-role key is used only inside Netlify Functions after verifying
+  the browser Supabase user token; it is never sent to the browser, logged, or
+  written to database rows.
+- Branch-diff secret scan: no keys, tokens, or private material.
+- Scope scan: no Discogs credentials/schema, no AI/model calls, no image
+  recognition, no listening history / ratings / favorites / notes, no
+  browse/filter milestone, no RAG or vector database, no Milestone 5 work.
+
+### Known Deferred Findings
+
+1. Test hygiene (deferred): `catalog_releases_rls.test.sql` contains a
+   `source = 'catalog'` count assertion that assumes a clean starting database
+   and can fail when runtime catalog rows already exist. The canonical
+   `supabase db reset` + `supabase test db` flow passes.
+2. Rate-limit limitation (accepted): no distributed/global MusicBrainz request
+   coordinator. Milestone 4 relies on low-concurrency/demo assumptions plus
+   explicit-submit search, best-effort per-instance pacing, a bounded single
+   Add retry, and sanitized `503`/`429` handling.
+3. Low / note: MusicBrainz free-text search relevance is imperfect for some
+   queries.
+4. Low / note: a non-JSON provider error body can surface as
+   `provider_unavailable`.
+
+These are documented limitations, not Milestone 4 blockers.
+
+### Production / Hosted Status
+
+Hosted Supabase smoke testing and Netlify production deployment were not
+performed for Milestone 4. Production deployment and hosted verification remain
+later-milestone work. No production deployment is claimed.

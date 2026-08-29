@@ -77,8 +77,6 @@ select ok(
     where table_schema = 'public'
       and table_name = 'releases'
       and column_name in (
-        'provider',
-        'provider_release_id',
         'provider_master_id',
         'genres',
         'styles',
@@ -88,7 +86,7 @@ select ok(
         'decade'
       )
   ),
-  'releases does not include deferred provider/catalog/filter columns'
+  'releases does not include deferred provider master/filter columns'
 );
 
 select ok(
@@ -161,8 +159,8 @@ select ok((select relrowsecurity from pg_class where oid = 'public.collection_it
 
 select is(
   (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'releases'),
-  3,
-  'only three policies exist on releases'
+  4,
+  'only four policies exist on releases after catalog read policy'
 );
 
 select is(

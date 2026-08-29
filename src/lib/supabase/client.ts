@@ -10,7 +10,10 @@ export type Profile = {
 export type Release = {
   id: string
   created_by: string | null
-  source: 'manual'
+  source: 'manual' | 'catalog'
+  provider: 'musicbrainz' | null
+  provider_release_id: string | null
+  provider_release_group_id: string | null
   artist: string
   title: string
   release_year: number | null
@@ -87,6 +90,9 @@ type Database = {
           id?: string
           created_by?: string | null
           source?: 'manual'
+          provider?: null
+          provider_release_id?: null
+          provider_release_group_id?: null
           artist: string
           title: string
           release_year?: number | null

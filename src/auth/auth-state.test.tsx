@@ -174,6 +174,7 @@ describe('auth and profile workflow', () => {
 
     expect(await screen.findByText('Protected profile')).toBeInTheDocument()
     expect(screen.getByText('user-a@example.test')).toBeInTheDocument()
+    expect(screen.getByText('Search MusicBrainz')).toBeInTheDocument()
     expect(await screen.findByText('Your records')).toBeInTheDocument()
     expect(
       screen.getByText(
