@@ -34,7 +34,7 @@ the Milestone 4 server boundary.
 
   ```json
   {
-    "model": "google/gemini-3.1-flash-lite-preview",
+    "model": "google/gemini-3.1-flash-lite",
     "messages": [
       { "role": "user", "content": [
         { "type": "text", "text": "..." },
@@ -53,21 +53,25 @@ the Milestone 4 server boundary.
   image resolution, so a client-side downscale directly reduces cost.
 - Errors: standard HTTP; `429` rate limit, `5xx` upstream/unavailable, an
   `error` object in the body. No provider-specific retry semantics are assumed.
-- Netlify synchronous function limits (relevant to transport): 6 MB
-  request/response payload; default 10 s timeout, raisable to 26 s. A single
-  Flash-tier vision call fits inside the default; no background function is
-  needed.
+- Netlify Functions limits (relevant to transport): synchronous execution limit
+  60 seconds; buffered request/response payload 6 MB; because the request body
+  is base64-encoded, the effective binary payload is about 4.5 MB. A single
+  Flash-tier vision call with a downscaled image is comfortably inside all of
+  these; no background function is needed. The application applies its own
+  bounded OpenRouter request timeout (about 15 seconds) for recoverable UX -
+  that is an application timeout, not the platform execution limit.
 
 Candidate models considered (all via OpenRouter, all support image input and
 `response_format` JSON schema, 1M context):
 
 | Model | Input $/1M | Output $/1M | Image input $/1M | Stability | Approx cost / recognition* |
 | --- | --- | --- | --- | --- | --- |
-| `google/gemini-3.1-flash-lite-preview` | 0.25 | 1.50 | 0.25 | preview | ~$0.0006 |
-| `google/gemini-3.5-flash` | 1.50 | 9.00 | 1.50 | stable | ~$0.002-0.003 |
+| `google/gemini-3.1-flash-lite` | 0.25 | 1.50 | 0.25 | GA / stable | est. ~$0.0006 |
+| `google/gemini-3.5-flash` | 1.50 | 9.00 | 1.50 | GA / stable | est. ~$0.002-0.003 |
 
-*Assumes a downscaled cover (~1000 image tokens), ~400 prompt tokens, ~150
-output tokens.
+*Estimate only, not a guaranteed cost. Assumes a downscaled cover
+(~1000 image tokens), ~400 prompt tokens, ~150 output tokens. Actual image
+token counts vary with resolution.
 
 A broad multi-provider comparison was intentionally not performed; the task is
 narrow clue extraction, not deep reasoning, and both candidates are more than
@@ -77,14 +81,18 @@ adequate for it.
 
 - Use **OpenRouter**, server-side, as the vision provider for Milestone 5 cover
   recognition.
-- **Primary model: `google/gemini-3.1-flash-lite-preview`** - lowest demo cost,
-  vision + strict JSON schema, low latency.
-- **Fallback model: `google/gemini-3.5-flash`** - stable, identical request and
-  response contract; used if the preview model is withdrawn or its recognition
-  quality proves inadequate.
+- **Primary model: `google/gemini-3.1-flash-lite`** (GA / stable) - lowest demo
+  cost, vision + strict JSON schema, low latency. The GA model is now available
+  on OpenRouter at the same listed pricing as the earlier preview.
+- **Manually selectable alternative: `google/gemini-3.5-flash`** (GA / stable) -
+  identical request and response contract; documented for a human to switch to
+  if Flash Lite recognition quality proves inadequate.
 - The model id is read from `OPENROUTER_VISION_MODEL` (defaulting to the
-  primary), so switching to the fallback is a configuration change with no code
-  change.
+  primary `google/gemini-3.1-flash-lite`). This env var is the only
+  configuration seam.
+- Milestone 5 makes **exactly one** vision call per submit. There is **no**
+  automatic cross-model fallback and **no** automatic provider retry. A failed
+  recognition is recoverable by the user re-submitting.
 - Image transport: base64 `data:` URL in the request body directly to the
   Netlify Function, then to OpenRouter. No Supabase Storage; the image is held
   only in function memory for one request.
@@ -100,12 +108,14 @@ adequate for it.
 
 - Milestone 5 gains a new server secret (`OPENROUTER_API_KEY`) and a new runtime
   dependency on OpenRouter for the recognition feature only.
-- Runtime cost is developer-funded but sub-cent per recognition, with one call
-  per user action, capped output, a downscaled image, and no automatic retry.
+- Runtime cost is developer-funded; the per-recognition estimate above is an
+  estimate, not a guaranteed cost. It is bounded by one call per user action,
+  capped output, a downscaled image, and no automatic retry.
 - Automated tests use a fake provider and cost nothing. Human runtime
   verification makes one real paid call per recognition.
-- A preview primary model carries withdrawal risk, bounded by the env-selectable
-  stable fallback with the same contract.
+- Both models are GA / stable, so there is no preview-withdrawal risk. If
+  `google/gemini-3.1-flash-lite` recognition quality is inadequate, a human
+  sets `OPENROUTER_VISION_MODEL=google/gemini-3.5-flash`; no code change.
 - The same `chat/completions` + `response_format` integration is reusable by the
   later curator milestone for text intent/explanation calls.
 
@@ -115,10 +125,12 @@ adequate for it.
   `docs/architecture.md` already selects OpenRouter as the single gateway;
   adding a direct provider SDK increases surface area for no benefit at this
   scale.
-- **Stable model as primary (`google/gemini-3.5-flash`).** Viable and
-  ~4-5x costlier per call; still cheap in absolute terms. Kept as the fallback
+- **`google/gemini-3.5-flash` as primary.** Viable and ~4-5x costlier per call;
+  still cheap in absolute terms. Kept as the documented manual alternative
   rather than the default because "very low demo cost" is the stated priority
-  and the fallback switch is trivial.
+  and the `OPENROUTER_VISION_MODEL` switch is trivial. (An earlier draft made
+  the Flash Lite *preview* the primary; the GA Flash Lite is now available at
+  the same pricing, so no preview model is used.)
 - **Supabase Storage upload then reference by URL.** Rejected as unnecessary:
   the downscaled base64 image is far under the Netlify payload limit, and
   Storage would add a bucket, RLS policies, and a delete-after-use step that

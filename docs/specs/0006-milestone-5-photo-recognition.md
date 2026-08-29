@@ -121,7 +121,7 @@ Milestone 4 path used by manual catalog search.
 - Rejects: missing/oversized body, wrong shape, disallowed MIME, decoded bytes
   over the limit, bytes whose magic number does not match a supported image.
 - Reads `OPENROUTER_API_KEY` (server-only) and an optional
-  `OPENROUTER_VISION_MODEL` (defaults to the ADR 0003 primary model).
+  `OPENROUTER_VISION_MODEL` (defaults to `google/gemini-3.1-flash-lite`).
 - Makes exactly one `POST https://openrouter.ai/api/v1/chat/completions` call:
   one user message with a short instruction text part and one `image_url`
   content part carrying the data URL; `response_format` a JSON schema for the
@@ -243,17 +243,21 @@ and the model choice. Summary:
   Milestone 5 allow-list is JPEG/PNG/WebP).
 - Structured output: `response_format` with a JSON schema; supported by the
   chosen Gemini Flash-tier models.
-- Primary model: `google/gemini-3.1-flash-lite-preview`
-  (input $0.25 / output $1.50 / image input $0.25 per 1M tokens).
-- Fallback model: `google/gemini-3.5-flash` (stable; input $1.50 / output
-  $9.00 / image input $1.50 per 1M tokens). Same request/response contract, so
-  switching is a model-id change only, selectable via `OPENROUTER_VISION_MODEL`.
-- Approximate per-recognition cost: about $0.0006 (primary) to about $0.003
-  (fallback) with a downscaled cover image, a short prompt, and capped output.
-- Netlify synchronous function limits: 6 MB request/response payload (the
-  downscaled base64 image is well under this); default 10 s timeout, raisable
-  to 26 s. A single Flash-tier vision call fits within the default; no
-  background function is needed for Milestone 5.
+- Primary model: `google/gemini-3.1-flash-lite` (GA / stable; listed pricing
+  input $0.25 / output $1.50 / image input $0.25 per 1M tokens).
+- Manually selectable alternative: `google/gemini-3.5-flash` (GA / stable;
+  listed pricing input $1.50 / output $9.00 / image input $1.50 per 1M tokens).
+  Same request/response contract, so switching is a model-id change only, via
+  `OPENROUTER_VISION_MODEL`. There is no automatic cross-model fallback.
+- Estimated per-recognition cost (estimate only, not guaranteed): roughly
+  $0.0006 (primary) to $0.003 (alternative) with a downscaled cover image, a
+  short prompt, and capped output.
+- Netlify Functions limits: synchronous execution limit 60 seconds; buffered
+  request/response payload 6 MB; base64 overhead makes the effective binary
+  request payload about 4.5 MB. The downscaled base64 image is comfortably
+  inside all of these, so no background function is needed for Milestone 5. The
+  application uses its own bounded OpenRouter request timeout (~15 s) for
+  recoverable UX; that is an application timeout, not the platform limit.
 
 ## AI / Model Behavior
 
@@ -358,8 +362,9 @@ non-blocking.
   recovery history or analytics need it. LOW.
 - `model_calls` retention policy. Rows are small and few for a single-tenant
   course demo; a retention/cleanup job is post-submission. NOTE.
-- Raising the Netlify function timeout via `netlify.toml [functions]`. Only
-  needed if hosted Flash latency exceeds the default 10 s. NOTE.
+- Raising any Netlify function timeout. Not needed: the synchronous execution
+  limit is 60 s and a single Flash-tier vision call plus the application's ~15 s
+  request timeout are well within it. NOTE.
 - Provider generation/trace id in telemetry. Useful for support; not needed for
   the demo. NOTE.
 

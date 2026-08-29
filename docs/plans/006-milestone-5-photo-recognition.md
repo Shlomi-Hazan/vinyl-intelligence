@@ -141,7 +141,8 @@ export const config: Config = { method: ['POST'], path: '/api/catalog/recognize'
   rather than duplicating - only if it stays a pure move, otherwise duplicate
   the ~15 lines); parse/validate the data URL; decode and check bytes and magic
   number; `requiredEnv('OPENROUTER_API_KEY')`; resolve the model id from
-  `OPENROUTER_VISION_MODEL` or the ADR default; one `recognizeCover(...)` call
+  `OPENROUTER_VISION_MODEL` or the `google/gemini-3.1-flash-lite` default; one
+  `recognizeCover(...)` call
   with an `AbortController` timeout; validate/normalize the structured result;
   best-effort `recordModelCall(...)` insert with the service role; return
   `{ recognition }`.
@@ -224,8 +225,8 @@ New server-only env:
 
 - `OPENROUTER_API_KEY` - required; server-only; never `VITE_`; never logged or
   stored.
-- `OPENROUTER_VISION_MODEL` - optional; defaults to the ADR 0003 primary model
-  id; not a secret.
+- `OPENROUTER_VISION_MODEL` - optional; defaults to `google/gemini-3.1-flash-lite`
+  (GA / stable); not a secret. `.env.example` ships this exact default value.
 - `OPENROUTER_APP_URL` / `OPENROUTER_APP_TITLE` - optional attribution headers;
   not secrets.
 
@@ -338,8 +339,9 @@ keeping the schema change isolated is cleaner for audit.
 
 ## Rollback And Recovery
 
-- If the primary model is deprecated or its recognition quality is inadequate,
-  switch `OPENROUTER_VISION_MODEL` to the ADR fallback - no code change.
+- If `google/gemini-3.1-flash-lite` recognition quality is inadequate, a human
+  sets `OPENROUTER_VISION_MODEL=google/gemini-3.5-flash` - no code change. There
+  is no automatic cross-model fallback.
 - If OpenRouter is unavailable at implementation time, stop and revise ADR 0003
   before changing provider.
 - If the `model_calls` design is rejected in review, the recognition flow still
@@ -351,20 +353,21 @@ keeping the schema change isolated is cleaner for audit.
 
 ## Known Risks
 
-- `google/gemini-3.1-flash-lite-preview` is a preview model and may change or be
-  withdrawn. Mitigation: model id is env-configurable and a stable fallback
-  (`google/gemini-3.5-flash`) uses the identical contract.
+- Both `google/gemini-3.1-flash-lite` and `google/gemini-3.5-flash` are GA /
+  stable, so there is no preview-withdrawal risk. If Flash Lite quality is
+  inadequate, switch models via `OPENROUTER_VISION_MODEL`; the contract is
+  identical.
 - Vision recognition of worn/awkwardly lit covers can be poor. Mitigation: the
   derived query is always user-editable and the manual Milestone 4 search is
   always available; nothing persists without confirmation.
 - jsdom cannot fully exercise canvas image encoding; the downscale happy path
   relies on the human runtime test.
-- Hosted Netlify Flash latency could approach the default 10 s timeout.
-  Mitigation: documented; raise `[functions]` timeout later if hosted testing
-  shows it is needed.
+- Netlify Functions allow a 60 s synchronous execution limit; the single vision
+  call plus the application's ~15 s request timeout are well within it, so no
+  timeout configuration or background function is needed.
 - OpenRouter cost is developer-funded at runtime for this project (unlike a
-  BYOK design); mitigated by the sub-cent per-call cost, one call per action,
-  capped output, and no retry.
+  BYOK design); mitigated by the low estimated per-call cost, one call per
+  action, capped output, and no retry.
 
 ## Human Decisions Required Before Implementation
 
