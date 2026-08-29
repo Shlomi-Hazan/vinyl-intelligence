@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Permanent instructions for Codex and future agentic engineering sessions on Vinyl Intelligence.
+Permanent instructions for agentic engineering sessions on Vinyl Intelligence.
 
 ## Source of Truth
 
@@ -43,7 +43,7 @@ Do not begin large implementation work until the plan is understandable.
 
 Each meaningful milestone must be implemented on its own branch and reviewed through a pull request before merging to `main`.
 
-Branch names should use the `codex/` prefix unless the human asks for a different naming convention.
+New branch names should use the active primary implementation agent's agreed prefix unless the human asks for a different naming convention. Existing in-progress branches must not be renamed solely because the implementation agent changes.
 
 Pull request descriptions should include:
 
