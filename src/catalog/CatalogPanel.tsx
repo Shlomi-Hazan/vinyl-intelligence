@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { CatalogCandidateList } from './CatalogCandidateList.tsx'
 import { CatalogSearchForm } from './CatalogSearchForm.tsx'
 import {
@@ -12,8 +12,6 @@ type CatalogPanelProps = {
   client: BrowserSupabaseClient
   onCatalogItemAdded: () => void
 }
-
-const CATALOG_SEARCH_DEBOUNCE_MS = 450
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -32,14 +30,17 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
   const [notice, setNotice] = useState<string | null>(null)
   const [addingCandidateId, setAddingCandidateId] = useState<string | null>(null)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
-  const latestSearchId = useRef(0)
-  const lastSearchQuery = useRef('')
+  const searchInProgress = useRef(false)
 
-  const runSearch = useCallback(async (nextQuery = query) => {
-    const trimmedQuery = nextQuery.trim()
-    lastSearchQuery.current = trimmedQuery
-    const searchId = latestSearchId.current + 1
-    latestSearchId.current = searchId
+  // A MusicBrainz search happens only on an explicit form submit / Enter.
+  // Typing in the input never calls the provider, so editing an already
+  // searched query cannot generate background request bursts.
+  const runSearch = useCallback(async () => {
+    if (searchInProgress.current) {
+      return
+    }
+
+    const trimmedQuery = query.trim()
     setHasSearched(true)
     setNotice(null)
     setSearchError(null)
@@ -51,47 +52,19 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
       return
     }
 
+    searchInProgress.current = true
     setIsSearching(true)
 
     try {
-      const nextCandidates = await searchCatalog(client, trimmedQuery)
-
-      if (latestSearchId.current !== searchId) {
-        return
-      }
-
-      setCandidates(nextCandidates)
+      setCandidates(await searchCatalog(client, trimmedQuery))
     } catch (error) {
-      if (latestSearchId.current !== searchId) {
-        return
-      }
-
       setCandidates([])
       setSearchError(getErrorMessage(error))
     } finally {
-      if (latestSearchId.current === searchId) {
-        setIsSearching(false)
-      }
+      searchInProgress.current = false
+      setIsSearching(false)
     }
   }, [client, query])
-
-  useEffect(() => {
-    if (!hasSearched) {
-      return undefined
-    }
-
-    if (query.trim() === lastSearchQuery.current) {
-      return undefined
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void runSearch(query)
-    }, CATALOG_SEARCH_DEBOUNCE_MS)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [hasSearched, query, runSearch])
 
   async function handleAdd(candidate: CatalogCandidate) {
     setAddingCandidateId(candidate.providerReleaseId)

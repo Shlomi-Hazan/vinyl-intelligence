@@ -264,7 +264,7 @@ async function fetchMusicBrainzJson(
       signal: controller.signal,
     })
 
-    if (response.status === 503) {
+    if (response.status === 429 || response.status === 503) {
       throw new MusicBrainzError(
         'provider_rate_limited',
         'MusicBrainz is rate limiting or temporarily unavailable.',

@@ -60,6 +60,7 @@ function createDependencies(options: {
   const searchReleases = vi.fn(async () => [catalogCandidate()])
   const lookupRelease = vi.fn(async () => catalogCandidate())
   const paceProviderRequest = vi.fn(async () => undefined)
+  const delay = vi.fn(async () => undefined)
   const authClient = {
     auth: {
       getUser: vi.fn(async () => ({
@@ -126,6 +127,7 @@ function createDependencies(options: {
 
   const dependencies = {
     createClient,
+    delay,
     lookupRelease,
     paceProviderRequest,
     searchReleases,
@@ -134,6 +136,7 @@ function createDependencies(options: {
   return {
     authClient,
     createClient,
+    delay,
     dependencies,
     itemQuery,
     lookupRelease,
@@ -377,5 +380,170 @@ describe('catalog Netlify functions', () => {
       message: 'Catalog record could not be added to your collection.',
     })
     expect(releaseQuery.upsert).toHaveBeenCalledOnce()
+  })
+
+  it('retries the add lookup once after a provider rate-limit, then persists', async () => {
+    const { dependencies, delay, lookupRelease, releaseQuery } =
+      createDependencies()
+
+    lookupRelease.mockReset()
+    lookupRelease
+      .mockRejectedValueOnce(
+        new MusicBrainzError(
+          'provider_rate_limited',
+          'MusicBrainz is rate limiting or temporarily unavailable.',
+          503,
+        ),
+      )
+      .mockResolvedValueOnce(catalogCandidate())
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          provider: 'musicbrainz',
+          providerReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(lookupRelease).toHaveBeenCalledTimes(2)
+    expect(delay).toHaveBeenCalledTimes(1)
+    expect(delay).toHaveBeenCalledWith(1200)
+    expect(releaseQuery.upsert).toHaveBeenCalledOnce()
+  })
+
+  it('surfaces a recoverable 503 when the add lookup retry is also rate-limited', async () => {
+    const { dependencies, delay, lookupRelease, releaseQuery } =
+      createDependencies()
+
+    lookupRelease.mockReset()
+    lookupRelease.mockRejectedValue(
+      new MusicBrainzError(
+        'provider_rate_limited',
+        'MusicBrainz is rate limiting or temporarily unavailable.',
+        503,
+      ),
+    )
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          provider: 'musicbrainz',
+          providerReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(503)
+    await expect(readJson(response)).resolves.toEqual({
+      code: 'provider_rate_limited',
+      message: 'MusicBrainz is rate limiting or temporarily unavailable.',
+    })
+    expect(lookupRelease).toHaveBeenCalledTimes(2)
+    expect(delay).toHaveBeenCalledTimes(1)
+    expect(releaseQuery.upsert).not.toHaveBeenCalled()
+  })
+
+  it('does not retry non-rate-limit provider errors on add', async () => {
+    const { dependencies, delay, lookupRelease } = createDependencies()
+
+    lookupRelease.mockReset()
+    lookupRelease.mockRejectedValue(
+      new MusicBrainzError(
+        'not_found',
+        'MusicBrainz release was not found.',
+        404,
+      ),
+    )
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          provider: 'musicbrainz',
+          providerReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(404)
+    expect(lookupRelease).toHaveBeenCalledTimes(1)
+    expect(delay).not.toHaveBeenCalled()
+  })
+
+  it('does not retry database failures after a successful add lookup', async () => {
+    const { dependencies, delay, lookupRelease } = createDependencies({
+      releaseUpsertError: new Error('permission denied'),
+    })
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          provider: 'musicbrainz',
+          providerReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(500)
+    await expect(readJson(response)).resolves.toMatchObject({
+      code: 'database_error',
+    })
+    expect(lookupRelease).toHaveBeenCalledTimes(1)
+    expect(delay).not.toHaveBeenCalled()
+  })
+
+  it('does not retry or look up when add auth fails', async () => {
+    const { dependencies, delay, lookupRelease } = createDependencies({
+      authError: new Error('expired token'),
+    })
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          provider: 'musicbrainz',
+          providerReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(401)
+    expect(lookupRelease).not.toHaveBeenCalled()
+    expect(delay).not.toHaveBeenCalled()
+  })
+
+  it('does not automatically retry a rate-limited search', async () => {
+    const { dependencies, delay, searchReleases } = createDependencies({
+      searchError: new MusicBrainzError(
+        'provider_rate_limited',
+        'MusicBrainz is rate limiting or temporarily unavailable.',
+        503,
+      ),
+    })
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(503)
+    expect(searchReleases).toHaveBeenCalledTimes(1)
+    expect(delay).not.toHaveBeenCalled()
   })
 })

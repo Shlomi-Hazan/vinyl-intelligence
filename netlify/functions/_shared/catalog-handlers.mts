@@ -19,6 +19,7 @@ const MAX_SEARCH_LIMIT = 10
 const SEARCH_QUERY_MIN_LENGTH = 2
 const SEARCH_QUERY_MAX_LENGTH = 120
 const MUSICBRAINZ_PACING_MS = 1_000
+const MUSICBRAINZ_RATE_LIMIT_RETRY_DELAY_MS = 1_200
 const CATALOG_ITEM_SELECT = `
   id,
   added_at,
@@ -42,6 +43,7 @@ type SupabaseFactory = typeof createClient
 
 type CatalogFunctionDependencies = {
   createClient: SupabaseFactory
+  delay: (ms: number) => Promise<void>
   lookupRelease: typeof lookupMusicBrainzRelease
   paceProviderRequest: () => Promise<void>
   searchReleases: typeof searchMusicBrainzReleases
@@ -66,9 +68,16 @@ type CatalogErrorPayload = {
 
 let nextMusicBrainzRequestAt = 0
 
+function defaultDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
 function defaultDependencies(): CatalogFunctionDependencies {
   return {
     createClient,
+    delay: defaultDelay,
     lookupRelease: lookupMusicBrainzRelease,
     paceProviderRequest: paceMusicBrainzRequest,
     searchReleases: searchMusicBrainzReleases,
@@ -398,6 +407,27 @@ class CatalogFunctionError extends Error {
   }
 }
 
+async function lookupReleaseWithRateLimitRetry(
+  dependencies: CatalogFunctionDependencies,
+  providerReleaseId: string,
+  userAgent: string,
+): Promise<CatalogCandidate> {
+  try {
+    return await dependencies.lookupRelease({ providerReleaseId, userAgent })
+  } catch (error) {
+    if (
+      error instanceof MusicBrainzError
+      && error.code === 'provider_rate_limited'
+    ) {
+      await dependencies.delay(MUSICBRAINZ_RATE_LIMIT_RETRY_DELAY_MS)
+
+      return dependencies.lookupRelease({ providerReleaseId, userAgent })
+    }
+
+    throw error
+  }
+}
+
 function mapThrownError(error: unknown): Response {
   if (error instanceof CatalogFunctionError) {
     return errorResponse(error.code, error.message)
@@ -446,10 +476,11 @@ export async function handleCatalogAdd(
 
     await dependencies.paceProviderRequest()
 
-    const candidate = await dependencies.lookupRelease({
+    const candidate = await lookupReleaseWithRateLimitRetry(
+      dependencies,
       providerReleaseId,
       userAgent,
-    })
+    )
     const release = await upsertCatalogRelease(
       env,
       dependencies.createClient,

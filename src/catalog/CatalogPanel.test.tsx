@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPanel } from './CatalogPanel.tsx'
@@ -172,5 +172,86 @@ describe('CatalogPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Search catalog' })).toBeDisabled()
     expect(searchCatalog).not.toHaveBeenCalled()
+  })
+
+  it('never calls the provider while the query is being typed', async () => {
+    const user = userEvent.setup()
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} />)
+
+    await user.type(
+      screen.getByLabelText('Catalog search'),
+      'pink floyd the dark side of the moon',
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 700))
+
+    expect(searchCatalog).not.toHaveBeenCalled()
+  })
+
+  it('does not re-search automatically when an already searched query is edited', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValue([candidate()])
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} />)
+
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByRole('article')
+
+    expect(searchCatalog).toHaveBeenCalledTimes(1)
+
+    await user.type(screen.getByLabelText('Catalog search'), ' dark side')
+    await new Promise((resolve) => setTimeout(resolve, 700))
+
+    expect(searchCatalog).toHaveBeenCalledTimes(1)
+    expect(searchCatalog).toHaveBeenLastCalledWith(client, 'pink floyd')
+  })
+
+  it('runs another provider search only on an explicit submit', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValue([candidate()])
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} />)
+
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByRole('article')
+
+    await user.type(screen.getByLabelText('Catalog search'), ' dark side')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+
+    await waitFor(() => {
+      expect(searchCatalog).toHaveBeenCalledTimes(2)
+    })
+    expect(searchCatalog).toHaveBeenLastCalledWith(client, 'pink floyd dark side')
+  })
+
+  it('ignores a duplicate submit while an explicit search is already running', async () => {
+    const user = userEvent.setup()
+    let resolveSearch: ((value: CatalogCandidate[]) => void) | undefined
+    vi.mocked(searchCatalog).mockImplementation(
+      () =>
+        new Promise<CatalogCandidate[]>((resolve) => {
+          resolveSearch = resolve
+        }),
+    )
+
+    const { container } = render(
+      <CatalogPanel client={client} onCatalogItemAdded={vi.fn()} />,
+    )
+
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+
+    const form = container.querySelector('form') as HTMLFormElement
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+
+    expect(searchCatalog).toHaveBeenCalledTimes(1)
+
+    resolveSearch?.([candidate()])
+    expect(await screen.findByRole('article')).toBeInTheDocument()
+    expect(searchCatalog).toHaveBeenCalledTimes(1)
   })
 })

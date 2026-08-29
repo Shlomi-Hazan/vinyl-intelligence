@@ -197,6 +197,41 @@ describe('MusicBrainz adapter', () => {
     })
   })
 
+  it('maps MusicBrainz 429 responses to the same rate-limit error as 503', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: 'too many requests' }, 429),
+    ) satisfies FetchFunction
+
+    await expect(
+      searchMusicBrainzReleases({
+        fetchImpl,
+        limit: 5,
+        query: 'pink floyd',
+        userAgent,
+      }),
+    ).rejects.toMatchObject({
+      code: 'provider_rate_limited',
+      status: 429,
+    })
+  })
+
+  it('maps a 429 release lookup to a rate-limit error', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: 'too many requests' }, 429),
+    ) satisfies FetchFunction
+
+    await expect(
+      lookupMusicBrainzRelease({
+        fetchImpl,
+        providerReleaseId: releaseId,
+        userAgent,
+      }),
+    ).rejects.toMatchObject({
+      code: 'provider_rate_limited',
+      status: 429,
+    })
+  })
+
   it('maps aborted provider requests to timeout errors', async () => {
     const fetchImpl = vi.fn((_url, init) =>
       new Promise<Response>((_resolve, reject) => {
