@@ -110,6 +110,31 @@ h3 {
   border-top: 1px solid #d9d1c6;
 }
 
+.catalog-photo-panel,
+.catalog-photo-result {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.catalog-photo-panel {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #d9d1c6;
+}
+
+.catalog-photo-input,
+.catalog-photo-query {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.catalog-photo-clues {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #504842;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
 .collection-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

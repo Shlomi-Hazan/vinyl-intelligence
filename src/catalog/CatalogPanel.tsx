@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { CatalogCandidateList } from './CatalogCandidateList.tsx'
+import { CatalogPhotoPanel } from './CatalogPhotoPanel.tsx'
 import { CatalogSearchForm } from './CatalogSearchForm.tsx'
 import {
   addCatalogReleaseToCollection,
@@ -32,15 +33,16 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
   const searchInProgress = useRef(false)
 
-  // A MusicBrainz search happens only on an explicit form submit / Enter.
+  // A MusicBrainz search happens only on an explicit action: the search form
+  // submit / Enter, or the "search from these clues" button in the photo panel.
   // Typing in the input never calls the provider, so editing an already
   // searched query cannot generate background request bursts.
-  const runSearch = useCallback(async () => {
+  const runSearch = useCallback(async (explicitQuery?: string) => {
     if (searchInProgress.current) {
       return
     }
 
-    const trimmedQuery = query.trim()
+    const trimmedQuery = (explicitQuery ?? query).trim()
     setHasSearched(true)
     setNotice(null)
     setSearchError(null)
@@ -99,6 +101,14 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
         <p className="eyebrow">Catalog add</p>
         <h2 id="catalog-title">Search MusicBrainz</h2>
       </div>
+
+      <CatalogPhotoPanel
+        client={client}
+        onUseQuery={(nextQuery) => {
+          setQuery(nextQuery)
+          void runSearch(nextQuery)
+        }}
+      />
 
       <CatalogSearchForm
         isSearching={isSearching}
