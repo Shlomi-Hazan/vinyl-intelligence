@@ -16,9 +16,15 @@ Accepted decisions:
 - [0001 Approved Initial Architecture](0001-approved-initial-architecture.md)
 - [0002 Catalog Provider Boundary](0002-proposed-catalog-provider-boundary.md)
 
+Proposed decisions (pending human approval):
+
+- [0003 OpenRouter Vision Provider](0003-openrouter-vision-provider.md) - vision
+  model for Milestone 5 cover recognition
+
 Initial decisions still pending:
 
-- AI provider and exact models
+- AI text models for the curator milestone (the vision model is addressed by
+  proposed decision 0003)
 - Exact duplicate-copy representation
 - Whether bounded structured conversation state is persisted or kept ephemeral for MVP implementation
 - How long lightweight `model_calls` audit records are retained

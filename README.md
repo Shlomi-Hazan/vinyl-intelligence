@@ -33,13 +33,14 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 4 Catalog API is implemented, automated/local
-verified, and human runtime verified on the active milestone branch
-`codex/milestone-4-catalog-api`. It is ready for its milestone pull request.
-Milestone 5 has not started. Hosted/production verification and production
-deployment have not occurred and remain later milestones.
+Current status: Milestone 4 Catalog API is merged to `main`. Milestone 5
+(Photo Recognition + Candidate Confirmation) is in planning on branch
+`claude/milestone-5-photo-recognition`: the specification, implementation plan,
+and vision-provider decision record are proposed and awaiting human approval;
+no Milestone 5 code has been written. Hosted/production verification and
+production deployment have not occurred and remain later milestones.
 
-Milestone 4 pull-request and merge state are tracked in GitHub history.
+Milestone pull-request and merge state are tracked in GitHub history.
 
 Implemented:
 

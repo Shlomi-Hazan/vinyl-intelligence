@@ -16,9 +16,14 @@ A useful spec should include:
 - Acceptance criteria
 - Verification steps
 
-Existing planned specs/spikes:
+Existing specs/spikes:
 
 - [0001 Music Catalog API Spike](0001-music-catalog-api-spike.md)
+- [0002 Milestone 1 Stack Scaffold](0002-milestone-1-stack-scaffold.md)
+- [0003 Milestone 2 Supabase Auth + Profile RLS](0003-milestone-2-supabase-auth-profile-rls.md)
+- [0004 Milestone 3 Manual Collection CRUD](0004-milestone-3-manual-collection-crud.md)
+- [0005 Milestone 4 Catalog API](0005-milestone-4-catalog-api.md)
+- [0006 Milestone 5 Photo Recognition](0006-milestone-5-photo-recognition.md) - proposed
 
 Likely milestone specs:
 
