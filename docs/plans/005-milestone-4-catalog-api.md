@@ -1,6 +1,6 @@
 # 005 Milestone 4 Catalog API Implementation Plan
 
-Status: approved for implementation
+Status: implemented and verified; ready for milestone pull request
 
 Milestone: 4 - Catalog API
 
@@ -8,9 +8,42 @@ Date: 2026-08-20
 
 Approved: 2026-08-25
 
+Implemented: 2026-08-26
+
+Human runtime verification: 2026-08-29 (PASS, after two runtime corrections)
+
 Branch: `codex/milestone-4-catalog-api`
 
 Baseline: `e5909e729106483d156a462b1e575479e7ef008a`
+
+## Implementation Outcome
+
+Planned commits 2-4 landed as `fa4befc` (schema/RLS), `d3ceb32` (authenticated
+MusicBrainz Netlify Functions), and `918cd8e` (frontend search/add workflow).
+The `codex` -> Claude Code primary-agent transition added `f73561e`
+(`chore: add Claude Code project instructions`), which is not itself Milestone 4
+feature work.
+
+Two runtime corrections followed human testing, both inside the approved
+architecture:
+
+- `adfc5c2` `fix: grant catalog persistence privileges to service role` -
+  least-privilege forward migration
+  `supabase/migrations/20260829120000_grant_service_role_catalog_privileges.sql`
+  plus `supabase/tests/database/service_role_catalog_privileges.test.sql`.
+  Resolves PostgreSQL `42501` on the service-role persistence path
+  (`BYPASSRLS` does not replace ordinary table privileges). No RLS policy or
+  browser grant changed.
+- `0d1e69c` `fix: reduce MusicBrainz request bursts` - explicit-submit-only
+  search, duplicate-submit guard, one bounded `provider_rate_limited` retry on
+  the Add lookup, and HTTP `429` treated like `503`. No distributed rate
+  limiter was added.
+
+This replaces the single planned `docs: record milestone 4 verification` step:
+the audit trail was kept as separate coherent commits rather than squashed.
+
+Full evidence, blocker history, and human runtime results are in
+`docs/verification.md` under "Milestone 4 Evidence - Catalog API".
 
 ## Current Repository Baseline
 
@@ -649,6 +682,12 @@ Before opening the M4 PR, verify:
 
 ## Stop Point
 
-Stop here. This implementation plan is approved, but Milestone 4 implementation
-may begin only after this approval-recording commit is independently reviewed
-against GitHub.
+Historical pre-implementation gate, satisfied. It read:
+
+> Stop here. This implementation plan is approved, but Milestone 4
+> implementation may begin only after this approval-recording commit is
+> independently reviewed against GitHub.
+
+Implementation subsequently proceeded and completed. See "Implementation
+Outcome" at the top of this document and "Milestone 4 Evidence - Catalog API"
+in `docs/verification.md`.

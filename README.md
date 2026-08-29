@@ -33,9 +33,13 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 3 Manual Collection CRUD is implemented and verified on the active milestone branch `codex/milestone-3-manual-collection-crud`.
+Current status: Milestone 4 Catalog API is implemented, automated/local
+verified, and human runtime verified on the active milestone branch
+`codex/milestone-4-catalog-api`. It is ready for its milestone pull request.
+Milestone 5 has not started. Hosted/production verification and production
+deployment have not occurred and remain later milestones.
 
-Milestone 3 pull-request and merge state are tracked in GitHub history.
+Milestone 4 pull-request and merge state are tracked in GitHub history.
 
 Implemented:
 
@@ -55,10 +59,17 @@ Implemented:
 - Authenticated manual add, view, edit, and remove workflow
 - Manual release validation and recoverable CRUD error behavior
 - Milestone 3 automated verification, spec-driven test remediation, and human runtime verification
+- MusicBrainz-first catalog search through authenticated Netlify Functions
+- Authenticated catalog add flow with server-side provider revalidation
+- Shared canonical provider-backed catalog releases with Supabase persistence
+- Least-privilege `service_role` grants for server-side catalog persistence
+- Explicit-submit catalog search with a bounded single retry on provider
+  rate-limit responses (best-effort pacing, not a distributed guarantee)
+- Browser-safe catalog UI with normalized candidates and recoverable errors
+- Milestone 4 automated/local verification and human runtime verification
 
 Planned:
 
-- Catalog search/add flow
 - Browse/search/filter milestone beyond the basic Milestone 3 collection list
 - Listening history
 - AI recommendation workflow
@@ -122,13 +133,13 @@ npm run build
 npm run preview
 ```
 
-No service-role key is required for the current browser auth/profile/collection
-workflows. Browser code must use only `VITE_SUPABASE_URL` and
-`VITE_SUPABASE_PUBLISHABLE_KEY`.
+Browser code must use only `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_PUBLISHABLE_KEY`. Milestone 4 catalog add uses
+`SUPABASE_SERVICE_ROLE_KEY` only inside Netlify Functions after verifying the
+browser Supabase user token.
 
 Expected future requirements:
 
-- Music catalog API credentials if required
 - LLM provider API key
 
 Never commit `.env` or local credentials. This repository includes a safe `.env.example` for documented public scaffold settings.

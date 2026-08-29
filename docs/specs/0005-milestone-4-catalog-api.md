@@ -1,6 +1,6 @@
 # 0005 Milestone 4 Catalog API Specification
 
-Status: approved
+Status: implemented and verified; ready for milestone pull request
 
 Milestone: 4 - Catalog API
 
@@ -8,9 +8,63 @@ Date: 2026-08-20
 
 Approved: 2026-08-25
 
+Implemented: 2026-08-26
+
+Human runtime verification: 2026-08-29 (PASS, after two runtime corrections)
+
 Branch: `codex/milestone-4-catalog-api`
 
 Baseline: `e5909e729106483d156a462b1e575479e7ef008a`
+
+## Implementation Outcome
+
+The approved scope was implemented across `fa4befc` (schema/RLS), `d3ceb32`
+(authenticated MusicBrainz Netlify Functions), and `918cd8e` (frontend
+search/add workflow). Two runtime issues were found during human verification
+and corrected on the branch; both fixes stayed inside the approved architecture
+and neither expanded scope.
+
+1. Catalog Add initially failed with PostgreSQL `42501 permission denied for
+   table releases`. The Supabase `service_role` has `BYPASSRLS` but ordinary
+   SQL table privileges are still enforced, and the Milestone 3/4 migrations
+   granted table privileges only to `anon`/`authenticated`. Fixed by
+   `adfc5c2` with a least-privilege forward migration
+   (`service_role` gains `SELECT`/`INSERT`/`UPDATE` on `releases`,
+   `SELECT`/`INSERT` on `collection_items`; no `DELETE` on `releases`, no
+   `UPDATE`/`DELETE` on `collection_items`) plus a dedicated pgTAP regression
+   file. No RLS policy or browser grant changed.
+
+2. MusicBrainz search was intermittently returning the sanitized rate-limit
+   message. The provider itself returns intermittent `503`, and the old
+   frontend added sub-second provider requests (a 450 ms live re-search after
+   the first search; Add performing a fresh server-side lookup). Fixed by
+   `0d1e69c`: search now runs only on an explicit submit, a duplicate submit
+   during an in-flight search is ignored, Add retries a `provider_rate_limited`
+   lookup exactly once after ~1200 ms, and HTTP `429` is treated like `503`.
+   No distributed/global rate limiter was added.
+
+Documented limitation (accepted for this milestone): the in-memory per-instance
+request pacing is best-effort. Milestone 4 does not claim a hard
+one-request-per-second guarantee across function bundles, concurrent serverless
+instances, cold starts, or the local worker-per-invocation dev runtime. A
+distributed/global coordinator was explicitly deferred as unnecessary for the
+low-concurrency university/demo scope (see "Rate-Limit Behavior" below and the
+"Known Limitations" list).
+
+Full command output, database evidence, the blocker/fix history, and the human
+runtime results are recorded in `docs/verification.md` under
+"Milestone 4 Evidence - Catalog API".
+
+## Known Limitations
+
+- MusicBrainz request pacing is best-effort per instance, not a distributed
+  guarantee (accepted; see above).
+- `supabase/tests/database/catalog_releases_rls.test.sql` includes a
+  catalog-row count assertion that assumes a clean starting database; it passes
+  under the canonical `supabase db reset` + `supabase test db` flow and can
+  fail if residual runtime catalog rows exist. Deferred test-hygiene item.
+- MusicBrainz free-text search relevance is imperfect for some queries.
+- A non-JSON provider error body can surface as `provider_unavailable`.
 
 ## Intent
 
@@ -537,6 +591,11 @@ Remaining implementation-level details:
 
 ## Stop Point
 
-This specification is approved. Do not begin Milestone 4 implementation until
-the approval-recording commit is independently reviewed against GitHub, as
-required by the approved implementation plan.
+Historical pre-implementation gate, satisfied. It read:
+
+> This specification is approved. Do not begin Milestone 4 implementation until
+> the approval-recording commit is independently reviewed against GitHub, as
+> required by the approved implementation plan.
+
+Implementation subsequently proceeded and completed; current status is at the
+top of this document and in `docs/verification.md`.
