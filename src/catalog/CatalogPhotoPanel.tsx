@@ -4,10 +4,21 @@ import { downscaleImageToDataUrl, validateImageFile } from '../lib/vision/image.
 import { buildCatalogQueryFromRecognition } from '../lib/vision/query.ts'
 import { RecognitionError, type CoverRecognition } from '../lib/vision/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import {
+  clearPhotoRecognitionDraft,
+  loadPhotoRecognitionDraft,
+  savePhotoRecognitionDraft,
+} from './photoRecognitionDraft.ts'
 
 type CatalogPhotoPanelProps = {
   client: BrowserSupabaseClient
   onUseQuery: (query: string) => void
+  /**
+   * Authenticated user id. When present, recognition clues + the derived query
+   * survive a refresh / same-tab navigation via sessionStorage (no new
+   * recognition call on restore).
+   */
+  userId?: string
 }
 
 function getErrorMessage(error: unknown): string {
@@ -48,17 +59,50 @@ function clueSummary(recognition: CoverRecognition): string[] {
   return lines
 }
 
-export function CatalogPhotoPanel({ client, onUseQuery }: CatalogPhotoPanelProps) {
+export function CatalogPhotoPanel({
+  client,
+  onUseQuery,
+  userId,
+}: CatalogPhotoPanelProps) {
+  const [restoredDraft] = useState(() =>
+    userId ? loadPhotoRecognitionDraft(userId) : null,
+  )
   const [fileName, setFileName] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [recognizeError, setRecognizeError] = useState<string | null>(null)
-  const [recognition, setRecognition] = useState<CoverRecognition | null>(null)
-  const [derivedQuery, setDerivedQuery] = useState('')
+  const [recognition, setRecognition] = useState<CoverRecognition | null>(
+    restoredDraft?.recognition ?? null,
+  )
+  const [derivedQuery, setDerivedQuery] = useState(
+    restoredDraft?.derivedQuery ?? '',
+  )
   const recognizeInProgress = useRef(false)
+
+  function persistDraft(nextRecognition: CoverRecognition, nextQuery: string) {
+    if (userId) {
+      savePhotoRecognitionDraft(userId, {
+        recognition: nextRecognition,
+        derivedQuery: nextQuery,
+      })
+    }
+  }
+
+  function handleDerivedQueryChange(nextQuery: string) {
+    setDerivedQuery(nextQuery)
+
+    if (recognition) {
+      persistDraft(recognition, nextQuery)
+    }
+  }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null
+    // Selecting a new image invalidates any stored clues immediately so stale
+    // recognition is never shown for a different photo.
+    if (userId) {
+      clearPhotoRecognitionDraft(userId)
+    }
     setRecognition(null)
     setDerivedQuery('')
     setRecognizeError(null)
@@ -94,8 +138,10 @@ export function CatalogPhotoPanel({ client, onUseQuery }: CatalogPhotoPanelProps
     try {
       const imageDataUrl = await downscaleImageToDataUrl(selectedFile)
       const result = await recognizeCover(client, imageDataUrl)
+      const nextQuery = buildCatalogQueryFromRecognition(result) ?? ''
       setRecognition(result)
-      setDerivedQuery(buildCatalogQueryFromRecognition(result) ?? '')
+      setDerivedQuery(nextQuery)
+      persistDraft(result, nextQuery)
     } catch (error) {
       setRecognizeError(getErrorMessage(error))
     } finally {
@@ -159,7 +205,7 @@ export function CatalogPhotoPanel({ client, onUseQuery }: CatalogPhotoPanelProps
           <label className="catalog-photo-query">
             Search from these clues
             <input
-              onChange={(event) => setDerivedQuery(event.target.value)}
+              onChange={(event) => handleDerivedQueryChange(event.target.value)}
               type="text"
               value={derivedQuery}
             />

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   RELEASE_FIELD_LIMITS,
   normalizeManualReleaseInput,
@@ -6,6 +6,11 @@ import {
   type CollectionItemWithRelease,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
+import {
+  clearManualCollectionDraft,
+  loadManualCollectionDraft,
+  saveManualCollectionDraft,
+} from './manualCollectionDraft.ts'
 
 type CollectionFormMode = 'add' | 'edit'
 
@@ -14,6 +19,12 @@ type CollectionFormProps = {
   initialRelease?: CollectionItemWithRelease['release']
   onCancel?: () => void
   onSubmit: (input: ManualReleaseInput) => Promise<void>
+  /**
+   * Authenticated user id. When set (add mode only), the in-progress form draft
+   * is persisted to sessionStorage so partially entered work survives a refresh
+   * / same-tab navigation. Restoring only repopulates inputs — it never submits.
+   */
+  draftStorageUserId?: string
 }
 
 const emptyInput: ManualReleaseInput = {
@@ -49,9 +60,15 @@ export function CollectionForm({
   initialRelease,
   onCancel,
   onSubmit,
+  draftStorageUserId,
 }: CollectionFormProps) {
-  const [input, setInput] = useState<ManualReleaseInput>(() =>
-    releaseToInput(initialRelease),
+  // Draft persistence is only for the manual "Add record" form.
+  const draftUserId = mode === 'add' ? draftStorageUserId : undefined
+  const [restoredDraft] = useState(() =>
+    draftUserId ? loadManualCollectionDraft(draftUserId) : null,
+  )
+  const [input, setInput] = useState<ManualReleaseInput>(
+    () => restoredDraft ?? releaseToInput(initialRelease),
   )
   const [hasInteracted, setHasInteracted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -61,6 +78,16 @@ export function CollectionForm({
     () => validateManualReleaseInput(normalizeManualReleaseInput(input)),
     [input],
   )
+
+  // Persist the complete current draft after each user edit. Restoring the
+  // draft on mount does not trigger this (it runs only once `hasInteracted`).
+  useEffect(() => {
+    if (!draftUserId || !hasInteracted) {
+      return
+    }
+
+    saveManualCollectionDraft(draftUserId, input)
+  }, [draftUserId, hasInteracted, input])
 
   function updateField(field: keyof ManualReleaseInput, value: string) {
     setHasInteracted(true)
@@ -85,6 +112,11 @@ export function CollectionForm({
         setInput(emptyInput)
         setHasInteracted(false)
         setSubmitError(null)
+        // The record is now durably saved, so the draft is no longer unsaved
+        // work.
+        if (draftUserId) {
+          clearManualCollectionDraft(draftUserId)
+        }
       }
     } catch (error) {
       setSubmitError(

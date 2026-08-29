@@ -108,17 +108,21 @@ function AuthenticatedShell() {
           onSignOut={signOut}
           profile={profile}
         />
-        {client ? (
+        {client && user ? (
           <>
             <CatalogPanel
+              key={user.id}
               client={client}
               onCatalogItemAdded={() =>
                 setCollectionRefreshKey((current) => current + 1)
               }
+              userId={user.id}
             />
             <CollectionPanel
+              key={user.id}
               client={client}
               refreshKey={collectionRefreshKey}
+              userId={user.id}
             />
           </>
         ) : null}

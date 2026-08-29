@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CollectionPanel } from './CollectionPanel.tsx'
+import { buildUserSessionKey } from '../lib/session/sessionDraft.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import type {
   CollectionItemWithRelease,
@@ -12,6 +13,8 @@ import {
   loadCollection,
   updateManualRelease,
 } from '../lib/supabase/collection.ts'
+
+const MANUAL_DRAFT_KEY = buildUserSessionKey('manual-collection-draft', 'user-1')
 
 vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
   const actual =
@@ -336,5 +339,165 @@ describe('CollectionPanel', () => {
         'Your collection is empty. Add a record manually to start the shelf.',
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('CollectionPanel manual add-form draft persistence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockCollection([])
+  })
+
+  it('persists a partial draft after editing a single field', async () => {
+    const user = userEvent.setup()
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Kendrick Lamar')
+
+    const stored = JSON.parse(sessionStorage.getItem(MANUAL_DRAFT_KEY) ?? 'null')
+    expect(stored.artist).toBe('Kendrick Lamar')
+    expect(stored.title).toBe('')
+    expect(addManualCollectionItem).not.toHaveBeenCalled()
+  })
+
+  it('persists every editable field as it is filled in', async () => {
+    const user = userEvent.setup()
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Kendrick Lamar')
+    await user.type(screen.getByLabelText('Title'), 'good kid, m.A.A.d city')
+    await user.type(screen.getByLabelText('Release year'), '2012')
+    await user.type(screen.getByLabelText('Label'), 'Top Dawg')
+    await user.type(screen.getByLabelText('Catalog number'), 'B001753602')
+    await user.type(screen.getByLabelText('Country'), 'US')
+    await user.type(screen.getByLabelText('Format'), '2xLP')
+
+    const stored = JSON.parse(sessionStorage.getItem(MANUAL_DRAFT_KEY) ?? 'null')
+    expect(stored).toEqual({
+      artist: 'Kendrick Lamar',
+      title: 'good kid, m.A.A.d city',
+      releaseYear: '2012',
+      label: 'Top Dawg',
+      catalogNumber: 'B001753602',
+      country: 'US',
+      format: '2xLP',
+    })
+  })
+
+  it('restores every populated field on remount without any add mutation', async () => {
+    const user = userEvent.setup()
+    const view = render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Kendrick Lamar')
+    await user.type(screen.getByLabelText('Title'), 'good kid, m.A.A.d city')
+    await user.type(screen.getByLabelText('Label'), 'Top Dawg')
+    view.unmount()
+
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    expect(await screen.findByLabelText('Artist')).toHaveValue('Kendrick Lamar')
+    expect(screen.getByLabelText('Title')).toHaveValue('good kid, m.A.A.d city')
+    expect(screen.getByLabelText('Label')).toHaveValue('Top Dawg')
+    expect(addManualCollectionItem).not.toHaveBeenCalled()
+  })
+
+  it('keeps a partially completed form across remount', async () => {
+    const user = userEvent.setup()
+    const view = render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Partial Only')
+    view.unmount()
+
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    expect(await screen.findByLabelText('Artist')).toHaveValue('Partial Only')
+    expect(screen.getByLabelText('Title')).toHaveValue('')
+  })
+
+  it('clears the persisted draft after a successful manual add', async () => {
+    const user = userEvent.setup()
+    vi.mocked(addManualCollectionItem).mockResolvedValue(item())
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Alice Coltrane')
+    await user.type(screen.getByLabelText('Title'), 'Journey in Satchidananda')
+    expect(sessionStorage.getItem(MANUAL_DRAFT_KEY)).not.toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Add record' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Record added.')).toBeInTheDocument()
+    })
+    expect(sessionStorage.getItem(MANUAL_DRAFT_KEY)).toBeNull()
+  })
+
+  it('keeps the draft after a failed manual add', async () => {
+    const user = userEvent.setup()
+    vi.mocked(addManualCollectionItem).mockRejectedValue(new Error('release rejected'))
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Alice Coltrane')
+    await user.type(screen.getByLabelText('Title'), 'Journey in Satchidananda')
+    await user.click(screen.getByRole('button', { name: 'Add record' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('release rejected')).toBeInTheDocument()
+    })
+    const stored = JSON.parse(sessionStorage.getItem(MANUAL_DRAFT_KEY) ?? 'null')
+    expect(stored.artist).toBe('Alice Coltrane')
+  })
+
+  it('ignores and removes a malformed stored manual draft', async () => {
+    sessionStorage.setItem(MANUAL_DRAFT_KEY, '{ broken')
+
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    expect(await screen.findByLabelText('Artist')).toHaveValue('')
+    expect(sessionStorage.getItem(MANUAL_DRAFT_KEY)).toBeNull()
+    expect(addManualCollectionItem).not.toHaveBeenCalled()
+  })
+
+  it('ignores a stored manual draft with a missing field', async () => {
+    sessionStorage.setItem(
+      MANUAL_DRAFT_KEY,
+      JSON.stringify({ artist: 'X', title: 'Y' }),
+    )
+
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    expect(await screen.findByLabelText('Artist')).toHaveValue('')
+    expect(sessionStorage.getItem(MANUAL_DRAFT_KEY)).toBeNull()
+  })
+
+  it('namespaces the manual draft per authenticated user', async () => {
+    const user = userEvent.setup()
+    const view = render(<CollectionPanel client={client} userId="user-1" />)
+    await user.type(await screen.findByLabelText('Artist'), 'User One Draft')
+    view.unmount()
+
+    render(<CollectionPanel client={client} userId="user-2" />)
+
+    expect(await screen.findByLabelText('Artist')).toHaveValue('')
+    expect(
+      sessionStorage.getItem(buildUserSessionKey('manual-collection-draft', 'user-1')),
+    ).not.toBeNull()
+  })
+
+  it('does not persist a draft when no userId is provided', async () => {
+    const user = userEvent.setup()
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'No Persistence')
+
+    expect(sessionStorage.length).toBe(0)
+  })
+
+  it('has no explicit reset or clear control on the add form', async () => {
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await screen.findByLabelText('Artist')
+    expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
   })
 })
