@@ -1,7 +1,7 @@
 # 0007 Milestone 6 Browse / Search / Filter Specification
 
-Status: implemented; automated verification passed; awaiting independent
-implementation review and human runtime verification before the pull request
+Status: implemented and verified (automated + independent implementation review
++ human runtime); ready for milestone pull request
 
 Milestone: 6 - Browse / Search / Filter
 
@@ -11,6 +11,12 @@ Approved: 2026-08-30 (spec + plan approved with the four Open Questions
 answered - see "Open Questions Requiring Human Approval")
 
 Implemented: 2026-08-30
+
+Independent implementation review: 2026-08-30 (0 BLOCKER, 0 MEDIUM after the
+retry-pacing + year-range corrections)
+
+Human runtime verification: 2026-08-30 (PASS - 15 human tests; see
+`docs/verification.md`)
 
 Branch: `claude/milestone-6-browse-search-filter`
 
@@ -65,7 +71,7 @@ and no external API request happens when a user browses or changes a filter.
   MusicBrainz release-group genre lookup during a confirmed catalog Add. If it
   is unavailable, the release is still saved with `genres = '{}'`.
 - Manual add/edit: one optional free-text "Genre" input (0-or-1 value stored
-  into `genres`). *(Subject to human approval - see Open Questions.)*
+  into `genres`). Approved (Open Question 1).
 - Decade derived deterministically from `release_year` in the client; never
   stored.
 - Focused automated tests (see "Verification Steps"), plus a forward migration
@@ -344,15 +350,16 @@ Focused tests to add:
   genres; Add still succeeds (release saved with `genres = '{}'`) when the
   genre lookup fails; the genre lookup is best-effort (its failure is not
   surfaced).
-- Manual path (if approved): `normalizeManualReleaseInput` /
-  `validateManualReleaseInput` handle the genre field; `addManualCollectionItem`
-  / `updateManualRelease` write `genres`.
+- Manual path: `normalizeManualReleaseInput` / `validateManualReleaseInput`
+  handle the genre field; `addManualCollectionItem` / `updateManualRelease`
+  write `genres`; the Milestone 5 add-form `sessionStorage` draft preserves it.
 - Database pgTAP (`release_genres.test.sql`): `genres` column exists with the
-  default and check constraint; the GIN index exists; the check rejects
-  blank / untrimmed / uppercase / overlong / too-many entries; `authenticated`
-  column grants for `genres` are correct (if the manual field is approved);
-  `service_role` can write `genres` on a catalog release; RLS is unchanged;
-  existing suites still pass on a clean reset.
+  default and check constraint; **an explicit assertion that no GIN index
+  exists** (Milestone 6 adds none); the check rejects blank / untrimmed /
+  uppercase / overlong / too-many entries; `authenticated` column grants for
+  `genres` are correct; `service_role` can write `genres` on a catalog
+  release; RLS is unchanged; `updated_at` bumps on a genre change; existing
+  suites still pass on a clean reset.
 
 Human runtime test plan:
 
@@ -398,7 +405,7 @@ Historical pre-implementation gate, satisfied. It read:
 > answers to the Open Questions above.
 
 The human approved the spec and plan with all four Open Questions answered and
-directed implementation on this branch. Implementation is complete and passed
-automated verification; an independent implementation review and human runtime
-verification precede the pull request. Current status is at the top of this
-document.
+directed implementation on this branch. Implementation is complete; automated
+verification, an independent implementation review (0 BLOCKER, 0 MEDIUM), and
+human runtime verification (PASS) have all passed. Current status is at the top
+of this document; full evidence is in `docs/verification.md`.

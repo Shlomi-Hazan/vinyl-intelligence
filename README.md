@@ -34,12 +34,12 @@ The recommended baseline is:
 ## Project Status
 
 Current status: Milestone 5 (Photo Recognition + Candidate Confirmation) is
-merged to `main`. Milestone 6 (Browse / Search / Filter) is implemented on
-branch `claude/milestone-6-browse-search-filter` and has passed automated
-verification; an independent implementation review and human runtime
-verification precede the pull request, which is not yet open.
-Hosted/production verification and production deployment have not occurred and
-remain later milestones.
+merged to `main`. Milestone 6 (Browse / Search / Filter) is implemented and
+verified on branch `claude/milestone-6-browse-search-filter` - automated
+verification, an independent implementation review (0 BLOCKER, 0 MEDIUM), and
+human runtime verification (PASS) - and is open as a pull request against
+`main` (not merged). Hosted/production verification and production deployment
+have not occurred and remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -91,10 +91,11 @@ Implemented:
   records by artist or title, filter by exact year, decade (derived), or genre
   (where stored), combine as logical AND, clear filters, result count, and five
   compact sorts - no LLM and no external request on a filter change (Milestone
-  6, on branch, pending review + human runtime verification)
+  6, verified, PR open)
 - `releases.genres` metadata: catalog-sourced community-curated MusicBrainz
-  genre tags (best-effort release-group lookup on catalog Add) plus an optional
-  manual Genre field (Milestone 6, on branch)
+  genre tags (best-effort paced release-group lookup on catalog Add, never
+  overwriting existing genres) plus an optional manual Genre field (Milestone
+  6, verified, PR open)
 
 Planned:
 

@@ -1540,9 +1540,10 @@ Implementation commits:
 - `feat: enrich catalog releases with genres`
 - `feat: add collection browse search and filters`
 
-Status: implemented; automated verification below passed. An independent
-implementation review and human runtime verification precede the pull request
-and are **not** yet recorded here.
+Status: implemented and verified - automated verification (below), an
+independent implementation review (0 BLOCKER, 0 MEDIUM), and human runtime
+verification (PASS, below). Ready for the milestone pull request. Hosted
+Supabase / production deployment NOT verified (deferred).
 
 ### Implemented
 
@@ -1681,9 +1682,60 @@ verification flow.
 
 ### Human Runtime Evidence
 
-Not yet performed. The spec's "Human runtime test plan" is pending and will be
-recorded here (distinguished from the agent-run automated evidence above)
-before the pull request.
+These results were **observed by the human** in a browser against the local app
+(`http://127.0.0.1:5173`) and local Supabase; hosted Supabase was untouched.
+The coding agent did not observe the browser actions - it prepared the local
+stack and a deterministic four-record owned collection for the runtime account
+and recorded the human's reported results below.
+
+- Runtime environment: local app + local Supabase, branch
+  `claude/milestone-6-browse-search-filter`, implementation revision under test
+  `fe5631b0a6f86702a7726049c404f0c9d912be51`, an authenticated local runtime
+  account, hosted Supabase untouched.
+- Seed (local DB insert, no MusicBrainz): Pink Floyd - The Dark Side of the
+  Moon (1973, `progressive rock`); Miles Davis - Kind of Blue (1959, `jazz`);
+  Nirvana - Nevermind (1991, `grunge`); Unknown Artist - Mystery Record (null
+  year, no genre).
+
+| # | Human test | Human-observed result |
+| --- | --- | --- |
+| 1 | Text search `pink` | Only Pink Floyd - The Dark Side of the Moon; "1 of 4 records". PASS |
+| 2 | Genre filter `jazz` (after Clear) | Only Miles Davis - Kind of Blue; "1 of 4 records". PASS |
+| 3 | Decade filter `1990s` (after Clear) | Only Nirvana - Nevermind; "1 of 4 records". PASS |
+| 4 | Exact year `1973` (after Clear) | Only Pink Floyd - The Dark Side of the Moon; "1 of 4 records". PASS |
+| 5 | Combined: search `dark` + genre `progressive rock` + decade `1970s` | Only Pink Floyd - The Dark Side of the Moon; "1 of 4 records". Confirms logical AND. PASS |
+| 6 | Search `zzzz` then Clear | "No records match these filters", "0 of 4 records"; Clear restored "4 of 4 records". PASS |
+| 7 | Sort Artist A-Z | Miles Davis, Nirvana, Pink Floyd, Unknown Artist. PASS |
+| 8 | Sort Year (newest) | Nirvana 1991, Pink Floyd 1973, Miles Davis 1959, Unknown Artist (null year) last. Confirms null year sorts last. PASS |
+| 9 | Manual add: Test Artist / Test Album / 2005 / Genre "Electronic" | Collection became 5 records; stored/displayed genre normalized to `electronic`; genre filter gained `electronic`; filtering `electronic` showed only Test Artist - Test Album ("1 of 5 records"). PASS |
+| 10 | Manual edit Test Album genre `electronic` -> `ambient` while the `electronic` filter was active | Record immediately stopped matching; visible count "0 of 5 records". PASS |
+| 11 | Clear filters, refresh | Test Artist - Test Album still present, genre still `ambient`, genre filter offered `ambient`, filtering `ambient` showed only Test Album ("1 of 5 records"). Confirms persistence through `loadCollection`, not only React state. PASS |
+| 12 | Exact year `1800` (after Clear) | Collection stayed unfiltered ("5 of 5 records"); the invalid-year hint appeared stating the valid 1900..2100 range; no crash. Confirms the implementation-review year-range correction. PASS |
+| 13 | Manual Add form populated (Draft Artist / Draft Album / Genre "Shoegaze") but not submitted, then browser refresh | All three draft values restored; no record was auto-inserted. Confirms the Genre field participates in the Milestone 5 `sessionStorage` draft with no persistence side effect. PASS |
+| 14 | One deliberate real MusicBrainz catalog Add: search "The Dark Side of the Moon Pink Floyd", select a result, Add | Catalog Add succeeded; the collection item persisted; **no genre appeared on the resulting card**. PASS - genre enrichment is deliberately best-effort and MusicBrainz genre coverage is uneven, so an absent release-group genre must not fail Add. This does **not** demonstrate positive genre enrichment; the positive-persistence path is covered by the automated adapter/handler tests. This was the only deliberate real MusicBrainz runtime action of the Milestone 6 human phase; no OpenRouter call was made. |
+| 15 | Clear filters, refresh (final stability) | Collection loaded normally; Test Artist - Test Album persisted with `ambient`; the catalog-added record persisted; search `Miles` narrowed to Miles Davis - Kind of Blue; no error / crash / stuck UI. PASS |
+
+**Milestone 6 human runtime: PASS.** Core behaviours verified: owned-collection
+browsing, text search, genre filter, decade filter, exact year, combined AND
+filters, clear filters, no-results state, result counts, artist sort, year sort
+with null-year last, manual Genre create / edit / persist-after-refresh,
+invalid-year handling, manual Genre draft persistence without auto-submit, real
+catalog Add remaining successful when optional genre enrichment returns no
+visible genre, and final refresh/search stability. No human-runtime BLOCKER or
+MEDIUM finding was observed.
+
+Provider-call accounting across the two phases:
+
+- Automated verification phase: zero real OpenRouter calls; zero deliberate
+  MusicBrainz calls (adapter exercised only with mocked fetch).
+- Human runtime phase: exactly one deliberate real MusicBrainz catalog
+  search/add flow (Human Test 14); zero OpenRouter calls. The human did not
+  demonstrate positive MusicBrainz genre coverage.
+
+Local runtime fixture rows (the seeded four records, the manual `ambient`
+record, the draft, and the one catalog-added record) were intentionally cleared
+with a final local `npx supabase db reset` **after** this evidence was
+recorded. Nothing was applied to hosted Supabase.
 
 ### Known Notes
 

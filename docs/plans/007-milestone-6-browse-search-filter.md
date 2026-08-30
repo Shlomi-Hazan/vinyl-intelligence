@@ -1,7 +1,7 @@
 # 007 Milestone 6 Browse / Search / Filter Implementation Plan
 
-Status: implemented; automated verification passed; awaiting independent
-implementation review and human runtime verification before the pull request
+Status: implemented and verified (automated + independent implementation review
++ human runtime); ready for milestone pull request
 
 Milestone: 6 - Browse / Search / Filter
 
@@ -10,6 +10,11 @@ Date: 2026-08-30
 Approved: 2026-08-30 (with the four Open Questions answered)
 
 Implemented: 2026-08-30
+
+Independent implementation review: 2026-08-30 (0 BLOCKER, 0 MEDIUM after the
+retry-pacing + year-range corrections)
+
+Human runtime verification: 2026-08-30 (PASS)
 
 Branch: `claude/milestone-6-browse-search-filter`
 
@@ -322,7 +327,7 @@ secret or real `.env` is staged; the branch contains only Milestone 6 scope.
 - The extra Add GET marginally increases MusicBrainz load; mitigated by being
   one call per explicit user Add, sequential, paced, best-effort, no retry.
 - Records added before this milestone have `genres = '{}'` until re-added or
-  (if the manual field ships) manually edited. No backfill in Milestone 6.
+  manually edited (the manual Genre field shipped). No backfill in Milestone 6.
 - Client-side filtering assumes the whole collection is loaded; if pagination
   is introduced later, filtering must move server-side or operate on the loaded
   page only - out of scope now.
@@ -342,7 +347,7 @@ Historical pre-implementation gate, satisfied. It read:
 > This plan is PLANNED. Implementation begins only after the human approves
 > this plan, the specification, and the answers to the Open Questions above.
 
-The human approved and directed implementation on this branch; it is complete
-and passed automated verification. An independent implementation review and
-human runtime verification precede the pull request. Current status is at the
-top of this document.
+The human approved and directed implementation on this branch. It is complete
+and has passed automated verification, an independent implementation review
+(0 BLOCKER, 0 MEDIUM), and human runtime verification (PASS). Current status is
+at the top of this document; full evidence is in `docs/verification.md`.
