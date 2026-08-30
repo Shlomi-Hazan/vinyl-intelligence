@@ -1542,8 +1542,9 @@ Implementation commits:
 
 Status: implemented and verified - automated verification (below), an
 independent implementation review (0 BLOCKER, 0 MEDIUM), and human runtime
-verification (PASS, below). Ready for the milestone pull request. Hosted
-Supabase / production deployment NOT verified (deferred).
+verification (PASS, below). Merged to `main` in PR #6
+(`3583900cc19dae9db9a2e6f37846de7a8af5a665`). Hosted Supabase / production
+deployment NOT verified (deferred).
 
 ### Implemented
 
@@ -1753,4 +1754,168 @@ recorded. Nothing was applied to hosted Supabase.
 ### Production / Hosted Status
 
 Production/hosted verification of Milestone 6 has **not** been performed. No
+production deployment is claimed.
+
+## Milestone 7 Evidence - Ratings / Favorites / Notes
+
+Date: 2026-08-30
+
+Branch: `claude/milestone-7-ratings-favorites-notes`
+
+Baseline (Milestone 6 merge on `main`):
+`3583900cc19dae9db9a2e6f37846de7a8af5a665`
+
+Implementation commits:
+
+- `db: add collection item personal signals`
+- `feat: load and persist collection item personal signals`
+- `feat: add personal-signal controls to collection cards`
+- `fix: tighten the personal-signals partial patch` (focused review)
+
+Status: implemented and verified locally - automated verification (below), a
+focused implementation review (0 BLOCKER, 0 MEDIUM after one correction), and
+human runtime verification (PASS, 6 focused tests, below). Ready for the
+milestone pull request. Hosted Supabase migration / production deployment NOT
+verified (deferred).
+
+### Implemented
+
+- `public.collection_items.rating` (`smallint`, nullable, CHECK
+  `rating is null or rating between 1 and 5`), `is_favorite`
+  (`boolean NOT NULL DEFAULT false`), `notes` (`text`, nullable, CHECK
+  `notes = btrim(notes) and char_length between 1 and 1000` when non-null).
+  Migration `20260831120000_add_collection_item_signals.sql`. **No
+  `updated_at`, no trigger, no index** (approved decision A + deferred-index
+  decision).
+- Least privilege: `grant update (rating, is_favorite, notes)` to
+  `authenticated` (only those three columns) + one own-row `for update` RLS
+  policy (`using` + `with check` on `user_id = auth.uid()`). Existing
+  `collection_items` policies/grants, `service_role`, and `anon` unchanged.
+- The signals live at the collection-item level (never on the shared
+  `releases` row); two collection items pointing at the same `release_id` keep
+  independent values. `loadCollection` returns them at the item level.
+- `updateCollectionItemPersonalSignals(client, id, patch)` - **partial patch**:
+  writes only the key(s) present, validates/normalizes only those, never
+  touches `id` / `user_id` / `release_id` / timestamps, returns the saved
+  values. So toggling Favorite never persists an unsaved note draft, and
+  saving a Note never clobbers Favorite/Rating.
+- A compact per-item control block on every owned record: `aria-pressed`
+  Favorite toggle (immediate, optimistic, revert + inline error on failure);
+  five `aria-labelled` star buttons + "Clear rating" (immediate, same
+  behaviour); a labelled textarea (`maxLength` 1000) + live character count +
+  explicit "Save note"; whitespace note -> no note; a failed save keeps the
+  draft and shows an "unsaved" hint with no false "saved" state. Notes are
+  escaped plain React text - no `dangerouslySetInnerHTML`, no sanitizer
+  dependency. No album-detail page; the collection card is not redesigned.
+
+### Automated Verification (agent-run / local; no external calls)
+
+Run on a clean database, 2026-08-30:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm run test:run` | Passed: 18 Vitest files, 237 tests |
+| `npm run build` | Passed |
+| `npx supabase db reset` | Passed: 7 migrations apply in order (adds `20260831120000`) |
+| `npx supabase test db` | Passed: 7 pgTAP files, 321 tests (`collection_item_signals.test.sql` = 41) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New test coverage: pgTAP for the column shape, rating-range CHECK boundary
+(0 and 6 rejected; fractional input not asserted against `23514`), notes
+clean/length boundary, the exact `authenticated` UPDATE column privileges, a
+cross-user UPDATE affecting zero rows, `user_id`/`release_id` mutation being
+`42501`, and `anon` having no access; client tests for the partial-patch
+helper (single-key writes, clear-to-null, whitespace->null, rejects
+over-limit note / fractional or out-of-range rating / empty patch /
+unsupported key / stray `undefined` before any write, surfaces RLS errors);
+component tests including the required state-safety regression cases A-D
+(unsaved note + Favorite / + Rating; Save note single-key; sequential
+single-key merges) plus render, immediate persistence, note normalization,
+and failure rollback.
+
+### Focused Implementation Review (2026-08-30)
+
+Reviewed against: M7 approved scope, the data-ownership boundary, RLS/column
+grants, partial-update semantics, unsaved-note isolation, failure rollback,
+note plain-text safety, migration correctness, M3-M6 regression risk, secret
+hygiene.
+
+- **BLOCKER: 0. MEDIUM: 0** (after the fix below).
+- MEDIUM (fixed in `fix: tighten the personal-signals partial patch`): the
+  helper counted a key as "present" via `'key' in patch`, so a stray
+  `{ rating: undefined }` would have written `rating = null`. Now a key counts
+  only when its value is not `undefined`; a regression test covers it.
+- LOW / NOTE (deferred under deadline mode): rapid repeated clicks on
+  Favorite/Rating issue overlapping optimistic updates with no request
+  serialization; if two concurrent requests both fail, the optimistic control
+  can settle on a stale value. Very narrow (double-click + double-failure);
+  the persisted value is always authoritative on the next load. A request
+  mutex or last-write-wins guard can be added later if it matters.
+- LOW / NOTE: the note is shown only through the always-editable textarea (no
+  separate read-only rendering) - intentional minimal UX, not a defect.
+
+### Human Runtime Evidence
+
+**Human-observed local runtime.** The human performed the browser actions
+against the local app (`http://127.0.0.1:5173`) and local Supabase on
+implementation revision `9f8a0770daf9a6d1f129e4f697e512384280c773` and reported
+each result. The coding agent did not observe the browser actions - it prepared
+the local stack and two deterministic owned records for the runtime account.
+Hosted Supabase was not touched.
+
+Seed (local DB insert, no MusicBrainz):
+
+- Record A - **manual** release: Pink Floyd - The Dark Side of the Moon (1973,
+  genre `progressive rock`).
+- Record B - **provider-backed** release: Miles Davis - Kind of Blue (1959,
+  genre `jazz`), `source = catalog`, `provider = musicbrainz`, seeded locally
+  without a real MusicBrainz call.
+- Both started `rating = NULL`, `is_favorite = false`, `notes = NULL`.
+
+| # | Human test | Human-observed result |
+| --- | --- | --- |
+| 1 | Favorite persistence: toggle Favorite on Pink Floyd, refresh | Favorite remained active after refresh. PASS |
+| 2 | Rating persistence + clear: set Pink Floyd to 4 stars, refresh (persisted), Clear rating, refresh | 4 stars persisted; after Clear + refresh the rating returned to Unrated. PASS |
+| 3 | Note persistence + clear: enter "Late night listening", Save note, refresh (persisted); clear the textarea, Save note, refresh | The exact note persisted; after clearing + saving + refresh the note was empty / no note. PASS |
+| 4 | Unsaved-note isolation: type note draft "Do not save this", do **not** Save note, toggle Favorite, refresh | The Favorite change persisted; the unsaved text did **not** persist; the note reloaded empty. PASS - human confirmation of the partial-patch behaviour that a Favorite change never implicitly saves an unsaved note draft. (The precise single-key payload semantics are covered by the component/unit tests; this is not exhaustive concurrency verification.) |
+| 5 | Provider-backed item signals: on Miles Davis - Kind of Blue (catalog release), toggle Favorite on, set rating 5, enter "Essential jazz", Save note, refresh | After refresh: Favorite active, rating 5, note exactly "Essential jazz". PASS - personal signals are per collection item and work for a provider-backed release, independent of manual-release editing. No real MusicBrainz call was made. |
+| 6 | Final refresh stability: refresh the collection again | Both records loaded normally; Miles Davis still showed Favorite active / rating 5 / note "Essential jazz"; Pink Floyd did not contain the unsaved Test-4 note; no runtime error. PASS |
+
+**Milestone 7 human runtime: PASS.** All 6 focused tests passed. Human-visible
+behaviour verified: Favorite persists through refresh; rating persists and can
+be cleared back to Unrated (NULL); notes persist and can be cleared back to no
+note (NULL); an unsaved note draft is not implicitly persisted by a Favorite
+mutation; provider-backed catalog items support the same personal signals; the
+final reload is stable.
+
+Ownership / cross-user isolation was **not** browser-tested in this human run;
+it is covered by the pgTAP / RLS evidence above (own-row signal update allowed;
+a cross-user update affects zero rows; `user_id` / `release_id` mutation blocked
+with `42501`; `anon` has no access). The evidence categories are kept distinct.
+
+Provider-call accounting: M7 automated implementation - 0 OpenRouter,
+0 MusicBrainz, 0 new external APIs. Human-runtime preparation - 0 OpenRouter,
+0 MusicBrainz. Human browser runtime - 0 OpenRouter, 0 MusicBrainz. Record B
+was a deterministic local provider-backed fixture only.
+
+Local disposable runtime fixtures (the two runtime users and their two
+collection items) were removed with a local `npx supabase db reset` after this
+evidence was recorded. Nothing hosted was touched; the cleanup does not
+invalidate the recorded evidence.
+
+### Deferred Scope (documented, not defects)
+
+- Favorite-only filtering, rating filtering, and rating sorting (decision C).
+  The Milestone 6 `collectionQuery.ts` layer is unchanged.
+- `(user_id, is_favorite)` / `(user_id, rating)` indexes - deferred to
+  Milestone 9 if the curator introduces server-side candidate queries.
+- `collection_items.updated_at` / a signal-change timestamp (decision A).
+
+### Production / Hosted Status
+
+Production/hosted verification of Milestone 7 has **not** been performed. No
 production deployment is claimed.

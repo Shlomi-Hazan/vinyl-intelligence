@@ -17,6 +17,7 @@ import {
   deleteCollectionItem,
   loadCollection,
   updateManualRelease,
+  type CollectionItemPersonalSignals,
   type CollectionItemWithRelease,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
@@ -168,6 +169,24 @@ export function CollectionPanel({
     }
   }
 
+  function handleSignalsSaved(
+    itemId: string,
+    saved: CollectionItemPersonalSignals & { id: string },
+  ) {
+    setItems((current) =>
+      current.map((currentItem) =>
+        currentItem.id === itemId
+          ? {
+              ...currentItem,
+              rating: saved.rating,
+              is_favorite: saved.is_favorite,
+              notes: saved.notes,
+            }
+          : currentItem,
+      ),
+    )
+  }
+
   async function handleRemove(item: CollectionItemWithRelease) {
     const confirmed = window.confirm(
       `Remove "${item.release.title}" from your collection?`,
@@ -247,9 +266,11 @@ export function CollectionPanel({
               {visibleItems.map((item) => (
                 <div className="collection-item-shell" key={item.id}>
                   <CollectionItemCard
+                    client={client}
                     item={item}
                     onEdit={setEditingItem}
                     onRemove={handleRemove}
+                    onSignalsSaved={handleSignalsSaved}
                   />
                   {editingItem?.id === item.id ? (
                     <CollectionForm

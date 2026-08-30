@@ -41,7 +41,7 @@ export type NormalizedManualReleaseInput = {
 
 export type CollectionItemWithRelease = Pick<
   CollectionItem,
-  'id' | 'added_at' | 'created_at'
+  'id' | 'added_at' | 'created_at' | 'rating' | 'is_favorite' | 'notes'
 > & {
   release: Pick<
     Release,
@@ -58,10 +58,32 @@ export type CollectionItemWithRelease = Pick<
   >
 }
 
+/** Milestone 7 personal preference signals; all live at the collection-item level. */
+export type CollectionItemPersonalSignals = Pick<
+  CollectionItem,
+  'rating' | 'is_favorite' | 'notes'
+>
+
+/**
+ * A partial patch of personal signals. The client update path sends only the
+ * key that was mutated, so toggling favorite never persists an unsaved note
+ * draft and saving a note never clobbers favorite/rating.
+ */
+export type CollectionItemPersonalSignalsPatch = {
+  rating?: number | null
+  is_favorite?: boolean
+  notes?: string | null
+}
+
+export const NOTE_MAX_LENGTH = 1000
+
 type CollectionItemRow = CollectionItemWithRelease | {
   id: string
   added_at: string
   created_at: string
+  rating: number | null
+  is_favorite: boolean
+  notes: string | null
   release: CollectionItemWithRelease['release'] | CollectionItemWithRelease['release'][]
 }
 
@@ -190,6 +212,9 @@ function normalizeCollectionRow(row: CollectionItemRow): CollectionItemWithRelea
     id: row.id,
     added_at: row.added_at,
     created_at: row.created_at,
+    rating: typeof row.rating === 'number' ? row.rating : null,
+    is_favorite: row.is_favorite === true,
+    notes: typeof row.notes === 'string' ? row.notes : null,
     release,
   }
 }
@@ -204,6 +229,9 @@ export async function loadCollection(
         id,
         added_at,
         created_at,
+        rating,
+        is_favorite,
+        notes,
         release:releases!inner (
           id,
           artist,
@@ -253,6 +281,9 @@ export async function addManualCollectionItem(
         id,
         added_at,
         created_at,
+        rating,
+        is_favorite,
+        notes,
         release:releases!inner (
           id,
           artist,
@@ -296,6 +327,103 @@ export async function updateManualRelease(
   }
 
   return data
+}
+
+const PERSONAL_SIGNAL_KEYS = ['rating', 'is_favorite', 'notes'] as const
+
+type PersonalSignalKey = (typeof PERSONAL_SIGNAL_KEYS)[number]
+
+function normalizeRatingPatch(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (!Number.isInteger(value) || value < 1 || value > 5) {
+    throw new Error('Rating must be a whole number from 1 to 5.')
+  }
+
+  return value
+}
+
+function normalizeNotesPatch(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  if (trimmed.length > NOTE_MAX_LENGTH) {
+    throw new Error(`Note must be ${NOTE_MAX_LENGTH} characters or fewer.`)
+  }
+
+  return trimmed
+}
+
+/**
+ * Ownership-safe partial update of a collection item's personal signals. Only
+ * the keys present in `patch` are validated and written; `id`, `user_id`,
+ * `release_id`, and the timestamps are never touched. RLS and the column-level
+ * grant enforce that a user can only change their own row's signals. Returns
+ * the saved values for a safe state merge.
+ */
+export async function updateCollectionItemPersonalSignals(
+  client: BrowserSupabaseClient,
+  collectionItemId: string,
+  patch: CollectionItemPersonalSignalsPatch,
+): Promise<CollectionItemPersonalSignals & { id: string }> {
+  const unknownKey = Object.keys(patch).find(
+    (key): key is string => !PERSONAL_SIGNAL_KEYS.includes(key as PersonalSignalKey),
+  )
+
+  if (unknownKey) {
+    throw new Error(`Unsupported personal-signal field: ${unknownKey}.`)
+  }
+
+  const payload: CollectionItemPersonalSignalsPatch = {}
+
+  // A key is "present" only when its value is not undefined, so a stray
+  // `{ rating: undefined }` can never clobber the stored rating.
+  if (patch.rating !== undefined) {
+    payload.rating = normalizeRatingPatch(patch.rating)
+  }
+
+  if (patch.is_favorite !== undefined) {
+    if (typeof patch.is_favorite !== 'boolean') {
+      throw new Error('Favorite must be true or false.')
+    }
+
+    payload.is_favorite = patch.is_favorite
+  }
+
+  if (patch.notes !== undefined) {
+    payload.notes = normalizeNotesPatch(patch.notes)
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error('No personal-signal changes were provided.')
+  }
+
+  const { data, error } = await client
+    .from('collection_items')
+    .update(payload)
+    .eq('id', collectionItemId)
+    .select('id, rating, is_favorite, notes')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    id: data.id,
+    rating: typeof data.rating === 'number' ? data.rating : null,
+    is_favorite: data.is_favorite === true,
+    notes: typeof data.notes === 'string' ? data.notes : null,
+  }
 }
 
 export async function deleteCollectionItem(

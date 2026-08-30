@@ -1,9 +1,21 @@
-import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import {
+  CollectionItemPersonalControls,
+} from './CollectionItemPersonalControls.tsx'
+import type {
+  CollectionItemPersonalSignals,
+  CollectionItemWithRelease,
+} from '../lib/supabase/collection.ts'
+import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 type CollectionItemCardProps = {
+  client: BrowserSupabaseClient
   item: CollectionItemWithRelease
   onEdit: (item: CollectionItemWithRelease) => void
   onRemove: (item: CollectionItemWithRelease) => void
+  onSignalsSaved: (
+    itemId: string,
+    saved: CollectionItemPersonalSignals & { id: string },
+  ) => void
 }
 
 function metadataLine(item: CollectionItemWithRelease): string {
@@ -20,9 +32,11 @@ function metadataLine(item: CollectionItemWithRelease): string {
 }
 
 export function CollectionItemCard({
+  client,
   item,
   onEdit,
   onRemove,
+  onSignalsSaved,
 }: CollectionItemCardProps) {
   const detailLine = metadataLine(item)
   const genres = item.release.genres ?? []
@@ -46,6 +60,12 @@ export function CollectionItemCard({
           Remove
         </button>
       </div>
+
+      <CollectionItemPersonalControls
+        client={client}
+        item={item}
+        onSignalsSaved={onSignalsSaved}
+      />
     </article>
   )
 }

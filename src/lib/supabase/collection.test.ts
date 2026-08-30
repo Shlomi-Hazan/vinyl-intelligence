@@ -4,6 +4,7 @@ import {
   deleteCollectionItem,
   loadCollection,
   normalizeManualReleaseInput,
+  updateCollectionItemPersonalSignals,
   updateManualRelease,
   validateManualReleaseInput,
   type ManualReleaseInput,
@@ -164,6 +165,9 @@ function createLoadClient(options: { loadError?: Error } = {}) {
             id: 'item-1',
             added_at: '2026-08-19T10:00:00.000Z',
             created_at: '2026-08-19T10:00:00.000Z',
+            rating: 4,
+            is_favorite: true,
+            notes: 'a personal note',
             release: [releaseRow()],
           },
         ],
@@ -327,7 +331,7 @@ describe('manual collection service', () => {
     ])
   })
 
-  it('loads collection items with joined release metadata and deterministic ordering', async () => {
+  it('loads collection items with joined release metadata, item-level personal signals, and deterministic ordering', async () => {
     const { client, query } = createLoadClient()
 
     await expect(loadCollection(client)).resolves.toEqual([
@@ -335,12 +339,19 @@ describe('manual collection service', () => {
         id: 'item-1',
         added_at: '2026-08-19T10:00:00.000Z',
         created_at: '2026-08-19T10:00:00.000Z',
+        rating: 4,
+        is_favorite: true,
+        notes: 'a personal note',
         release: releaseRow(),
       },
     ])
 
     expect(client.from).toHaveBeenCalledWith('collection_items')
     expectCollectionSelectSemantics(firstMockArg(query.select))
+    // Personal signals are selected at the collection-item level, not nested
+    // under `release`.
+    const selectText = String(firstMockArg(query.select)).replace(/\s+/g, ' ')
+    expect(selectText).toMatch(/created_at,\s*rating,\s*is_favorite,\s*notes,\s*release:/)
     expect(query.order.mock.calls).toEqual([
       ['added_at', { ascending: false }],
       ['id', { ascending: false }],
@@ -486,5 +497,129 @@ describe('manual collection service', () => {
     )
 
     expect(releaseDelete).not.toHaveBeenCalled()
+  })
+})
+
+function createSignalsClient(
+  options: { updateError?: Error; saved?: Record<string, unknown> } = {},
+) {
+  const single = vi.fn(async () => {
+    if (options.updateError) {
+      return { data: null, error: options.updateError }
+    }
+
+    return {
+      data: options.saved ?? {
+        id: 'item-1',
+        rating: null,
+        is_favorite: false,
+        notes: null,
+      },
+      error: null,
+    }
+  })
+  const query = {
+    update: vi.fn(() => query),
+    eq: vi.fn(() => query),
+    select: vi.fn(() => query),
+    single,
+  }
+  const client = {
+    from: vi.fn((table: string) => {
+      if (table !== 'collection_items') {
+        throw new Error(`Unexpected table: ${table}`)
+      }
+      return query
+    }),
+  }
+
+  return { client: client as unknown as BrowserSupabaseClient, query, single }
+}
+
+describe('updateCollectionItemPersonalSignals (partial patch)', () => {
+  it('writes only the favorite key and returns the saved values', async () => {
+    const { client, query } = createSignalsClient({
+      saved: { id: 'item-1', rating: 3, is_favorite: true, notes: 'kept' },
+    })
+
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { is_favorite: true }),
+    ).resolves.toEqual({ id: 'item-1', rating: 3, is_favorite: true, notes: 'kept' })
+
+    expect(query.update).toHaveBeenCalledWith({ is_favorite: true })
+    expect(query.eq).toHaveBeenCalledWith('id', 'item-1')
+    expect(String(firstMockArg(query.select))).toBe('id, rating, is_favorite, notes')
+  })
+
+  it('writes only the rating key, including a clear to null', async () => {
+    const { client, query } = createSignalsClient()
+
+    await updateCollectionItemPersonalSignals(client, 'item-1', { rating: 5 })
+    expect(query.update).toHaveBeenCalledWith({ rating: 5 })
+
+    query.update.mockClear()
+    await updateCollectionItemPersonalSignals(client, 'item-1', { rating: null })
+    expect(query.update).toHaveBeenCalledWith({ rating: null })
+  })
+
+  it('writes only the notes key and trims / nulls whitespace-only input', async () => {
+    const { client, query } = createSignalsClient()
+
+    await updateCollectionItemPersonalSignals(client, 'item-1', { notes: '  hello  ' })
+    expect(query.update).toHaveBeenCalledWith({ notes: 'hello' })
+
+    query.update.mockClear()
+    await updateCollectionItemPersonalSignals(client, 'item-1', { notes: '   ' })
+    expect(query.update).toHaveBeenCalledWith({ notes: null })
+  })
+
+  it('rejects an over-limit note, a fractional rating, and an out-of-range rating before any write', async () => {
+    const { client, query } = createSignalsClient()
+
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { notes: 'a'.repeat(1001) }),
+    ).rejects.toThrow(/1000 characters or fewer/)
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { rating: 1.5 }),
+    ).rejects.toThrow(/whole number from 1 to 5/)
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { rating: 6 }),
+    ).rejects.toThrow(/whole number from 1 to 5/)
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { rating: 0 }),
+    ).rejects.toThrow(/whole number from 1 to 5/)
+
+    expect(query.update).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty patch and an unsupported field before any write', async () => {
+    const { client, query } = createSignalsClient()
+
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', {}),
+    ).rejects.toThrow(/No personal-signal changes/)
+    // A stray `undefined` value is not a present key and cannot clobber a signal.
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { rating: undefined }),
+    ).rejects.toThrow(/No personal-signal changes/)
+    await expect(
+      updateCollectionItemPersonalSignals(
+        client,
+        'item-1',
+        { user_id: 'x' } as unknown as Parameters<typeof updateCollectionItemPersonalSignals>[2],
+      ),
+    ).rejects.toThrow(/Unsupported personal-signal field: user_id/)
+
+    expect(query.update).not.toHaveBeenCalled()
+  })
+
+  it('surfaces Supabase / RLS errors', async () => {
+    const { client } = createSignalsClient({
+      updateError: new Error('update blocked by RLS'),
+    })
+
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { is_favorite: true }),
+    ).rejects.toThrow('update blocked by RLS')
   })
 })

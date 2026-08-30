@@ -21,6 +21,9 @@ function item(
     id: `item-${counter}`,
     added_at: `2026-08-${String(30 - counter).padStart(2, '0')}T10:00:00.000Z`,
     created_at: '2026-08-01T10:00:00.000Z',
+    rating: null,
+    is_favorite: false,
+    notes: null,
     release: {
       id: `release-${counter}`,
       artist: 'Miles Davis',

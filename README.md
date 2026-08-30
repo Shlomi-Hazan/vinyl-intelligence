@@ -33,13 +33,14 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 5 (Photo Recognition + Candidate Confirmation) is
-merged to `main`. Milestone 6 (Browse / Search / Filter) is implemented and
-verified on branch `claude/milestone-6-browse-search-filter` - automated
-verification, an independent implementation review (0 BLOCKER, 0 MEDIUM), and
-human runtime verification (PASS) - and is open as a pull request against
-`main` (not merged). Hosted/production verification and production deployment
-have not occurred and remain later milestones.
+Current status: Milestone 6 (Browse / Search / Filter, plus `releases.genres`
+metadata) is merged to `main`. Milestone 7 (Ratings / Favorites / Notes -
+personal preference signals on owned collection items) is implemented and
+verified locally on branch `claude/milestone-7-ratings-favorites-notes` -
+automated verification, a focused implementation review (0 BLOCKER, 0 MEDIUM),
+and human runtime verification (PASS, 6 focused tests) - and is ready for its
+pull request (not yet open, not merged). Hosted/production verification and
+production deployment have not occurred and remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -90,15 +91,15 @@ Implemented:
 - Deterministic client-side collection browse/search/filter/sort: search owned
   records by artist or title, filter by exact year, decade (derived), or genre
   (where stored), combine as logical AND, clear filters, result count, and five
-  compact sorts - no LLM and no external request on a filter change (Milestone
-  6, verified, PR open)
+  compact sorts - no LLM and no external request on a filter change (Milestone 6)
 - `releases.genres` metadata: catalog-sourced community-curated MusicBrainz
   genre tags (best-effort paced release-group lookup on catalog Add, never
-  overwriting existing genres) plus an optional manual Genre field (Milestone
-  6, verified, PR open)
+  overwriting existing genres) plus an optional manual Genre field (Milestone 6)
 
 Planned:
 
+- Ratings, favorites, and personal notes on owned records (Milestone 7,
+  verified locally, PR pending)
 - Listening history
 - AI recommendation workflow
 - Production deployment
