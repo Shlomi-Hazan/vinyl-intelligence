@@ -2,12 +2,15 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPanel } from './CatalogPanel.tsx'
+import { buildUserSessionKey } from '../lib/session/sessionDraft.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import {
   addCatalogReleaseToCollection,
   searchCatalog,
 } from '../lib/catalog/client.ts'
+
+const SEARCH_KEY = buildUserSessionKey('catalog-search', 'user-1')
 
 vi.mock('../lib/catalog/client.ts', () => ({
   addCatalogReleaseToCollection: vi.fn(),
@@ -253,5 +256,170 @@ describe('CatalogPanel', () => {
     resolveSearch?.([candidate()])
     expect(await screen.findByRole('article')).toBeInTheDocument()
     expect(searchCatalog).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('CatalogPanel session persistence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(searchCatalog).mockResolvedValue([])
+    vi.mocked(addCatalogReleaseToCollection).mockResolvedValue(createdItem())
+  })
+
+  it('persists the current draft query while it is being typed', async () => {
+    const user = userEvent.setup()
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    await user.type(screen.getByLabelText('Catalog search'), 'Kendrick Lamar')
+
+    const stored = JSON.parse(sessionStorage.getItem(SEARCH_KEY) ?? 'null')
+    expect(stored.draftQuery).toBe('Kendrick Lamar')
+    expect(stored.result).toBeNull()
+    expect(searchCatalog).not.toHaveBeenCalled()
+  })
+
+  it('restores an unsubmitted draft query on remount without searching', async () => {
+    const user = userEvent.setup()
+    const view = render(
+      <CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />,
+    )
+    await user.type(screen.getByLabelText('Catalog search'), 'Kendrick Lamar')
+    view.unmount()
+    vi.mocked(searchCatalog).mockClear()
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    expect(screen.getByLabelText('Catalog search')).toHaveValue('Kendrick Lamar')
+    expect(searchCatalog).not.toHaveBeenCalled()
+  })
+
+  it('persists the submitted query and normalized results after a successful search', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValue([candidate()])
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByRole('article')
+
+    const stored = JSON.parse(sessionStorage.getItem(SEARCH_KEY) ?? 'null')
+    expect(stored.result.submittedQuery).toBe('pink floyd')
+    expect(stored.result.candidates).toHaveLength(1)
+    expect(stored.result.candidates[0].title).toBe('The Dark Side of the Moon')
+  })
+
+  it('restores prior candidate results on remount without calling searchCatalog', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValue([candidate()])
+    const view = render(
+      <CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />,
+    )
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByRole('article')
+    view.unmount()
+    vi.mocked(searchCatalog).mockClear()
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    expect(await screen.findByRole('article')).toBeInTheDocument()
+    expect(screen.getByText('The Dark Side of the Moon')).toBeInTheDocument()
+    expect(searchCatalog).not.toHaveBeenCalled()
+  })
+
+  it('replaces the persisted results after a later successful search', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValueOnce([candidate()])
+    vi.mocked(searchCatalog).mockResolvedValueOnce([
+      candidate({
+        providerReleaseId: '33333333-3333-4333-8333-333333333333',
+        title: 'Wish You Were Here',
+        releaseYear: 1975,
+      }),
+    ])
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByText('The Dark Side of the Moon')
+
+    await user.type(screen.getByLabelText('Catalog search'), ' wish you were here')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByText('Wish You Were Here')
+
+    const stored = JSON.parse(sessionStorage.getItem(SEARCH_KEY) ?? 'null')
+    expect(stored.result.submittedQuery).toBe('pink floyd wish you were here')
+    expect(stored.result.candidates[0].title).toBe('Wish You Were Here')
+  })
+
+  it('restores a legitimate zero-result search without searching again', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValue([])
+    const view = render(
+      <CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />,
+    )
+    await user.type(screen.getByLabelText('Catalog search'), 'no such album')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByText('No MusicBrainz releases matched that search.')
+    view.unmount()
+    vi.mocked(searchCatalog).mockClear()
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    expect(
+      await screen.findByText('No MusicBrainz releases matched that search.'),
+    ).toBeInTheDocument()
+    expect(searchCatalog).not.toHaveBeenCalled()
+  })
+
+  it('does not persist a transient search error as a durable state', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockRejectedValue(new Error('MusicBrainz unavailable'))
+    const view = render(
+      <CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />,
+    )
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByText('MusicBrainz unavailable')
+
+    const stored = JSON.parse(sessionStorage.getItem(SEARCH_KEY) ?? 'null')
+    expect(stored.result).toBeNull()
+    expect(stored.draftQuery).toBe('pink floyd')
+
+    view.unmount()
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+    expect(screen.queryByText('MusicBrainz unavailable')).not.toBeInTheDocument()
+  })
+
+  it('ignores and removes malformed catalog-search session state', async () => {
+    sessionStorage.setItem(SEARCH_KEY, 'definitely not json')
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />)
+
+    expect(screen.getByLabelText('Catalog search')).toHaveValue('')
+    expect(searchCatalog).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(SEARCH_KEY)).toBeNull()
+  })
+
+  it('namespaces catalog-search state per authenticated user', async () => {
+    const user = userEvent.setup()
+    vi.mocked(searchCatalog).mockResolvedValue([candidate()])
+    const view = render(
+      <CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-1" />,
+    )
+    await user.type(screen.getByLabelText('Catalog search'), 'pink floyd')
+    await user.click(screen.getByRole('button', { name: 'Search catalog' }))
+    await screen.findByRole('article')
+    view.unmount()
+    vi.mocked(searchCatalog).mockClear()
+
+    render(<CatalogPanel client={client} onCatalogItemAdded={vi.fn()} userId="user-2" />)
+
+    expect(screen.getByLabelText('Catalog search')).toHaveValue('')
+    expect(screen.queryByRole('article')).not.toBeInTheDocument()
+    expect(searchCatalog).not.toHaveBeenCalled()
+    expect(
+      sessionStorage.getItem(buildUserSessionKey('catalog-search', 'user-1')),
+    ).not.toBeNull()
   })
 })

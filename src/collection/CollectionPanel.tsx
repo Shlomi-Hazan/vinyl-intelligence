@@ -14,6 +14,12 @@ import {
 type CollectionPanelProps = {
   client: BrowserSupabaseClient
   refreshKey?: number
+  /**
+   * Authenticated user id. When present, the manual add-form draft survives a
+   * refresh / same-tab navigation via sessionStorage (restore never writes to
+   * the database).
+   */
+  userId?: string
 }
 
 function getErrorMessage(error: unknown): string {
@@ -38,7 +44,11 @@ function sortCollection(
   })
 }
 
-export function CollectionPanel({ client, refreshKey = 0 }: CollectionPanelProps) {
+export function CollectionPanel({
+  client,
+  refreshKey = 0,
+  userId,
+}: CollectionPanelProps) {
   const [items, setItems] = useState<CollectionItemWithRelease[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -168,7 +178,11 @@ export function CollectionPanel({ client, refreshKey = 0 }: CollectionPanelProps
         <h2 id="collection-title">Your records</h2>
       </div>
 
-      <CollectionForm mode="add" onSubmit={handleAdd} />
+      <CollectionForm
+        draftStorageUserId={userId}
+        mode="add"
+        onSubmit={handleAdd}
+      />
 
       {notice ? <p className="notice">{notice}</p> : null}
       {actionError ? <p className="error">{actionError}</p> : null}

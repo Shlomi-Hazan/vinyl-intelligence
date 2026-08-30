@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
 import { CatalogCandidateList } from './CatalogCandidateList.tsx'
+import { CatalogPhotoPanel } from './CatalogPhotoPanel.tsx'
 import { CatalogSearchForm } from './CatalogSearchForm.tsx'
+import {
+  loadCatalogSearchDraft,
+  saveCatalogSearchDraft,
+} from './catalogSearchDraft.ts'
 import {
   addCatalogReleaseToCollection,
   searchCatalog,
@@ -11,6 +16,12 @@ import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 type CatalogPanelProps = {
   client: BrowserSupabaseClient
   onCatalogItemAdded: () => void
+  /**
+   * Authenticated user id. When present, the draft query and last successful
+   * result set survive a refresh / same-tab navigation via sessionStorage (no
+   * new MusicBrainz request on restore).
+   */
+  userId?: string
 }
 
 function getErrorMessage(error: unknown): string {
@@ -21,26 +32,60 @@ function getErrorMessage(error: unknown): string {
   return 'Catalog action failed. Please try again.'
 }
 
-export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) {
-  const [query, setQuery] = useState('')
-  const [candidates, setCandidates] = useState<CatalogCandidate[]>([])
-  const [hasSearched, setHasSearched] = useState(false)
+export function CatalogPanel({
+  client,
+  onCatalogItemAdded,
+  userId,
+}: CatalogPanelProps) {
+  const [restoredDraft] = useState(() =>
+    userId ? loadCatalogSearchDraft(userId) : null,
+  )
+  const [query, setQuery] = useState(restoredDraft?.draftQuery ?? '')
+  const [candidates, setCandidates] = useState<CatalogCandidate[]>(
+    restoredDraft?.result?.candidates ?? [],
+  )
+  const [hasSearched, setHasSearched] = useState(
+    restoredDraft?.result != null,
+  )
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [addingCandidateId, setAddingCandidateId] = useState<string | null>(null)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
   const searchInProgress = useRef(false)
+  // Mirrors the last completed search so a draft-only write does not drop it.
+  const lastResultRef = useRef(restoredDraft?.result ?? null)
 
-  // A MusicBrainz search happens only on an explicit form submit / Enter.
+  const persistSearchDraft = useCallback(
+    (draftQuery: string) => {
+      if (userId) {
+        saveCatalogSearchDraft(userId, {
+          draftQuery,
+          result: lastResultRef.current,
+        })
+      }
+    },
+    [userId],
+  )
+
+  const handleQueryChange = useCallback(
+    (nextQuery: string) => {
+      setQuery(nextQuery)
+      persistSearchDraft(nextQuery)
+    },
+    [persistSearchDraft],
+  )
+
+  // A MusicBrainz search happens only on an explicit action: the search form
+  // submit / Enter, or the "search from these clues" button in the photo panel.
   // Typing in the input never calls the provider, so editing an already
   // searched query cannot generate background request bursts.
-  const runSearch = useCallback(async () => {
+  const runSearch = useCallback(async (explicitQuery?: string) => {
     if (searchInProgress.current) {
       return
     }
 
-    const trimmedQuery = query.trim()
+    const trimmedQuery = (explicitQuery ?? query).trim()
     setHasSearched(true)
     setNotice(null)
     setSearchError(null)
@@ -56,7 +101,15 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
     setIsSearching(true)
 
     try {
-      setCandidates(await searchCatalog(client, trimmedQuery))
+      const nextCandidates = await searchCatalog(client, trimmedQuery)
+      setCandidates(nextCandidates)
+      // Persist only a completed search (results, or a legitimate zero-result
+      // response). A transient error below never becomes a restored state.
+      lastResultRef.current = {
+        submittedQuery: trimmedQuery,
+        candidates: nextCandidates,
+      }
+      persistSearchDraft(explicitQuery ?? query)
     } catch (error) {
       setCandidates([])
       setSearchError(getErrorMessage(error))
@@ -64,7 +117,7 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
       searchInProgress.current = false
       setIsSearching(false)
     }
-  }, [client, query])
+  }, [client, persistSearchDraft, query])
 
   async function handleAdd(candidate: CatalogCandidate) {
     setAddingCandidateId(candidate.providerReleaseId)
@@ -100,9 +153,18 @@ export function CatalogPanel({ client, onCatalogItemAdded }: CatalogPanelProps) 
         <h2 id="catalog-title">Search MusicBrainz</h2>
       </div>
 
+      <CatalogPhotoPanel
+        client={client}
+        onUseQuery={(nextQuery) => {
+          handleQueryChange(nextQuery)
+          void runSearch(nextQuery)
+        }}
+        userId={userId}
+      />
+
       <CatalogSearchForm
         isSearching={isSearching}
-        onQueryChange={setQuery}
+        onQueryChange={handleQueryChange}
         onSubmit={() => void runSearch()}
         query={query}
       />

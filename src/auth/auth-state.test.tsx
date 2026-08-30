@@ -31,6 +31,19 @@ const sessionA = {
   user: userA,
 } as Session
 
+const userB = {
+  id: '00000000-0000-4000-8000-0000000000b2',
+  email: 'user-b@example.test',
+} as User
+
+const sessionB = {
+  access_token: 'test-access-token-b',
+  refresh_token: 'test-refresh-token-b',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: userB,
+} as Session
+
 const profileA: Profile = {
   id: userA.id,
   display_name: 'Alice',
@@ -388,6 +401,35 @@ describe('auth and profile workflow', () => {
     })
 
     expect(client.__query.update).not.toHaveBeenCalled()
+  })
+
+  it('remounts the user-scoped catalog and collection UI when the authenticated user changes', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const client = createFakeClient({ session: sessionA, profile: profileA })
+    const user = userEvent.setup()
+
+    render(<App client={client} />)
+
+    expect(await screen.findByText('user-a@example.test')).toBeInTheDocument()
+    await user.type(await screen.findByLabelText('Artist'), 'Draft by user A')
+    expect(screen.getByLabelText('Artist')).toHaveValue('Draft by user A')
+
+    // Supabase reports a different authenticated user in the same tab.
+    act(() => {
+      client.__emitAuthStateChange(sessionB)
+    })
+
+    expect(await screen.findByText('user-b@example.test')).toBeInTheDocument()
+    // Distinct `catalog-<id>` / `collection-<id>` keys force a remount, so
+    // user A's in-memory draft is not retained for user B.
+    expect(screen.getByLabelText('Artist')).toHaveValue('')
+    expect(
+      consoleError.mock.calls.some((call) =>
+        String(call[0]).includes('same key'),
+      ),
+    ).toBe(false)
+
+    consoleError.mockRestore()
   })
 
   it('surfaces Supabase auth errors without fabricating a session', async () => {
