@@ -24,7 +24,8 @@ Existing specs/spikes:
 - [0004 Milestone 3 Manual Collection CRUD](0004-milestone-3-manual-collection-crud.md)
 - [0005 Milestone 4 Catalog API](0005-milestone-4-catalog-api.md)
 - [0006 Milestone 5 Photo Recognition](0006-milestone-5-photo-recognition.md) - implemented and verified (merged)
-- [0007 Milestone 6 Browse / Search / Filter](0007-milestone-6-browse-search-filter.md) - implemented and verified (PR open)
+- [0007 Milestone 6 Browse / Search / Filter](0007-milestone-6-browse-search-filter.md) - implemented and verified (merged)
+- [0008 Milestone 7 Ratings / Favorites / Notes](0008-milestone-7-ratings-favorites-notes.md) - planned, awaiting human approval
 
 Likely milestone specs:
 

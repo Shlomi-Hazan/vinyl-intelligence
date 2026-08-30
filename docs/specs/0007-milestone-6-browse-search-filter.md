@@ -1,7 +1,7 @@
 # 0007 Milestone 6 Browse / Search / Filter Specification
 
 Status: implemented and verified (automated + independent implementation review
-+ human runtime); ready for milestone pull request
++ human runtime); merged to `main` in PR #6
 
 Milestone: 6 - Browse / Search / Filter
 

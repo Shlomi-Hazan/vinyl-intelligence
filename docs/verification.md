@@ -1542,8 +1542,9 @@ Implementation commits:
 
 Status: implemented and verified - automated verification (below), an
 independent implementation review (0 BLOCKER, 0 MEDIUM), and human runtime
-verification (PASS, below). Ready for the milestone pull request. Hosted
-Supabase / production deployment NOT verified (deferred).
+verification (PASS, below). Merged to `main` in PR #6
+(`3583900cc19dae9db9a2e6f37846de7a8af5a665`). Hosted Supabase / production
+deployment NOT verified (deferred).
 
 ### Implemented
 
