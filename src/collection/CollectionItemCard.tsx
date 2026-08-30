@@ -25,6 +25,7 @@ export function CollectionItemCard({
   onRemove,
 }: CollectionItemCardProps) {
   const detailLine = metadataLine(item)
+  const genres = item.release.genres ?? []
 
   return (
     <article className="collection-card">
@@ -32,6 +33,9 @@ export function CollectionItemCard({
         <h3>{item.release.title}</h3>
         <p className="collection-artist">{item.release.artist}</p>
         {detailLine ? <p className="field-hint">{detailLine}</p> : null}
+        {genres.length > 0 ? (
+          <p className="collection-genres">{genres.join(', ')}</p>
+        ) : null}
       </div>
 
       <div className="collection-card-actions">

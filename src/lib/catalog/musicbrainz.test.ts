@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   buildMusicBrainzLookupUrl,
+  buildMusicBrainzReleaseGroupGenresUrl,
   buildMusicBrainzSearchUrl,
   lookupMusicBrainzRelease,
+  lookupMusicBrainzReleaseGroupGenres,
   MusicBrainzError,
+  normalizeMusicBrainzGenres,
   normalizeMusicBrainzRelease,
   searchMusicBrainzReleases,
   type FetchFunction,
@@ -289,5 +292,110 @@ describe('MusicBrainz adapter', () => {
     expect(String(fetchImpl.mock.calls.at(0)?.[0])).toContain(
       `/release/${releaseId}`,
     )
+  })
+})
+
+describe('MusicBrainz release-group genre enrichment', () => {
+  it('builds a bounded release-group genres URL', () => {
+    const url = buildMusicBrainzReleaseGroupGenresUrl(releaseGroupId)
+
+    expect(url.origin).toBe('https://musicbrainz.org')
+    expect(url.pathname).toBe(`/ws/2/release-group/${releaseGroupId}`)
+    expect(url.searchParams.get('fmt')).toBe('json')
+    expect(url.searchParams.get('inc')).toBe('genres')
+  })
+
+  it('normalizes genre names: positive count, lowercase, trimmed, deduped, capped', () => {
+    const genres = normalizeMusicBrainzGenres({
+      genres: [
+        { name: '  Jazz  ', count: 5 },
+        { name: 'JAZZ', count: 2 },
+        { name: 'Hard Bop', count: 1 },
+        { name: 'not voted', count: 0 },
+        { name: 'no count field' },
+        { name: 42 },
+        { name: 'x'.repeat(41), count: 3 },
+      ],
+    })
+
+    expect(genres).toEqual(['jazz', 'hard bop', 'no count field'])
+  })
+
+  it('caps the genre list at 12', () => {
+    const genres = normalizeMusicBrainzGenres({
+      genres: Array.from({ length: 20 }, (_unused, index) => ({
+        name: `genre-${index}`,
+        count: 1,
+      })),
+    })
+
+    expect(genres).toHaveLength(12)
+  })
+
+  it('returns an empty list for a malformed body', () => {
+    expect(normalizeMusicBrainzGenres({})).toEqual([])
+    expect(normalizeMusicBrainzGenres({ genres: 'nope' })).toEqual([])
+    expect(normalizeMusicBrainzGenres(null)).toEqual([])
+  })
+
+  it('fetches and returns cleaned genres for a release-group', async () => {
+    const fetchImpl = vi.fn(
+      async (input: string | URL, init?: RequestInit) => {
+        void input
+        void init
+        return jsonResponse({
+          genres: [
+            { name: 'Ambient', count: 4 },
+            { name: 'Electronic', count: 2 },
+          ],
+        })
+      },
+    ) satisfies FetchFunction
+
+    await expect(
+      lookupMusicBrainzReleaseGroupGenres({ fetchImpl, releaseGroupId, userAgent }),
+    ).resolves.toEqual(['ambient', 'electronic'])
+
+    expect(String(fetchImpl.mock.calls.at(0)?.[0])).toContain(
+      `/release-group/${releaseGroupId}`,
+    )
+  })
+
+  it('is best effort: returns [] on 404 / 503 / timeout / malformed / missing id, never throws', async () => {
+    const notFound = vi.fn(async () => jsonResponse({}, 404)) satisfies FetchFunction
+    await expect(
+      lookupMusicBrainzReleaseGroupGenres({ fetchImpl: notFound, releaseGroupId, userAgent }),
+    ).resolves.toEqual([])
+
+    const rateLimited = vi.fn(async () => jsonResponse({}, 503)) satisfies FetchFunction
+    await expect(
+      lookupMusicBrainzReleaseGroupGenres({ fetchImpl: rateLimited, releaseGroupId, userAgent }),
+    ).resolves.toEqual([])
+
+    const aborted = vi.fn(async () => {
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      throw error
+    }) satisfies FetchFunction
+    await expect(
+      lookupMusicBrainzReleaseGroupGenres({ fetchImpl: aborted, releaseGroupId, userAgent }),
+    ).resolves.toEqual([])
+
+    const brokenJson = vi.fn(async () => new Response('not json', { status: 200 })) satisfies FetchFunction
+    await expect(
+      lookupMusicBrainzReleaseGroupGenres({ fetchImpl: brokenJson, releaseGroupId, userAgent }),
+    ).resolves.toEqual([])
+
+    const neverCalled = vi.fn(
+      async (input: string | URL, init?: RequestInit) => {
+        void input
+        void init
+        return jsonResponse({})
+      },
+    ) satisfies FetchFunction
+    await expect(
+      lookupMusicBrainzReleaseGroupGenres({ fetchImpl: neverCalled, releaseGroupId: '', userAgent }),
+    ).resolves.toEqual([])
+    expect(neverCalled).not.toHaveBeenCalled()
   })
 })

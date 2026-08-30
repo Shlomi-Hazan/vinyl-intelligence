@@ -21,6 +21,7 @@ function manualInput(
     catalogNumber: '  AS-9203  ',
     country: '  US  ',
     format: '  LP  ',
+    genre: '',
     ...overrides,
   }
 }
@@ -143,6 +144,7 @@ function expectReleaseMetadataSelectSemantics(selectArg: unknown) {
     'catalog_number',
     'country',
     'format',
+    'genres',
     'updated_at',
   ]) {
     expect(selectText).toContain(field)
@@ -275,7 +277,12 @@ describe('manual collection service', () => {
       catalog_number: 'AS-9203',
       country: 'US',
       format: 'LP',
+      genres: [],
     })
+
+    expect(
+      normalizeManualReleaseInput(manualInput({ genre: '  Spiritual Jazz  ' })).genres,
+    ).toEqual(['spiritual jazz'])
 
     expect(
       normalizeManualReleaseInput(
@@ -367,6 +374,7 @@ describe('manual collection service', () => {
       catalog_number: 'AS-9203',
       country: 'US',
       format: 'LP',
+      genres: [],
     })
     expect(itemQuery.insert).toHaveBeenCalledWith({ release_id: 'release-1' })
   })
@@ -418,6 +426,7 @@ describe('manual collection service', () => {
       catalog_number: null,
       country: 'GB',
       format: 'Gatefold LP',
+      genres: [],
     })
     expect(query.eq).toHaveBeenCalledWith('id', 'release-1')
     expectReleaseMetadataSelectSemantics(firstMockArg(query.select))

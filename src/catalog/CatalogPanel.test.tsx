@@ -53,6 +53,7 @@ function createdItem() {
       catalog_number: 'SHVL 804',
       country: 'GB',
       format: 'LP',
+      genres: ['progressive rock'],
       updated_at: '2026-08-26T10:00:00.000Z',
     },
   }

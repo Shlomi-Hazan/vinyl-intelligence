@@ -78,7 +78,6 @@ select ok(
       and table_name = 'releases'
       and column_name in (
         'provider_master_id',
-        'genres',
         'styles',
         'cover_url',
         'tracklist',
@@ -88,6 +87,8 @@ select ok(
   ),
   'releases does not include deferred provider master/filter columns'
 );
+-- `genres` moved from deferred to implemented in Milestone 6; its shape,
+-- constraint, and privileges are covered by release_genres.test.sql.
 
 select ok(
   not exists (

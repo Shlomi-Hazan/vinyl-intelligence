@@ -1524,3 +1524,233 @@ Production/hosted verification of Milestone 5 has **not** been performed. There
 is no Netlify production deployment and no hosted Supabase run. Production
 verification is deferred to the deployment milestone. No production deployment
 is claimed.
+
+## Milestone 6 Evidence - Browse / Search / Filter
+
+Date: 2026-08-30
+
+Branch: `claude/milestone-6-browse-search-filter`
+
+Baseline (Milestone 5 merge on `main`):
+`2c125bc006bb2631da8356d8c51daf5ef9772a13`
+
+Implementation commits:
+
+- `db: add release genre metadata`
+- `feat: enrich catalog releases with genres`
+- `feat: add collection browse search and filters`
+
+Status: implemented and verified - automated verification (below), an
+independent implementation review (0 BLOCKER, 0 MEDIUM), and human runtime
+verification (PASS, below). Ready for the milestone pull request. Hosted
+Supabase / production deployment NOT verified (deferred).
+
+### Implemented
+
+- Deterministic, dependency-free collection browse/search/filter/sort
+  (`src/collection/collectionQuery.ts`) over the collection already loaded
+  through the existing RLS-authoritative browser query. Search is
+  case-insensitive substring on artist OR title (trimmed); exact-year filter;
+  decade filter derived from `release_year` (`Math.floor(year/10)*10 + 's'`,
+  never persisted); genre filter (case-insensitive membership); logical AND
+  across categories; a null year or empty genre array is simply non-matching
+  and never throws. Five sorts (recently added [default], artist A-Z, album
+  A-Z, year newest, year oldest) with unknown years last and the original
+  recency order as the deterministic tiebreak.
+- `CollectionLibraryControls` above the existing owned-record list: search box,
+  decade `<select>` (shown only when the collection has dated records), exact
+  year input with an invalid-input hint, genre `<select>` (shown only when the
+  collection has genre data), sort `<select>`, "Clear filters" (enabled only
+  when a filter is active), and a live "N of M records" count. A no-results
+  state points at "Clear filters".
+- No new Netlify Function; no service-role key in the browser. A filter or sort
+  change triggers zero reloads, zero MusicBrainz requests, zero OpenRouter
+  requests, and zero database writes (asserted by tests).
+- `public.releases.genres text[]` (migration `20260830120000_add_release_genres.sql`),
+  NOT NULL default `'{}'`, validated by the pure `IMMUTABLE`
+  `public.release_genres_valid(text[])` (<= 12 genres; no NULL element; each
+  trimmed, lowercase, 1..40 chars). No GIN index (client-side filtering only;
+  deferred). No persisted decade column.
+- Least privilege: `authenticated` gains only `insert (genres)` /
+  `update (genres)` column grants on `releases`; `EXECUTE` on the validator is
+  granted only to `authenticated` and `service_role`; `service_role` table
+  privileges are unchanged; RLS policy set unchanged;
+  `touch_release_updated_at` recreated to also fire on a `genres` change.
+- Catalog Add genre enrichment: one best-effort MusicBrainz
+  `GET /ws/2/release-group/<MBID>?inc=genres&fmt=json` (~6s timeout, no retry),
+  run after `paceProviderRequest()` and only when the candidate has a
+  release-group id, wrapped so it can never fail the confirmed Add. Genre
+  `name`s with a positive vote `count` (or none) are lowercased, trimmed,
+  de-duplicated, and capped at 12. MusicBrainz genres are community-curated
+  tags (subjective), not objective facts.
+- No-erase on shared rows: `genres` is included in the on-conflict release
+  upsert only when enrichment produced one or more, so a failed or empty
+  enrichment never overwrites an existing shared release's genres; a brand-new
+  row falls back to the column default `'{}'`.
+- The Milestone 4 catalog **search** path is unchanged and makes no genre
+  request. `CatalogCandidate` is unchanged.
+- Optional manual "Genre" field on the manual add/edit form (blank -> `[]`,
+  otherwise one lowercased/trimmed value); the Milestone 5 manual add-form
+  `sessionStorage` draft also preserves it. Genres are shown on collection
+  cards.
+
+### Automated Verification (agent-run / local; no real external calls)
+
+Run on a clean database on 2026-08-30:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` (`tsc -b --noEmit`) | Passed |
+| `npm run lint` (`eslint .`) | Passed |
+| `npm run test:run` (`vitest run`) | Passed: 17 test files, 218 tests |
+| `npm run build` | Passed |
+| `npx supabase db reset` | Passed: 6 migrations apply in order (adds `20260830120000_add_release_genres.sql`) |
+| `npx supabase test db` | Passed: 6 database test files, 280 tests |
+| `npx supabase db lint` | Passed: no schema errors found |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities` |
+
+New / changed test coverage:
+
+- `src/collection/collectionQuery.test.ts`: no-filter full list; artist and
+  title match; case-insensitive partial + whitespace trim; exact year and
+  non-integer year input; decade derivation incl. `2000 -> 2000s`; genre match
+  (case-insensitive) and empty-genre non-match; combined AND; null year;
+  no-results; `hasActiveFilters`; every sort incl. null-year-last and the
+  recency tiebreak; `availableDecades` / `availableGenres` only reflect what is
+  in the collection; the pipeline never invents rows.
+- `src/collection/CollectionPanel.test.tsx`: controls + result count render
+  once there are records; no controls for an empty collection; genre selector
+  hidden when no record has a genre; search / decade+genre (AND) / exact-year
+  filtering; no-results state and "Clear filters" restore; sort by artist;
+  **a filter/sort change causes no `loadCollection` reload and no
+  add/update/delete mutation**; genres shown on cards; plus manual genre
+  add / edit / clear and the Genre `sessionStorage` draft surviving remount.
+- `netlify/functions/catalog-functions.test.ts`: the release-group genre
+  lookup is paced (second `paceProviderRequest`), genre persisted on success,
+  **`genres` omitted from the upsert on empty enrichment (no-erase)**, Add
+  still succeeds when the lookup throws, lookup skipped with no release-group
+  id, and catalog search performs no genre lookup.
+- `src/lib/catalog/musicbrainz.test.ts`: genre URL shape, name
+  normalization/cap, and best-effort `[]` on 404 / 503 / abort / malformed /
+  missing id (never throws).
+- `supabase/tests/database/release_genres.test.sql` (pgTAP, 39 tests): column
+  shape/default; validator + CHECK (reject NULL element / blank / untrimmed /
+  uppercase / >40 / >12; accept empty and normal arrays); `authenticated`
+  `genres` column privileges; `service_role` catalog genre writes with its
+  existing privileges; RLS policy set unchanged; `updated_at` bumps on a genre
+  change; an explicit assertion that **no GIN index** exists.
+- `supabase/tests/database/collection_rls.test.sql`: `genres` removed from the
+  deferred-columns assertion (now implemented).
+
+### Implementation Review Correction Pass (2026-08-30)
+
+An independent implementation review found 0 BLOCKER, 1 MEDIUM, and one small
+spec/behaviour mismatch. Closed in `fix: close milestone 6 implementation
+review findings`:
+
+- **MEDIUM - retry -> genre MusicBrainz pacing gap.** The M4 rate-limit retry
+  helper backed off (`delay(1200)`) but did not update the shared per-instance
+  provider pacer, so the new Milestone 6 release-group genre GET could fire
+  immediately after a retried release lookup. Fixed inside
+  `lookupReleaseWithRateLimitRetry`: on `provider_rate_limited` it now does
+  `delay -> paceProviderRequest -> retry lookup`. Order and count are
+  test-locked: a normal enriched Add paces twice (before the release lookup,
+  before the genre lookup); a rate-limited-then-retried Add paces three times
+  (before initial lookup, before retry lookup, before genre lookup); the
+  one-retry maximum is unchanged.
+- **LOW - exact-year range.** `parseYear` accepted any integer; a value like
+  `1800` became an active filter that always matched nothing. Now a year input
+  is a valid filter only if it is a whole integer in `1900..2100` (the
+  persisted `releases.release_year` range); otherwise no year filter is applied
+  and `yearFilterIsInvalid(...)` is true so the existing hint shows. Tests
+  cover `1899` invalid, `1900`/`2100` valid, `2101` invalid.
+
+### Local PostgREST no-erase probe (2026-08-30)
+
+Behavioural proof against the real local Supabase/PostgREST stack (no
+MusicBrainz, no OpenRouter). After a clean `supabase db reset`: a service-role
+`.upsert(...)` seeded a `source='catalog'` release with
+`genres = ['progressive rock']`; a second service-role `.upsert(...)` with the
+exact payload shape `catalogReleasePayload` produces when enrichment is empty
+(no `genres` key, same `onConflict: 'provider,provider_release_id'`) was
+executed; a follow-up select returned `genres = ['progressive rock']`.
+
+**RESULT: PASS** - the existing genres survived the omitted-`genres` upsert. The
+synthetic row was removed by the standard `supabase db reset` in the
+verification flow.
+
+### Human Runtime Evidence
+
+These results were **observed by the human** in a browser against the local app
+(`http://127.0.0.1:5173`) and local Supabase; hosted Supabase was untouched.
+The coding agent did not observe the browser actions - it prepared the local
+stack and a deterministic four-record owned collection for the runtime account
+and recorded the human's reported results below.
+
+- Runtime environment: local app + local Supabase, branch
+  `claude/milestone-6-browse-search-filter`, implementation revision under test
+  `fe5631b0a6f86702a7726049c404f0c9d912be51`, an authenticated local runtime
+  account, hosted Supabase untouched.
+- Seed (local DB insert, no MusicBrainz): Pink Floyd - The Dark Side of the
+  Moon (1973, `progressive rock`); Miles Davis - Kind of Blue (1959, `jazz`);
+  Nirvana - Nevermind (1991, `grunge`); Unknown Artist - Mystery Record (null
+  year, no genre).
+
+| # | Human test | Human-observed result |
+| --- | --- | --- |
+| 1 | Text search `pink` | Only Pink Floyd - The Dark Side of the Moon; "1 of 4 records". PASS |
+| 2 | Genre filter `jazz` (after Clear) | Only Miles Davis - Kind of Blue; "1 of 4 records". PASS |
+| 3 | Decade filter `1990s` (after Clear) | Only Nirvana - Nevermind; "1 of 4 records". PASS |
+| 4 | Exact year `1973` (after Clear) | Only Pink Floyd - The Dark Side of the Moon; "1 of 4 records". PASS |
+| 5 | Combined: search `dark` + genre `progressive rock` + decade `1970s` | Only Pink Floyd - The Dark Side of the Moon; "1 of 4 records". Confirms logical AND. PASS |
+| 6 | Search `zzzz` then Clear | "No records match these filters", "0 of 4 records"; Clear restored "4 of 4 records". PASS |
+| 7 | Sort Artist A-Z | Miles Davis, Nirvana, Pink Floyd, Unknown Artist. PASS |
+| 8 | Sort Year (newest) | Nirvana 1991, Pink Floyd 1973, Miles Davis 1959, Unknown Artist (null year) last. Confirms null year sorts last. PASS |
+| 9 | Manual add: Test Artist / Test Album / 2005 / Genre "Electronic" | Collection became 5 records; stored/displayed genre normalized to `electronic`; genre filter gained `electronic`; filtering `electronic` showed only Test Artist - Test Album ("1 of 5 records"). PASS |
+| 10 | Manual edit Test Album genre `electronic` -> `ambient` while the `electronic` filter was active | Record immediately stopped matching; visible count "0 of 5 records". PASS |
+| 11 | Clear filters, refresh | Test Artist - Test Album still present, genre still `ambient`, genre filter offered `ambient`, filtering `ambient` showed only Test Album ("1 of 5 records"). Confirms persistence through `loadCollection`, not only React state. PASS |
+| 12 | Exact year `1800` (after Clear) | Collection stayed unfiltered ("5 of 5 records"); the invalid-year hint appeared stating the valid 1900..2100 range; no crash. Confirms the implementation-review year-range correction. PASS |
+| 13 | Manual Add form populated (Draft Artist / Draft Album / Genre "Shoegaze") but not submitted, then browser refresh | All three draft values restored; no record was auto-inserted. Confirms the Genre field participates in the Milestone 5 `sessionStorage` draft with no persistence side effect. PASS |
+| 14 | One deliberate real MusicBrainz catalog Add: search "The Dark Side of the Moon Pink Floyd", select a result, Add | Catalog Add succeeded; the collection item persisted; **no genre appeared on the resulting card**. PASS - genre enrichment is deliberately best-effort and MusicBrainz genre coverage is uneven, so an absent release-group genre must not fail Add. This does **not** demonstrate positive genre enrichment; the positive-persistence path is covered by the automated adapter/handler tests. This was the only deliberate real MusicBrainz runtime action of the Milestone 6 human phase; no OpenRouter call was made. |
+| 15 | Clear filters, refresh (final stability) | Collection loaded normally; Test Artist - Test Album persisted with `ambient`; the catalog-added record persisted; search `Miles` narrowed to Miles Davis - Kind of Blue; no error / crash / stuck UI. PASS |
+
+**Milestone 6 human runtime: PASS.** Core behaviours verified: owned-collection
+browsing, text search, genre filter, decade filter, exact year, combined AND
+filters, clear filters, no-results state, result counts, artist sort, year sort
+with null-year last, manual Genre create / edit / persist-after-refresh,
+invalid-year handling, manual Genre draft persistence without auto-submit, real
+catalog Add remaining successful when optional genre enrichment returns no
+visible genre, and final refresh/search stability. No human-runtime BLOCKER or
+MEDIUM finding was observed.
+
+Provider-call accounting across the two phases:
+
+- Automated verification phase: zero real OpenRouter calls; zero deliberate
+  MusicBrainz calls (adapter exercised only with mocked fetch).
+- Human runtime phase: exactly one deliberate real MusicBrainz catalog
+  search/add flow (Human Test 14); zero OpenRouter calls. The human did not
+  demonstrate positive MusicBrainz genre coverage.
+
+Local runtime fixture rows (the seeded four records, the manual `ambient`
+record, the draft, and the one catalog-added record) were intentionally cleared
+with a final local `npx supabase db reset` **after** this evidence was
+recorded. Nothing was applied to hosted Supabase.
+
+### Known Notes
+
+- MusicBrainz genre coverage is uneven; some catalog-added records will
+  legitimately have no genre, and releases added before Milestone 6 have none
+  until re-added or manually edited (no backfill). The genre selector is shown
+  only when data exists, so the feature degrades honestly. NOTE.
+- The extra Add GET marginally increases MusicBrainz load; mitigated by being
+  one paced, best-effort, no-retry call per explicit user Add. NOTE.
+- Client-side filtering assumes the whole collection is loaded; pagination
+  would require moving filtering server-side or scoping it to the loaded page.
+  Out of scope for Milestone 6. NOTE.
+- Diacritic-insensitive search is out of scope for Milestone 6. NOTE.
+
+### Production / Hosted Status
+
+Production/hosted verification of Milestone 6 has **not** been performed. No
+production deployment is claimed.

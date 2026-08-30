@@ -3,6 +3,9 @@ import type { CatalogCandidate, CatalogErrorCode } from './types.ts'
 const MUSICBRAINZ_API_BASE_URL = 'https://musicbrainz.org/ws/2'
 const MUSICBRAINZ_PROVIDER = 'musicbrainz'
 const DEFAULT_TIMEOUT_MS = 8_000
+const GENRE_LOOKUP_TIMEOUT_MS = 6_000
+const MAX_GENRES = 12
+const GENRE_MAX_LENGTH = 40
 const RELEASE_FIELD_LIMITS = {
   artist: 160,
   title: 200,
@@ -35,6 +38,10 @@ export type MusicBrainzSearchOptions = MusicBrainzFetchOptions & {
 
 export type MusicBrainzLookupOptions = MusicBrainzFetchOptions & {
   providerReleaseId: string
+}
+
+export type MusicBrainzGenreLookupOptions = MusicBrainzFetchOptions & {
+  releaseGroupId: string
 }
 
 export class MusicBrainzError extends Error {
@@ -206,6 +213,91 @@ export function buildMusicBrainzLookupUrl(providerReleaseId: string): URL {
   url.searchParams.set('inc', 'artist-credits+labels+release-groups+media')
 
   return url
+}
+
+export function buildMusicBrainzReleaseGroupGenresUrl(releaseGroupId: string): URL {
+  const url = new URL(
+    `${MUSICBRAINZ_API_BASE_URL}/release-group/${releaseGroupId}`,
+  )
+
+  url.searchParams.set('fmt', 'json')
+  url.searchParams.set('inc', 'genres')
+
+  return url
+}
+
+function normalizeGenreName(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const genre = value.trim().toLowerCase()
+
+  return genre.length >= 1 && genre.length <= GENRE_MAX_LENGTH ? genre : null
+}
+
+/**
+ * Cleans the MusicBrainz `genres` array from a release-group response into a
+ * bounded list of lowercase names. MusicBrainz genres are community-curated
+ * tags (subjective), not objective facts.
+ */
+export function normalizeMusicBrainzGenres(payload: unknown): string[] {
+  if (!isRecord(payload) || !Array.isArray(payload.genres)) {
+    return []
+  }
+
+  const seen = new Set<string>()
+
+  for (const entry of payload.genres) {
+    if (!isRecord(entry)) {
+      continue
+    }
+
+    // MusicBrainz supplies a vote `count`; when present, require it to be
+    // positive. When absent, keep the genre.
+    if (typeof entry.count === 'number' && entry.count <= 0) {
+      continue
+    }
+
+    const name = normalizeGenreName(entry.name)
+
+    if (name) {
+      seen.add(name)
+    }
+
+    if (seen.size >= MAX_GENRES) {
+      break
+    }
+  }
+
+  return Array.from(seen)
+}
+
+/**
+ * Best-effort optional enrichment: fetches community genre tags for a
+ * release-group. Never throws. Any failure (missing id, timeout, 404, 429/503,
+ * other non-2xx, malformed body) resolves to an empty list so a confirmed
+ * catalog Add is never blocked or failed by it. No retry.
+ */
+export async function lookupMusicBrainzReleaseGroupGenres({
+  releaseGroupId,
+  timeoutMs = GENRE_LOOKUP_TIMEOUT_MS,
+  ...fetchOptions
+}: MusicBrainzGenreLookupOptions): Promise<string[]> {
+  if (!releaseGroupId) {
+    return []
+  }
+
+  try {
+    const payload = await fetchMusicBrainzJson(
+      buildMusicBrainzReleaseGroupGenresUrl(releaseGroupId),
+      { ...fetchOptions, timeoutMs },
+    )
+
+    return normalizeMusicBrainzGenres(payload)
+  } catch {
+    return []
+  }
 }
 
 export function normalizeMusicBrainzRelease(

@@ -47,6 +47,7 @@ function item(
       catalog_number: 'AS-9203',
       country: 'US',
       format: 'LP',
+      genres: ['spiritual jazz'],
       updated_at: '2026-08-19T10:00:00.000Z',
     },
     ...overrides,
@@ -139,6 +140,7 @@ describe('CollectionPanel', () => {
       catalogNumber: '',
       country: '',
       format: '',
+      genre: '',
     })
     expect(screen.getByText('Journey in Satchidananda')).toBeInTheDocument()
     expect(screen.getByLabelText('Artist')).toHaveValue('')
@@ -372,6 +374,7 @@ describe('CollectionPanel manual add-form draft persistence', () => {
     await user.type(screen.getByLabelText('Catalog number'), 'B001753602')
     await user.type(screen.getByLabelText('Country'), 'US')
     await user.type(screen.getByLabelText('Format'), '2xLP')
+    await user.type(screen.getByLabelText('Genre'), 'hip hop')
 
     const stored = JSON.parse(sessionStorage.getItem(MANUAL_DRAFT_KEY) ?? 'null')
     expect(stored).toEqual({
@@ -382,6 +385,7 @@ describe('CollectionPanel manual add-form draft persistence', () => {
       catalogNumber: 'B001753602',
       country: 'US',
       format: '2xLP',
+      genre: 'hip hop',
     })
   })
 
@@ -499,5 +503,287 @@ describe('CollectionPanel manual add-form draft persistence', () => {
     await screen.findByLabelText('Artist')
     expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
+  })
+
+  it('preserves the Genre draft across remount', async () => {
+    const user = userEvent.setup()
+    const view = render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Genre'), 'krautrock')
+    view.unmount()
+
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    expect(await screen.findByLabelText('Genre')).toHaveValue('krautrock')
+  })
+})
+
+describe('CollectionPanel manual genre', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockCollection([])
+  })
+
+  it('adds a manual record with a genre', async () => {
+    const user = userEvent.setup()
+    vi.mocked(addManualCollectionItem).mockResolvedValue(item())
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Alice Coltrane')
+    await user.type(screen.getByLabelText('Title'), 'Journey in Satchidananda')
+    await user.type(screen.getByLabelText('Genre'), 'Spiritual Jazz')
+    await user.click(screen.getByRole('button', { name: 'Add record' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Record added.')).toBeInTheDocument()
+    })
+    expect(addManualCollectionItem).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ genre: 'Spiritual Jazz' }),
+    )
+  })
+
+  it('shows the existing genre in the edit form and saves an edited genre', async () => {
+    const user = userEvent.setup()
+    mockCollection([item({ release: { ...item().release, genres: ['jazz'] } })])
+    vi.mocked(updateManualRelease).mockResolvedValue({
+      ...item().release,
+      genres: ['fusion'],
+    })
+
+    render(<CollectionPanel client={client} />)
+
+    await user.click(
+      within((await screen.findAllByRole('article'))[0]).getByRole('button', {
+        name: 'Edit',
+      }),
+    )
+
+    const genreInput = screen.getAllByLabelText('Genre')[1]
+    expect(genreInput).toHaveValue('jazz')
+
+    await user.clear(genreInput)
+    await user.type(genreInput, 'fusion')
+    await user.click(screen.getByRole('button', { name: 'Save record' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Record saved.')).toBeInTheDocument()
+    })
+    expect(updateManualRelease).toHaveBeenCalledWith(
+      client,
+      'release-1',
+      expect.objectContaining({ genre: 'fusion' }),
+    )
+  })
+
+  it('saves a cleared genre as blank', async () => {
+    const user = userEvent.setup()
+    mockCollection([item({ release: { ...item().release, genres: ['jazz'] } })])
+    vi.mocked(updateManualRelease).mockResolvedValue({
+      ...item().release,
+      genres: [],
+    })
+
+    render(<CollectionPanel client={client} />)
+
+    await user.click(
+      within((await screen.findAllByRole('article'))[0]).getByRole('button', {
+        name: 'Edit',
+      }),
+    )
+    await user.clear(screen.getAllByLabelText('Genre')[1])
+    // Title must stay valid for the Save button to enable.
+    await user.click(screen.getByRole('button', { name: 'Save record' }))
+
+    await waitFor(() => {
+      expect(updateManualRelease).toHaveBeenCalledWith(
+        client,
+        'release-1',
+        expect.objectContaining({ genre: '' }),
+      )
+    })
+  })
+})
+
+describe('CollectionPanel browse / search / filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  function library() {
+    return [
+      item({
+        id: 'a',
+        added_at: '2026-08-19T13:00:00.000Z',
+        release: {
+          ...item().release,
+          id: 'r-a',
+          artist: 'Miles Davis',
+          title: 'Kind of Blue',
+          release_year: 1959,
+          genres: ['jazz'],
+        },
+      }),
+      item({
+        id: 'b',
+        added_at: '2026-08-19T12:00:00.000Z',
+        release: {
+          ...item().release,
+          id: 'r-b',
+          artist: 'Radiohead',
+          title: 'OK Computer',
+          release_year: 1997,
+          genres: ['rock', 'alternative rock'],
+        },
+      }),
+      item({
+        id: 'c',
+        added_at: '2026-08-19T11:00:00.000Z',
+        release: {
+          ...item().release,
+          id: 'r-c',
+          artist: 'Aphex Twin',
+          title: 'Selected Ambient Works 85-92',
+          release_year: 1992,
+          genres: [],
+        },
+      }),
+    ]
+  }
+
+  it('renders library controls and a result count once there are records', async () => {
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    expect(await screen.findByLabelText('Search collection')).toBeInTheDocument()
+    expect(screen.getByLabelText('Decade')).toBeInTheDocument()
+    expect(screen.getByLabelText('Year')).toBeInTheDocument()
+    expect(screen.getByLabelText('Genre filter')).toBeInTheDocument()
+    expect(screen.getByLabelText('Sort')).toBeInTheDocument()
+    expect(screen.getByText('3 of 3 records')).toBeInTheDocument()
+  })
+
+  it('does not render library controls for an empty collection', async () => {
+    mockCollection([])
+    render(<CollectionPanel client={client} />)
+
+    expect(
+      await screen.findByText(
+        'Your collection is empty. Add a record manually to start the shelf.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Search collection')).not.toBeInTheDocument()
+  })
+
+  it('hides the genre selector when no record has a genre', async () => {
+    mockCollection([
+      item({ release: { ...item().release, genres: [] } }),
+    ])
+    render(<CollectionPanel client={client} />)
+
+    await screen.findByLabelText('Search collection')
+    expect(screen.queryByLabelText('Genre filter')).not.toBeInTheDocument()
+  })
+
+  it('filters by artist/title search, case-insensitively, and updates the count', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Search collection'), '  RADIO ')
+
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+    expect(screen.queryByText('Kind of Blue')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3 records')).toBeInTheDocument()
+  })
+
+  it('filters by decade and by genre, combined as AND', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.selectOptions(await screen.findByLabelText('Decade'), '1990s')
+    expect(screen.getByText('2 of 3 records')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Genre filter'), 'rock')
+    expect(screen.getByText('1 of 3 records')).toBeInTheDocument()
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+  })
+
+  it('filters by exact year', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Year'), '1959')
+    expect(screen.getByText('1 of 3 records')).toBeInTheDocument()
+    expect(screen.getByText('Kind of Blue')).toBeInTheDocument()
+  })
+
+  it('shows a no-results state and Clear filters restores the full collection', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Search collection'), 'nonexistent')
+    expect(
+      screen.getByText(/No records match these filters/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('0 of 3 records')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+
+    expect(screen.getByText('3 of 3 records')).toBeInTheDocument()
+    expect(screen.getByText('Kind of Blue')).toBeInTheDocument()
+  })
+
+  it('sorts by artist A-Z', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.selectOptions(await screen.findByLabelText('Sort'), 'artist-asc')
+
+    const titles = screen.getAllByRole('article').map(
+      (card) => within(card).getByRole('heading').textContent,
+    )
+    expect(titles).toEqual([
+      'Selected Ambient Works 85-92',
+      'Kind of Blue',
+      'OK Computer',
+    ])
+  })
+
+  it('a filter change triggers no reload and no collection write', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await screen.findByLabelText('Search collection')
+    expect(loadCollection).toHaveBeenCalledTimes(1)
+
+    await user.type(screen.getByLabelText('Search collection'), 'miles')
+    await user.selectOptions(screen.getByLabelText('Decade'), '1950s')
+    await user.selectOptions(screen.getByLabelText('Sort'), 'year-desc')
+
+    expect(loadCollection).toHaveBeenCalledTimes(1)
+    expect(addManualCollectionItem).not.toHaveBeenCalled()
+    expect(updateManualRelease).not.toHaveBeenCalled()
+    expect(deleteCollectionItem).not.toHaveBeenCalled()
+  })
+
+  it('shows genres on collection cards', async () => {
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    const okComputerCard = (await screen.findAllByRole('article')).find((card) =>
+      within(card).queryByText('OK Computer'),
+    )
+    expect(okComputerCard).toBeDefined()
+    expect(
+      within(okComputerCard as HTMLElement).getByText('rock, alternative rock'),
+    ).toBeInTheDocument()
   })
 })

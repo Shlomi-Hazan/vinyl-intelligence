@@ -23,7 +23,8 @@ Existing specs/spikes:
 - [0003 Milestone 2 Supabase Auth + Profile RLS](0003-milestone-2-supabase-auth-profile-rls.md)
 - [0004 Milestone 3 Manual Collection CRUD](0004-milestone-3-manual-collection-crud.md)
 - [0005 Milestone 4 Catalog API](0005-milestone-4-catalog-api.md)
-- [0006 Milestone 5 Photo Recognition](0006-milestone-5-photo-recognition.md) - proposed
+- [0006 Milestone 5 Photo Recognition](0006-milestone-5-photo-recognition.md) - implemented and verified (merged)
+- [0007 Milestone 6 Browse / Search / Filter](0007-milestone-6-browse-search-filter.md) - implemented and verified (PR open)
 
 Likely milestone specs:
 
