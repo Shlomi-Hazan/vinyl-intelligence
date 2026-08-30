@@ -433,7 +433,11 @@ async function lookupReleaseWithRateLimitRetry(
       error instanceof MusicBrainzError
       && error.code === 'provider_rate_limited'
     ) {
+      // The retry is itself a real MusicBrainz request: back off, then update
+      // the shared provider pacer so a following request (e.g. the Milestone 6
+      // release-group genre lookup) does not fire against a stale slot.
       await dependencies.delay(MUSICBRAINZ_RATE_LIMIT_RETRY_DELAY_MS)
+      await dependencies.paceProviderRequest()
 
       return dependencies.lookupRelease({ providerReleaseId, userAgent })
     }

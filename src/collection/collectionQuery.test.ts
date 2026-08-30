@@ -87,6 +87,19 @@ describe('collectionQuery', () => {
     expect(yearFilterIsInvalid('  ')).toBe(false)
   })
 
+  it('treats an out-of-range year as no filter with an invalid hint (1900..2100)', () => {
+    const collection = [item({ release_year: 1959 }), item({ release_year: 1999 })]
+
+    // 1800 / 2101 are integers but outside the persisted release_year range.
+    expect(applyCollectionQuery(collection, filters({ year: '1800' }), 'recently-added')).toHaveLength(2)
+    expect(applyCollectionQuery(collection, filters({ year: '2101' }), 'recently-added')).toHaveLength(2)
+
+    expect(yearFilterIsInvalid('1899')).toBe(true)
+    expect(yearFilterIsInvalid('1900')).toBe(false)
+    expect(yearFilterIsInvalid('2100')).toBe(false)
+    expect(yearFilterIsInvalid('2101')).toBe(true)
+  })
+
   it('filters by decade and never matches a null year', () => {
     const collection = [
       item({ release_year: 1967 }),

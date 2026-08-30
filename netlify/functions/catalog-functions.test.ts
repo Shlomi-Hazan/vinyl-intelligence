@@ -390,8 +390,14 @@ describe('catalog Netlify functions', () => {
   })
 
   it('retries the add lookup once after a provider rate-limit, then persists', async () => {
-    const { dependencies, delay, lookupRelease, releaseQuery } =
-      createDependencies()
+    const {
+      dependencies,
+      delay,
+      lookupRelease,
+      lookupReleaseGroupGenres,
+      paceProviderRequest,
+      releaseQuery,
+    } = createDependencies()
 
     lookupRelease.mockReset()
     lookupRelease
@@ -421,6 +427,23 @@ describe('catalog Netlify functions', () => {
     expect(delay).toHaveBeenCalledTimes(1)
     expect(delay).toHaveBeenCalledWith(1200)
     expect(releaseQuery.upsert).toHaveBeenCalledOnce()
+
+    // Pace fires 3x: before the initial lookup, before the retry lookup (the
+    // retry is a real MusicBrainz request), and before the genre lookup.
+    expect(paceProviderRequest).toHaveBeenCalledTimes(3)
+
+    // Order around the retry: delay -> pace -> retry lookup; and the genre
+    // lookup still gets its own pace afterwards.
+    const [delayOrder] = delay.mock.invocationCallOrder
+    const paceOrders = paceProviderRequest.mock.invocationCallOrder
+    const lookupOrders = lookupRelease.mock.invocationCallOrder
+    const [genreOrder] = lookupReleaseGroupGenres.mock.invocationCallOrder
+
+    expect(delayOrder).toBeGreaterThan(lookupOrders[0])
+    expect(paceOrders[1]).toBeGreaterThan(delayOrder)
+    expect(lookupOrders[1]).toBeGreaterThan(paceOrders[1])
+    expect(paceOrders[2]).toBeGreaterThan(lookupOrders[1])
+    expect(genreOrder).toBeGreaterThan(paceOrders[2])
   })
 
   it('surfaces a recoverable 503 when the add lookup retry is also rate-limited', async () => {

@@ -1602,7 +1602,7 @@ Run on a clean database on 2026-08-30:
 | `git diff --check` | Passed |
 | `npm run typecheck` (`tsc -b --noEmit`) | Passed |
 | `npm run lint` (`eslint .`) | Passed |
-| `npm run test:run` (`vitest run`) | Passed: 17 test files, 217 tests |
+| `npm run test:run` (`vitest run`) | Passed: 17 test files, 218 tests |
 | `npm run build` | Passed |
 | `npx supabase db reset` | Passed: 6 migrations apply in order (adds `20260830120000_add_release_genres.sql`) |
 | `npx supabase test db` | Passed: 6 database test files, 280 tests |
@@ -1641,6 +1641,43 @@ New / changed test coverage:
   change; an explicit assertion that **no GIN index** exists.
 - `supabase/tests/database/collection_rls.test.sql`: `genres` removed from the
   deferred-columns assertion (now implemented).
+
+### Implementation Review Correction Pass (2026-08-30)
+
+An independent implementation review found 0 BLOCKER, 1 MEDIUM, and one small
+spec/behaviour mismatch. Closed in `fix: close milestone 6 implementation
+review findings`:
+
+- **MEDIUM - retry -> genre MusicBrainz pacing gap.** The M4 rate-limit retry
+  helper backed off (`delay(1200)`) but did not update the shared per-instance
+  provider pacer, so the new Milestone 6 release-group genre GET could fire
+  immediately after a retried release lookup. Fixed inside
+  `lookupReleaseWithRateLimitRetry`: on `provider_rate_limited` it now does
+  `delay -> paceProviderRequest -> retry lookup`. Order and count are
+  test-locked: a normal enriched Add paces twice (before the release lookup,
+  before the genre lookup); a rate-limited-then-retried Add paces three times
+  (before initial lookup, before retry lookup, before genre lookup); the
+  one-retry maximum is unchanged.
+- **LOW - exact-year range.** `parseYear` accepted any integer; a value like
+  `1800` became an active filter that always matched nothing. Now a year input
+  is a valid filter only if it is a whole integer in `1900..2100` (the
+  persisted `releases.release_year` range); otherwise no year filter is applied
+  and `yearFilterIsInvalid(...)` is true so the existing hint shows. Tests
+  cover `1899` invalid, `1900`/`2100` valid, `2101` invalid.
+
+### Local PostgREST no-erase probe (2026-08-30)
+
+Behavioural proof against the real local Supabase/PostgREST stack (no
+MusicBrainz, no OpenRouter). After a clean `supabase db reset`: a service-role
+`.upsert(...)` seeded a `source='catalog'` release with
+`genres = ['progressive rock']`; a second service-role `.upsert(...)` with the
+exact payload shape `catalogReleasePayload` produces when enrichment is empty
+(no `genres` key, same `onConflict: 'provider,provider_release_id'`) was
+executed; a follow-up select returned `genres = ['progressive rock']`.
+
+**RESULT: PASS** - the existing genres survived the omitted-`genres` upsert. The
+synthetic row was removed by the standard `supabase db reset` in the
+verification flow.
 
 ### Human Runtime Evidence
 

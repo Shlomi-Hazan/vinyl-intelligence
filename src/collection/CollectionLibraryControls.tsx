@@ -117,7 +117,8 @@ export function CollectionLibraryControls({
 
       {yearFilterIsInvalid(filters.year) ? (
         <p className="field-hint">
-          Enter a whole year (for example 1977) to filter by year.
+          Enter a whole year from 1900 to 2100 (for example 1977) to filter by
+          year.
         </p>
       ) : null}
     </div>

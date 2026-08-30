@@ -91,6 +91,10 @@ export function hasActiveFilters(filters: CollectionFilters): boolean {
   )
 }
 
+// Matches the persisted releases.release_year DB constraint (M3 migration).
+const YEAR_MIN = 1900
+const YEAR_MAX = 2100
+
 function parseYear(raw: string): number | null {
   const trimmed = raw.trim()
 
@@ -100,10 +104,16 @@ function parseYear(raw: string): number | null {
 
   const year = Number(trimmed)
 
-  return Number.isInteger(year) ? year : null
+  return Number.isInteger(year) && year >= YEAR_MIN && year <= YEAR_MAX
+    ? year
+    : null
 }
 
-/** True when the year input is non-empty but not a whole number (UI hint). */
+/**
+ * True when the year input is non-empty but not a whole year in the persisted
+ * 1900..2100 range (UI hint). An out-of-range or non-integer entry applies no
+ * exact-year filter.
+ */
 export function yearFilterIsInvalid(raw: string): boolean {
   return raw.trim().length > 0 && parseYear(raw) === null
 }
