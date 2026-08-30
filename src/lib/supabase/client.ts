@@ -32,6 +32,9 @@ export type CollectionItem = {
   release_id: string
   added_at: string
   created_at: string
+  rating: number | null
+  is_favorite: boolean
+  notes: string | null
 }
 
 type Database = {
@@ -46,7 +49,11 @@ type Database = {
           added_at?: string
           created_at?: string
         }
-        Update: Record<string, never>
+        Update: {
+          rating?: number | null
+          is_favorite?: boolean
+          notes?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: 'collection_items_release_id_fkey'

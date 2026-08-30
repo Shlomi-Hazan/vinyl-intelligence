@@ -38,6 +38,9 @@ function item(
     id: 'item-1',
     added_at: '2026-08-19T10:00:00.000Z',
     created_at: '2026-08-19T10:00:00.000Z',
+    rating: null,
+    is_favorite: false,
+    notes: null,
     release: {
       id: 'release-1',
       artist: 'Alice Coltrane',
