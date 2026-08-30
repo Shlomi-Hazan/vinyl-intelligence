@@ -39,6 +39,9 @@ export type RecognitionErrorCode =
   | 'invalid_query'
   | 'unsupported_media_type'
   | 'image_too_large'
+  // Application-owned per-user throttle on this costed endpoint. Distinct from
+  // `provider_rate_limited`, which is OpenRouter returning 429/503.
+  | 'rate_limited'
   | 'provider_rate_limited'
   | 'provider_unavailable'
   | 'provider_timeout'

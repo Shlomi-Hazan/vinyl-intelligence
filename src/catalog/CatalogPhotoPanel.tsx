@@ -166,6 +166,7 @@ export function CatalogPhotoPanel({
         <input
           accept="image/*"
           capture="environment"
+          disabled={isRecognizing}
           onChange={handleFileChange}
           type="file"
         />

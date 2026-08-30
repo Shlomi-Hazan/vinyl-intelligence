@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import type { User } from '@supabase/supabase-js'
 import { recognizeCoverWithOpenRouter } from '../../../src/lib/vision/openrouter.ts'
 import {
   DEFAULT_VISION_MODEL,
@@ -18,6 +17,14 @@ const OPENROUTER_PROVIDER = 'openrouter'
 const MAX_IMAGE_BYTES = 3_000_000
 const MIN_IMAGE_BYTES = 64
 
+// Minimal per-user abuse/rate guard for this costed endpoint (intent.txt §15).
+// Counted against the durable model_calls telemetry: if the authenticated user
+// already made >= MAX_RECOGNITIONS_PER_WINDOW cover_vision provider attempts
+// (success or failure) in the trailing WINDOW, the request is rejected before
+// any OpenRouter call and no telemetry row is written.
+const MAX_RECOGNITIONS_PER_WINDOW = 10
+const RATE_LIMIT_WINDOW_MINUTES = 10
+
 const DATA_URL_PATTERN =
   /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/
 
@@ -25,7 +32,19 @@ type Environment = Partial<Record<string, string>>
 
 type SupabaseFactory = typeof createClient
 
-type AuthenticatedUser = Pick<User, 'id'>
+type AuthenticatedContext = {
+  userId: string
+  // The already-validated Supabase bearer token, reused to read the user's own
+  // model_calls rows through the authenticated SELECT policy (RLS). Never used
+  // to widen privileges and never logged.
+  token: string
+}
+
+export type RecentRecognitionQuery = {
+  token: string
+  userId: string
+  windowStartIso: string
+}
 
 type ModelCallRecord = {
   userId: string
@@ -46,6 +65,11 @@ export type RecognitionFunctionDependencies = {
     createClientImpl: SupabaseFactory,
     record: ModelCallRecord,
   ) => Promise<void>
+  countRecentRecognitionAttempts: (
+    env: Environment,
+    createClientImpl: SupabaseFactory,
+    query: RecentRecognitionQuery,
+  ) => Promise<number>
   now: () => number
 }
 
@@ -66,6 +90,7 @@ function errorResponse(code: RecognitionErrorCode, message: string): Response {
     invalid_query: 400,
     unsupported_media_type: 415,
     image_too_large: 413,
+    rate_limited: 429,
     provider_rate_limited: 503,
     provider_unavailable: 502,
     provider_timeout: 504,
@@ -108,7 +133,7 @@ async function authenticateRequest(
   request: Request,
   env: Environment,
   createClientImpl: SupabaseFactory,
-): Promise<AuthenticatedUser> {
+): Promise<AuthenticatedContext> {
   const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
   const publishableKey = requiredEnv(env, 'VITE_SUPABASE_PUBLISHABLE_KEY')
   const token = bearerToken(request)
@@ -124,7 +149,39 @@ async function authenticateRequest(
     )
   }
 
-  return { id: data.user.id }
+  return { userId: data.user.id, token }
+}
+
+/**
+ * Counts the user's own recent `cover_vision` telemetry rows through the
+ * authenticated SELECT policy (RLS restricts the result to `auth.uid()`'s
+ * rows). Uses the already-validated bearer token; never the service role, so
+ * this check does not require widening `service_role` privileges.
+ */
+export async function countRecentRecognitionAttemptsWithUserToken(
+  env: Environment,
+  createClientImpl: SupabaseFactory,
+  { token, userId, windowStartIso }: RecentRecognitionQuery,
+): Promise<number> {
+  const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
+  const publishableKey = requiredEnv(env, 'VITE_SUPABASE_PUBLISHABLE_KEY')
+  const userClient = createClientImpl(supabaseUrl, publishableKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  })
+
+  const { count, error } = await userClient
+    .from('model_calls')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('feature', RECOGNITION_FEATURE)
+    .gte('created_at', windowStartIso)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return count ?? 0
 }
 
 function magicNumberMimeType(bytes: Uint8Array): SupportedImageMimeType | null {
@@ -258,11 +315,50 @@ async function safeRecordModelCall(
   }
 }
 
+/**
+ * Application-owned per-user throttle, enforced before any OpenRouter call. A
+ * request rejected here makes no provider call and writes no model_calls row.
+ * If the rate-check query itself fails, the request fails closed (no provider
+ * call) rather than silently assuming a decision was made.
+ */
+async function enforceRecognitionRateLimit(
+  dependencies: RecognitionFunctionDependencies,
+  env: Environment,
+  { token, userId }: { token: string; userId: string },
+): Promise<void> {
+  const windowStartIso = new Date(
+    dependencies.now() - RATE_LIMIT_WINDOW_MINUTES * 60_000,
+  ).toISOString()
+
+  let recentAttempts: number
+
+  try {
+    recentAttempts = await dependencies.countRecentRecognitionAttempts(
+      env,
+      dependencies.createClient,
+      { token, userId, windowStartIso },
+    )
+  } catch {
+    throw new RecognitionError(
+      'unknown',
+      'Could not verify the recognition rate limit. Please try again.',
+    )
+  }
+
+  if (recentAttempts >= MAX_RECOGNITIONS_PER_WINDOW) {
+    throw new RecognitionError(
+      'rate_limited',
+      'Too many recognition attempts. Try again in a few minutes.',
+    )
+  }
+}
+
 function defaultDependencies(): RecognitionFunctionDependencies {
   return {
     createClient,
     recognizeCover: recognizeCoverWithOpenRouter,
     recordModelCall: recordModelCallWithServiceRole,
+    countRecentRecognitionAttempts: countRecentRecognitionAttemptsWithUserToken,
     now: () => Date.now(),
   }
 }
@@ -281,7 +377,14 @@ export async function handleCatalogRecognize(
   dependencies: RecognitionFunctionDependencies = defaultDependencies(),
 ): Promise<Response> {
   try {
-    const user = await authenticateRequest(request, env, dependencies.createClient)
+    const { userId, token } = await authenticateRequest(
+      request,
+      env,
+      dependencies.createClient,
+    )
+
+    await enforceRecognitionRateLimit(dependencies, env, { token, userId })
+
     const imageDataUrl = await parseRecognizeRequest(request)
     const apiKey = requiredEnv(env, 'OPENROUTER_API_KEY')
     const model = env.OPENROUTER_VISION_MODEL?.trim() || DEFAULT_VISION_MODEL
@@ -303,7 +406,7 @@ export async function handleCatalogRecognize(
         error instanceof RecognitionError ? error.code : 'unknown'
 
       await safeRecordModelCall(dependencies, env, {
-        userId: user.id,
+        userId,
         model,
         success: false,
         latencyMs: dependencies.now() - startedAt,
@@ -317,7 +420,7 @@ export async function handleCatalogRecognize(
     }
 
     await safeRecordModelCall(dependencies, env, {
-      userId: user.id,
+      userId,
       model: result.model,
       success: true,
       latencyMs: dependencies.now() - startedAt,

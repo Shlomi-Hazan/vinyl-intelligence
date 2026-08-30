@@ -59,9 +59,11 @@ box, pre-filled where any clue is available.
 - Explicit user confirmation, then persistence through the existing Milestone 4
   `POST /api/catalog/add`.
 - Minimal `model_calls` telemetry: one row per recognition attempt.
+- A minimal per-user rate limit on the costed recognition endpoint
+  (10 recognitions / 10 minutes), enforced from `model_calls`.
 - Recoverable error states for every failure listed below.
-- Tests for the vision adapter, the recognition function, the clue->query
-  builder, the image helper, the telemetry write, and the UI.
+- Tests for the vision adapter, the recognition function, the rate limit, the
+  clue->query builder, the image helper, the telemetry write, and the UI.
 - Human runtime verification.
 
 ## Out of Scope
@@ -89,10 +91,11 @@ browser
   -> client downscale to <= ~1024px longest edge, re-encode JPEG
   -> POST /api/catalog/recognize  { imageBase64 }  + Supabase bearer token
        -> server: validate token -> derive user id
+       -> server: per-user rate check (see "Rate limiting")
        -> server: validate decoded image (magic bytes, size)
        -> server: one OpenRouter vision call, response_format = JSON schema
        -> server: validate + normalize structured clues
-       -> server: insert one model_calls row (non-blocking)
+       -> server: record one model_calls row before responding
        -> server: return { recognition }
   -> browser: build MusicBrainz query from clues
   -> browser: GET /api/catalog/search?q=<query>   (existing M4)
@@ -116,6 +119,8 @@ Milestone 4 path used by manual catalog search.
 - Requires a valid Supabase user session/JWT (reuses the Milestone 4
   `authenticateRequest` pattern: validate the bearer token, derive the user id
   server-side, never trust a body-supplied user id).
+- Enforces a per-user rate limit before any OpenRouter call (see
+  "Rate limiting").
 - Accepts only `{ imageBase64: string }` where `imageBase64` is a
   `data:image/(jpeg|png|webp);base64,...` data URL.
 - Rejects: missing/oversized body, wrong shape, disallowed MIME, decoded bytes
@@ -131,8 +136,10 @@ Milestone 4 path used by manual catalog search.
   fields dropped; strings trimmed and length-capped; `visibleText` capped in
   count and per-item length; `releaseYearHint` accepted only in
   `1900..(currentYear + 1)`, else null; `confidence` clamped to `0..1`.
-- Writes one `model_calls` row (see "Database"). This write must never fail the
-  user's request; a telemetry error is logged as a category only.
+- Records one `model_calls` row per provider attempt before responding (see
+  "Database" and "Telemetry Decision"). A telemetry failure is caught, logged
+  as a category only, and never changes the user-visible outcome. A request
+  rejected earlier by auth, image validation, or the rate limit writes no row.
 - Returns `{ recognition }` on success, or a sanitized error payload
   `{ code, message }` matching the error contract.
 - Never returns the raw provider payload, the API key, or the image.
@@ -140,6 +147,36 @@ Milestone 4 path used by manual catalog search.
 The recognition function does NOT call MusicBrainz. Candidate lookup stays in
 the existing Milestone 4 search function so its validation, pacing, and
 sanitized errors are reused unchanged.
+
+### Rate limiting
+
+`intent.txt` §15 requires "reasonable abuse/rate protection for costly AI/API
+endpoints." Milestone 5 adds the smallest durable guard appropriate for a
+course/demo app - not production-scale anti-abuse infrastructure.
+
+- Scope: per authenticated user, enforced server-side, before the OpenRouter
+  call.
+- Source of truth: the existing `model_calls` telemetry. The check counts the
+  caller's own `cover_vision` rows (each row is one provider attempt, success
+  **or** failure) with `created_at` within the trailing window. No in-memory or
+  per-instance counter is used, because serverless instances are not durable.
+- Limits: `MAX_RECOGNITIONS_PER_WINDOW = 10`, `WINDOW_MINUTES = 10`. If the
+  user already has `>= 10` `cover_vision` rows in the last 10 minutes, the
+  request is rejected with HTTP `429` and the sanitized message
+  "Too many recognition attempts. Try again in a few minutes."
+  (application error code `rate_limited`, distinct from the OpenRouter-owned
+  `provider_rate_limited`).
+- A request rejected by this local guard makes **no** OpenRouter call and
+  writes **no** `model_calls` row (no provider/model call occurred).
+- The count query runs through an `authenticated`, user-scoped Supabase client
+  built from the already-validated bearer token, using the existing
+  `authenticated` `SELECT` + own-row RLS policy. It does not use, and does not
+  require, any `service_role` read privilege.
+- Fail closed: if the rate-check query itself errors, the request fails with a
+  sanitized error and does **not** fall through to the provider call.
+- The existing duplicate-submit UI guard and "one model call per submit; no
+  automatic retry" rule are unchanged; this adds a server-authoritative bound
+  on top of them.
 
 ### Clue -> query (browser, deterministic)
 
@@ -211,7 +248,7 @@ revoke all on table public.model_calls from anon;
 revoke all on table public.model_calls from authenticated;
 
 grant select on table public.model_calls to authenticated;
-grant select, insert on table public.model_calls to service_role;
+grant insert on table public.model_calls to service_role;
 
 create policy "Users can select their own model calls"
   on public.model_calls
@@ -224,10 +261,19 @@ Notes:
 
 - `feature` is constrained to `cover_vision` for Milestone 5 and widened by a
   later migration when the curator milestone adds its features.
-- Browser roles get read-only access to their own rows and no write path. The
-  recognition function inserts with the service role, matching the Milestone 4
-  security boundary. `service_role` is granted explicitly (Milestone 4 proved
-  that `BYPASSRLS` does not substitute for table privileges).
+- Privilege model (least privilege), as implemented in
+  `20260829140000_add_model_calls.sql`:
+  - `anon`: no access.
+  - `authenticated`: `SELECT` own rows only, through the RLS policy. No
+    `INSERT`/`UPDATE`/`DELETE`.
+  - `service_role`: `INSERT` only. It does **not** need `SELECT`, `UPDATE`, or
+    `DELETE` for Milestone 5 - the recognition function only appends a
+    telemetry row. `service_role` is granted the privilege explicitly because
+    Milestone 4 proved that `BYPASSRLS` does not substitute for ordinary table
+    privileges.
+- The per-user rate check (below) reads `model_calls` through the
+  `authenticated` `SELECT` policy using the caller's own bearer token, so it
+  does not require any `service_role` read privilege.
 - Never stored: the image, the prompt text, the raw provider payload, the API
   key, any provider request id, or free-text model output.
 
@@ -301,6 +347,8 @@ the fatal app shell unless the auth/session boundary itself fails.
 | Case | Handling |
 | --- | --- |
 | Not authenticated | `unauthorized`, prompt to sign in |
+| Over the per-user rate limit (>= 10 recognitions / 10 min) | `rate_limited` (HTTP 429); no provider call, no telemetry row |
+| Rate-check lookup itself fails | sanitized error, fail closed; no provider call |
 | No/invalid image in request | `invalid_query` |
 | Disallowed MIME | `unsupported_media_type` |
 | Decoded image over the size limit | `image_too_large` |
@@ -335,6 +383,9 @@ the fatal app shell unless the auth/session boundary itself fails.
   rows.
 - Request size is bounded client-side and server-side; one model call per
   submit; timeout enforced; no automatic retry.
+- A per-user rate limit (10 recognitions / 10 minutes, counted from
+  `model_calls`) is enforced server-side before the provider call; over-limit
+  requests get HTTP 429 and cost nothing.
 - `.env.example` gains placeholder-only `OPENROUTER_API_KEY` and
   `OPENROUTER_VISION_MODEL` entries.
 
@@ -350,8 +401,13 @@ Milestone 5 adds `model_calls` now rather than deferring it, because:
 - Every later AI milestone (curator, explanation) reuses the same table.
 
 It stays minimal: a subset of the `docs/data-model.md` design, no `trace_id`,
-no `request_kind`/schema-version columns, no free text. The insert is
-non-blocking.
+no `request_kind`/schema-version columns, no free text.
+
+Telemetry is recorded before the function responds. In a serverless function a
+true fire-and-forget write can be lost when the container freezes after the
+response, so the insert is awaited. A telemetry failure is caught, sanitized to
+a category-only log line, and never turns a successful recognition into a
+failed user request (and never fails an already-failed one differently).
 
 ## Deferred (documented, not implemented)
 
@@ -376,6 +432,11 @@ non-blocking.
 - The `OPENROUTER_API_KEY` is used only server-side and never reaches the
   browser or the database.
 - Exactly one vision-model call is made per submit; no automatic retry.
+- A per-user server-side rate limit (10 recognitions per 10 minutes, counted
+  from `model_calls` via the caller's own token) rejects over-limit requests
+  with HTTP 429 (`rate_limited`) before any OpenRouter call, and writes no
+  telemetry row for the rejected request. The check fails closed if its own
+  lookup errors. It needs no `service_role` read privilege.
 - Client and server both validate image MIME and size; the server also checks
   magic bytes.
 - The vision model output is validated against the recognition contract before

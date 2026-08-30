@@ -10,6 +10,7 @@ const RECOGNITION_ERROR_CODES: RecognitionErrorCode[] = [
   'invalid_query',
   'unsupported_media_type',
   'image_too_large',
+  'rate_limited',
   'provider_rate_limited',
   'provider_unavailable',
   'provider_timeout',

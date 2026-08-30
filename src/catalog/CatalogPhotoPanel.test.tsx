@@ -107,6 +107,32 @@ describe('CatalogPhotoPanel', () => {
     expect(downscaleImageToDataUrl).toHaveBeenCalledOnce()
   })
 
+  it('disables the cover-photo file input while a recognition is pending and re-enables it after', async () => {
+    const user = userEvent.setup()
+    let resolveRecognize: ((value: CoverRecognition) => void) | undefined
+    vi.mocked(recognizeCover).mockImplementation(
+      () =>
+        new Promise<CoverRecognition>((resolve) => {
+          resolveRecognize = resolve
+        }),
+    )
+
+    render(<CatalogPhotoPanel client={client} onUseQuery={vi.fn()} />)
+    await user.upload(screen.getByLabelText('Cover photo'), jpegFile())
+
+    expect(screen.getByLabelText('Cover photo')).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Recognize cover' }))
+
+    // While the recognition promise is pending the file input cannot be replaced.
+    expect(screen.getByLabelText('Cover photo')).toBeDisabled()
+
+    resolveRecognize?.(recognition())
+    await screen.findByText('Artist: Pink Floyd')
+
+    expect(screen.getByLabelText('Cover photo')).toBeEnabled()
+  })
+
   it('shows a manual fallback hint when the cover cannot be identified', async () => {
     const user = userEvent.setup()
     vi.mocked(recognizeCover).mockResolvedValue(
