@@ -111,7 +111,7 @@ function AuthenticatedShell() {
         {client && user ? (
           <>
             <CatalogPanel
-              key={user.id}
+              key={`catalog-${user.id}`}
               client={client}
               onCatalogItemAdded={() =>
                 setCollectionRefreshKey((current) => current + 1)
@@ -119,7 +119,7 @@ function AuthenticatedShell() {
               userId={user.id}
             />
             <CollectionPanel
-              key={user.id}
+              key={`collection-${user.id}`}
               client={client}
               refreshKey={collectionRefreshKey}
               userId={user.id}
