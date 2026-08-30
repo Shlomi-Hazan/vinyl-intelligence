@@ -163,6 +163,42 @@ h3 {
   text-transform: capitalize;
 }
 
+.collection-card-personal {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e4ddd2;
+}
+
+.collection-personal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.collection-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.collection-rating-star,
+.collection-favorite-toggle {
+  padding: 0.2rem 0.4rem;
+}
+
+.collection-favorite-toggle[aria-pressed='true'] {
+  font-weight: 600;
+}
+
+.collection-note {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
 label {
   display: grid;
   gap: 0.45rem;

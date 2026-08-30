@@ -11,6 +11,7 @@ import {
   addManualCollectionItem,
   deleteCollectionItem,
   loadCollection,
+  updateCollectionItemPersonalSignals,
   updateManualRelease,
 } from '../lib/supabase/collection.ts'
 
@@ -26,6 +27,15 @@ vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
     deleteCollectionItem: vi.fn(),
     loadCollection: vi.fn(),
     updateManualRelease: vi.fn(),
+    updateCollectionItemPersonalSignals: vi.fn(
+      async (_client: unknown, id: string, patch: Record<string, unknown>) => ({
+        id,
+        rating: null,
+        is_favorite: false,
+        notes: null,
+        ...patch,
+      }),
+    ),
   }
 })
 
@@ -788,5 +798,52 @@ describe('CollectionPanel browse / search / filter', () => {
     expect(
       within(okComputerCard as HTMLElement).getByText('rock, alternative rock'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('CollectionPanel personal signals', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  it('renders personal controls for every owned record', async () => {
+    mockCollection([
+      item({ id: 'a', release: { ...item().release, id: 'r-a', title: 'Manual One' } }),
+      item({ id: 'b', release: { ...item().release, id: 'r-b', title: 'Catalog One' } }),
+    ])
+    render(<CollectionPanel client={client} />)
+
+    const cards = await screen.findAllByRole('article')
+    for (const card of cards) {
+      expect(
+        within(card).getByRole('button', { name: 'Favorite this record' }),
+      ).toBeInTheDocument()
+      expect(within(card).getByLabelText('Personal note')).toBeInTheDocument()
+      expect(
+        within(card).getByRole('button', { name: 'Rate 3 stars' }),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it('persists a favorite toggle into panel item state', async () => {
+    const user = userEvent.setup()
+    mockCollection([item({ id: 'a', is_favorite: false })])
+    render(<CollectionPanel client={client} />)
+
+    const card = (await screen.findAllByRole('article'))[0]
+    const favorite = within(card).getByRole('button', { name: 'Favorite this record' })
+    expect(favorite).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(favorite)
+
+    await waitFor(() => {
+      expect(updateCollectionItemPersonalSignals).toHaveBeenCalledWith(
+        client,
+        'a',
+        { is_favorite: true },
+      )
+    })
+    expect(favorite).toHaveAttribute('aria-pressed', 'true')
   })
 })
