@@ -36,10 +36,8 @@ The recommended baseline is:
 Current status: Milestone 7 (Ratings / Favorites / Notes - personal preference
 signals on owned collection items) is merged to `main`. Milestone 8 (Listening
 History - immutable `listening_events`, derived listening count / last-listened,
-and a reverse-chronological history) is in planning on branch
-`claude/milestone-8-listening-history`: the specification (`docs/specs/0009-...`)
-and implementation plan (`docs/plans/009-...`) are drafted and awaiting human
-approval; no Milestone 8 code has been written. Hosted/production verification
+and a reverse-chronological history) is approved and in implementation on branch
+`claude/milestone-8-listening-history`. Hosted/production verification
 and production deployment have not occurred and remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
@@ -102,7 +100,8 @@ Implemented:
 
 Planned:
 
-- Listening history (Milestone 8, in planning)
+- Listening history (Milestone 8, in implementation on
+  `claude/milestone-8-listening-history`)
 - AI recommendation workflow
 - Production deployment
 

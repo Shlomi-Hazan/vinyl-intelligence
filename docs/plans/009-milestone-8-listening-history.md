@@ -1,16 +1,35 @@
 # 009 Milestone 8 Listening History Implementation Plan
 
-Status: PLANNED - awaiting human approval before implementation
+Status: approved and in implementation
 
 Milestone: 8 - Listening History
 
 Date: 2026-08-30
+
+Approved: 2026-08-30 (three Open Questions resolved; two clarifications)
 
 Branch: `claude/milestone-8-listening-history`
 
 Baseline: `2affd718481a3c6da745c9f1b99667635a87adff` (Milestone 7 merge on `main`)
 
 Specification: `docs/specs/0009-milestone-8-listening-history.md`
+
+## Approved Decisions
+
+- Q1 Index B: **plain `(collection_item_id)` only** - not compound, and the
+  `(user_id, collection_item_id, listened_at desc)` index stays deferred.
+- Q2 History metadata: resolve artist/title by matching `collection_item_id`
+  against the loaded `items` in `CollectionPanel`; **no `releases` join** in
+  `loadListeningEvents`.
+- Q3 History placement: compact collapsible section inside `CollectionPanel`
+  below the list; no route, no dashboard.
+- Clarification A: after a successful "Mark played", the returned event is
+  merged into local state and the array is re-sorted `listened_at DESC, id
+  DESC` with the same comparator the database uses - correct order holds
+  immediately, not only after refresh (equal-timestamp tie -> `id DESC`).
+- Clarification B: "two indexes" = two non-PK access-pattern indexes; the
+  `id uuid primary key` PK index is automatic. pgTAP asserts the PK + both
+  named indexes + the absence of the deferred index, not a total count of two.
 
 ## Current Repository Baseline
 
@@ -239,13 +258,19 @@ contains only Milestone 8 scope.
   locale; tests use fixed ISO values and assert on count / ordering / `Date`
   equality, never full locale strings.
 
-## Human Decisions Required Before Implementation
+## Human Decisions Made Before Implementation
 
-The three "Open Questions Requiring Human Approval" in the spec: (1) index B
-shape (plain vs compound); (2) history artist/album source (client match vs
-join); (3) history section placement (collapsible vs always-expanded).
+The three spec Open Questions were resolved (see "Approved Decisions" at the
+top): (1) plain `(collection_item_id)` index only; (2) resolve history
+artist/title against the loaded collection in the client, no join;
+(3) collapsible section inside `CollectionPanel`.
 
 ## Stop Point
 
-This plan is PLANNED. Implementation begins only after the human approves this
-plan, the specification, and the answers to the Open Questions above.
+Historical pre-implementation gate, satisfied. It read:
+
+> This plan is PLANNED. Implementation begins only after the human approves this
+> plan, the specification, and the answers to the Open Questions above.
+
+The human approved and directed implementation on this branch with all three
+Open Questions resolved and the two clarifications recorded above.

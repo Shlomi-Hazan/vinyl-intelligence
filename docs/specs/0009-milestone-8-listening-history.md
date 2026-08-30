@@ -1,6 +1,6 @@
 # 0009 Milestone 8 Listening History Specification
 
-Status: PLANNED - awaiting human approval before implementation
+Status: approved and in implementation
 
 Milestone: 8 - Listening History
 
@@ -9,6 +9,23 @@ Date: 2026-08-30
 Branch: `claude/milestone-8-listening-history`
 
 Baseline: `2affd718481a3c6da745c9f1b99667635a87adff` (Milestone 7 merge on `main`)
+
+Approved: 2026-08-30, with the three Open Questions resolved (below) and two
+implementation clarifications:
+
+- **Local event state must stay `listened_at DESC, id DESC` immediately.** After
+  a successful "Mark played" the returned event is merged and the local array is
+  re-sorted with the same deterministic comparator the database uses, so
+  equal-timestamp events order by `id DESC` before any refresh - not only after
+  a reload.
+- **"Two indexes" means two non-primary-key access-pattern indexes.** The
+  `id uuid primary key` gives an automatic PK index; the two Milestone 8
+  indexes are `listening_events_user_listened_idx` and
+  `listening_events_collection_item_idx`. pgTAP asserts the PK exists, both
+  named indexes exist with the right columns/ordering, the deferred
+  `(user_id, collection_item_id, ...)` index does **not** exist, and no
+  unnecessary extra Milestone 8 index was added - it does **not** assert a total
+  index count of two.
 
 ## Intent
 
@@ -105,10 +122,11 @@ their own events and `INSERT` an event for an item they own. There is no
 cannot be changed and an event cannot be removed after creation (except by the
 `ON DELETE CASCADE` when the owning collection item is deleted).
 
-## Proposed Schema
+## Schema (as implemented)
 
-One new forward migration, `20260901120000_add_listening_events.sql`. No
-historical migration is edited.
+One new forward migration, `20260901120000_add_listening_events.sql` (applied and
+verified locally; see `docs/verification.md`). No historical migration is edited.
+The DDL below matches the committed migration exactly.
 
 ```sql
 create table public.listening_events (
@@ -353,8 +371,13 @@ Focused tests to add:
     `created_at timestamptz not null` default `now()`; no other columns; the FK
     to `profiles(id)` and the FK to `collection_items(id)` exist, both
     `ON DELETE CASCADE`.
-  - indexes: `(user_id, listened_at desc, id desc)` and `(collection_item_id)`
-    exist; no `(user_id, collection_item_id, ...)` index.
+  - indexes: the automatic primary-key index exists;
+    `listening_events_user_listened_idx` on `(user_id, listened_at desc,
+    id desc)` exists with that column order; `listening_events_collection_item_idx`
+    on `(collection_item_id)` exists; the deferred
+    `(user_id, collection_item_id, listened_at ...)` index does **not** exist;
+    no unnecessary extra Milestone 8 index was added. (The test does **not**
+    assert a total index count of two.)
   - no speculative `listening_count` / `last_listened_at` / `play_count` /
     `last_played_at` column was added to `collection_items`.
   - privileges: `authenticated` has `SELECT` and `INSERT (collection_item_id)`
@@ -411,22 +434,28 @@ implements **none** of that: no curator query, no ranking, no LLM call.
 
 ## Open Questions Requiring Human Approval
 
-1. **Index B shape.** Plain `(collection_item_id)` (recommended - justified by
-   the FK cascade scan) versus the compound
-   `(collection_item_id, listened_at desc, id desc)` from
-   `docs/data-model.md` (only pays off if Milestone 9 adds a server-side
-   per-item aggregate query).
-2. **History artist/album source.** Match `collection_item_id` against the
-   already-loaded collection `items` in the client (recommended - no extra
-   join) versus joining `collection_items -> releases` inside the
-   `loadListeningEvents` select.
-3. **History section placement.** A collapsible "Listening history" block inside
-   `CollectionPanel` below the collection list (recommended) versus an
-   always-expanded list. No dedicated route either way.
+Resolved with the human on 2026-08-30:
+
+1. **Index B shape.** DECISION: **plain `(collection_item_id)` only.** Not the
+   compound `(collection_item_id, listened_at desc, id desc)`, and **not** the
+   deferred `(user_id, collection_item_id, listened_at desc)`. Milestone 8 runs
+   no server-side per-item listening aggregate; the plain index is justified by
+   the FK cascade lookup.
+2. **History artist/album source.** DECISION: resolve artist/title by matching
+   `event.collection_item_id` against the already-loaded owned collection items
+   in `CollectionPanel`. **No `releases` join** in `loadListeningEvents`.
+3. **History section placement.** DECISION: a compact collapsible "Listening
+   history" section inside `CollectionPanel` below the collection list. No
+   dedicated route, no dashboard.
 
 ## Stop Point
 
-This specification is PLANNED. Do not begin Milestone 8 implementation until the
-human approves this spec and the implementation plan
-(`docs/plans/009-milestone-8-listening-history.md`), including the answers to
-the Open Questions above.
+Historical pre-implementation gate, satisfied. It read:
+
+> This specification is PLANNED. Do not begin Milestone 8 implementation until
+> the human approves this spec and the implementation plan, including the
+> answers to the Open Questions above.
+
+The human approved the spec and plan with all three Open Questions resolved and
+the two implementation clarifications above, and directed implementation on this
+branch. Current status is at the top of this document.

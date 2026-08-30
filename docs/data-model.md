@@ -131,31 +131,48 @@ Ownership/security:
 
 ### listening_events
 
-Purpose: immutable record of a user playing an owned record.
+Purpose: immutable, append-only record of a user playing an owned record. Source
+of truth for listening count and last-listened time (both derived in the
+browser; see line 11).
 
-Important fields:
+As implemented in Milestone 8 (`20260901120000_add_listening_events.sql`):
 
-- `id uuid primary key`
-- `user_id uuid not null references profiles(id)`
-- `collection_item_id uuid not null references collection_items(id)`
-- `listened_at timestamptz not null`
-- `note text`
-- `created_at timestamptz`
+- `id uuid primary key default gen_random_uuid()`
+- `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`
+- `collection_item_id uuid not null references collection_items(id) on delete cascade`
+- `listened_at timestamptz not null default now()`
+- `created_at timestamptz not null default now()`
+
+No `note`, `updated_at`, `duration`, `source`, or soft-delete column - deferred
+until a concrete need exists.
 
 Relationships:
 
-- Belongs to user and collection item.
+- Belongs to user and collection item. Both foreign keys are `ON DELETE CASCADE`:
+  removing an owned collection item (or a profile) removes its listening events.
 
-Indexes:
+Indexes (as implemented):
 
-- Index on `(user_id, listened_at desc)`
-- Index on `(collection_item_id, listened_at desc)`
-- Index on `(user_id, collection_item_id, listened_at desc)`
+- automatic primary-key index on `(id)`
+- `listening_events_user_listened_idx` on `(user_id, listened_at desc, id desc)`
+  - reverse-chronological per-user history; `id desc` is the equal-timestamp
+    tie-break
+- `listening_events_collection_item_idx` on `(collection_item_id)`
+  - Postgres does not auto-index FK columns, and this one is `ON DELETE CASCADE`
+
+The earlier aspirational `(user_id, collection_item_id, listened_at desc)` index
+was **not** added: Milestone 8 derives per-item counts client-side from the
+already-loaded rows, so there is no server query that composite index would
+serve.
 
 Ownership/security:
 
-- User can create events only for collection items they own.
-- Listening count and last-listened values should initially be derived from this table.
+- RLS: `authenticated` may `SELECT` its own rows and `INSERT` an event only for a
+  collection item it owns. No `UPDATE`, no `DELETE` grant - rows are immutable
+  from the browser. The insert grant is column-scoped to `collection_item_id`
+  (`user_id` / `listened_at` come from column defaults).
+- Listening count and last-listened values are derived from this table in the
+  browser; no denormalized column or counter trigger exists.
 
 ### image_identification_attempts
 
