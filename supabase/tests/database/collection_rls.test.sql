@@ -166,8 +166,8 @@ select is(
 
 select is(
   (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'collection_items'),
-  3,
-  'only three policies exist on collection_items'
+  4,
+  'four policies exist on collection_items (own-row select/insert/delete + Milestone 7 own-row signals UPDATE)'
 );
 
 select ok(

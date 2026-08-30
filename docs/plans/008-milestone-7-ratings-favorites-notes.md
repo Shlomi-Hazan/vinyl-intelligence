@@ -1,16 +1,32 @@
 # 008 Milestone 7 Ratings / Favorites / Notes Implementation Plan
 
-Status: PLANNED - awaiting human approval before implementation
+Status: approved and in implementation
 
 Milestone: 7 - Ratings / Favorites / Notes
 
 Date: 2026-08-31
+
+Approved: 2026-08-31 (four Open Questions resolved; partial-patch helper
+correction)
 
 Branch: `claude/milestone-7-ratings-favorites-notes`
 
 Baseline: `3583900cc19dae9db9a2e6f37846de7a8af5a665` (Milestone 6 merge on `main`)
 
 Specification: `docs/specs/0008-milestone-7-ratings-favorites-notes.md`
+
+## Approved Decisions
+
+- A. **No `collection_items.updated_at`** in Milestone 7 - no column, no
+  trigger, no function. Speculative; Milestone 9 may add it if a query needs it.
+- B. Note maximum = **1000 characters**.
+- C. Favorite/rating browse features (favorite filter, rating filter, rating
+  sort) remain **deferred**; `collectionQuery.ts` is not modified.
+- D. Save UX: favorite + rating persist immediately; notes only via "Save note".
+- Correction: `updateCollectionItemPersonalSignals` uses **partial-patch**
+  semantics (`{ rating? , is_favorite? , notes? }`), writing only the keys
+  present, so one signal mutation cannot persist an unsaved note or clobber
+  another signal from stale state. Required state-safety regression tests A-D.
 
 ## Current Repository Baseline
 
@@ -53,12 +69,10 @@ owned entry; `releases` is shared. No fields are duplicated onto `releases`.
 ### 2. Minimal forward migration
 
 `rating smallint` (nullable, CHECK 1..5), `is_favorite boolean not null default
-false`, `notes text` (nullable, CHECK trimmed + 1..1000 chars), and
-`updated_at timestamptz not null default now()` (Open Question 1). One
+false`, `notes text` (nullable, CHECK trimmed + 1..1000 chars). One
 column-scoped `grant update (rating, is_favorite, notes)` and one `for update`
-RLS policy. If `updated_at` is kept, one `private.touch_collection_item_updated_at()`
-security-definer function + a `before update of rating, is_favorite, notes`
-trigger, mirroring the release pattern exactly.
+RLS policy. **No `updated_at`, no trigger, no function, no index** (approved
+decision A + deferred-index decision).
 
 ### 3. No Netlify Function
 
@@ -69,11 +83,17 @@ rating is `client.from('collection_items').update({...}).eq('id', ...)`.
 
 See the spec "Index decision" - deferred to Milestone 9.
 
-### 5. Client helper, decoupled from `updateManualRelease`
+### 5. Partial-patch client helper, decoupled from `updateManualRelease`
 
-`updateCollectionItemPersonalSignals(client, collectionItemId, signals)` in
-`collection.ts`. Pure normalization + validation, then one `update`. It never
-touches `releases` and is never called by the manual-release edit path.
+`updateCollectionItemPersonalSignals(client, collectionItemId, patch)` in
+`collection.ts`, where `patch` is
+`{ rating?: number | null; is_favorite?: boolean; notes?: string | null }`.
+It requires at least one supported key, rejects any other key, normalizes and
+validates only the present keys, `update`s a payload of only the present keys
+(never `id` / `user_id` / `release_id` / `added_at` / `created_at`), scopes with
+`.eq('id', collectionItemId)`, and returns the saved
+`{ id, rating, is_favorite, notes }`. It never touches `releases` and is never
+called by the manual-release edit path.
 
 ### 6. Compact per-item UI
 
@@ -100,9 +120,9 @@ tests. Documented as deferred, not a defect.
 ## Files / Components Affected
 
 ```
-supabase/migrations/2026083100xxxx_add_collection_item_signals.sql   # NEW
+supabase/migrations/20260831120000_add_collection_item_signals.sql   # NEW
 supabase/tests/database/collection_item_signals.test.sql             # NEW (pgTAP)
-src/lib/supabase/client.ts             # CollectionItem + rating/is_favorite/notes(/updated_at);
+src/lib/supabase/client.ts             # CollectionItem + rating/is_favorite/notes;
                                        # collection_items.Update allows those 3 columns
 src/lib/supabase/collection.ts         # CollectionItemWithRelease + item-level signals;
                                        # loadCollection select; updateCollectionItemPersonalSignals
@@ -119,11 +139,11 @@ README.md, docs/verification.md, docs/specs/README.md  # status/index, at verifi
 ## Database Implications
 
 - Forward migration only; no historical migration edited.
-- `collection_items` gains `rating`, `is_favorite`, `notes` (+ `updated_at` per
-  Open Question 1), `collection_items_rating_range` and
-  `collection_items_notes_clean` CHECK constraints, a column-scoped
-  `authenticated` `UPDATE` grant on exactly those three columns, and one
-  `for update` RLS policy (`using` + `with check` on `user_id = auth.uid()`).
+- `collection_items` gains `rating`, `is_favorite`, `notes`,
+  `collection_items_rating_range` and `collection_items_notes_clean` CHECK
+  constraints, a column-scoped `authenticated` `UPDATE` grant on exactly those
+  three columns, and one `for update` RLS policy (`using` + `with check` on
+  `user_id = auth.uid()`). No `updated_at`, no trigger, no index.
 - `service_role` untouched. `anon` untouched (still no access).
 - Existing `collection_items` policies, grants, indexes, and the
   `releases` / `profiles` / `model_calls` schema are unchanged.
@@ -174,7 +194,7 @@ evidence in `docs/verification.md`. Do not claim production verification.
 
 ## Incremental Implementation Steps (after approval)
 
-1. **Migration + pgTAP.** `2026083100xxxx_add_collection_item_signals.sql` and
+1. **Migration + pgTAP.** `20260831120000_add_collection_item_signals.sql` and
    `collection_item_signals.test.sql`. Apply via `supabase db reset`; run
    `supabase test db` (all existing suites must still pass).
 2. **TS database types.** Hand-edit `src/lib/supabase/client.ts`:
@@ -204,15 +224,15 @@ Milestone 7 scope.
 
 ## Deadline / Complexity Check
 
-- **Small vertical slice?** Yes: one migration (3-4 columns, 2 CHECKs, 1
-  column grant, 1 policy, optional 1 trigger), one `CollectionItem` type edit,
-  one `loadCollection` select edit, one ~30-line helper, one compact control
+- **Small vertical slice?** Yes: one migration (3 columns, 2 CHECKs, 1 column
+  grant, 1 policy - no trigger, no index), one `CollectionItem` type edit, one
+  `loadCollection` select edit, one partial-patch helper, one compact control
   component, tests. No new page, no new service, no new dependency.
 - **Unnecessary abstraction?** Avoided: no `preferences`/`signals` table, no
   generic "editable field" framework, no Netlify Function, no album-detail
   architecture.
-- **Speculative migration field?** Only `updated_at` is borderline - raised as
-  Open Question 1 (recommended in, for auditability + M9).
+- **Speculative migration field?** None - `updated_at` was rejected (decision
+  A).
 - **Unnecessary backend function?** None.
 - **Premature index?** The favorite/rating indexes - explicitly deferred.
 - **Actually M8/M9 scope?** Favorite-filtering / rating-sorting (deferred);
@@ -220,22 +240,22 @@ Milestone 7 scope.
 
 ## Risks / Notes
 
-- `collection_items` has no `updated_at` today; adding it is the one schema
-  choice beyond the strict minimum (Open Question 1).
 - Optimistic favorite/rating UI must revert cleanly on a failed save and never
   show a false "saved" state - covered by a focused test.
+- The partial-patch helper must send only the mutated key so an unsaved note
+  draft is never persisted by a favorite/rating change - covered by the
+  state-safety regression tests (A-D).
 - Personal signals are per collection item; duplicate copies of the same
   release are independent, which is the intended behaviour (no cross-copy
   fan-out, unlike manual-release edits).
 
-## Human Decisions Required Before Implementation
-
-The four "Open Questions Requiring Human Approval" in the spec:
-(1) add `collection_items.updated_at` + trigger?; (2) confirm the 1000-char
-note cap; (3) confirm favorite/rating filtering-sorting is fully deferred;
-(4) confirm the save UX (favorite/rating immediate, notes explicit Save).
-
 ## Stop Point
 
-This plan is PLANNED. Implementation begins only after the human approves this
-plan, the specification, and the answers to the Open Questions above.
+Historical pre-implementation gate, satisfied. It read:
+
+> This plan is PLANNED. Implementation begins only after the human approves
+> this plan, the specification, and the answers to the Open Questions above.
+
+The human approved and directed implementation on this branch with all four
+Open Questions resolved (see "Approved Decisions" at the top) and the
+partial-patch correction.

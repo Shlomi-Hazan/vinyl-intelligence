@@ -1,6 +1,6 @@
 # 0008 Milestone 7 Ratings / Favorites / Notes Specification
 
-Status: PLANNED - awaiting human approval before implementation
+Status: approved and in implementation
 
 Milestone: 7 - Ratings / Favorites / Notes (personal preference signals)
 
@@ -9,6 +9,10 @@ Date: 2026-08-31
 Branch: `claude/milestone-7-ratings-favorites-notes`
 
 Baseline: `3583900cc19dae9db9a2e6f37846de7a8af5a665` (Milestone 6 merge on `main`)
+
+Approved: 2026-08-31, with the four Open Questions resolved and a partial-patch
+correction to the update helper - see "Open Questions Requiring Human Approval"
+and "Client Behaviour".
 
 ## Intent
 
@@ -44,8 +48,8 @@ Milestone 9 curator can later use as grounded facts.
   `is_favorite` (`boolean not null default false`), `notes` (nullable `text`,
   <= 1000 chars, trimmed, empty -> NULL).
 - One forward migration adding those columns + CHECK constraints + a
-  column-scoped `authenticated` `UPDATE` grant + one RLS `UPDATE` policy, and
-  `collection_items.updated_at` + a touch trigger (see Open Questions).
+  column-scoped `authenticated` `UPDATE` grant + one RLS `UPDATE` policy. No
+  `updated_at` column (approved decision A).
 - The existing RLS-authoritative browser collection load returns the three
   signals at the collection-item level.
 - One ownership-safe client helper,
@@ -118,15 +122,15 @@ each carry their own independent `rating` / `is_favorite` / `notes`.
 
 ## Database Implications
 
-One new forward migration, `2026083100xxxx_add_collection_item_signals.sql`.
-No historical migration is edited.
+One new forward migration, `20260831120000_add_collection_item_signals.sql`.
+No historical migration is edited. **No `updated_at` column, no trigger, no new
+index** (approved decision A + the deferred-index decision).
 
 ```sql
 alter table public.collection_items
   add column rating smallint,
   add column is_favorite boolean not null default false,
-  add column notes text,
-  add column updated_at timestamptz not null default now();  -- see Open Question 1
+  add column notes text;
 
 alter table public.collection_items
   add constraint collection_items_rating_range
@@ -148,24 +152,14 @@ create policy "Users can update their own collection item signals"
   to authenticated
   using (user_id = (select auth.uid()))
   with check (user_id = (select auth.uid()));
-
--- Only if Open Question 1 is "add updated_at":
-create trigger touch_collection_item_updated_at_before_signal_update
-before update of rating, is_favorite, notes on public.collection_items
-for each row
-when (
-  old.rating is distinct from new.rating
-  or old.is_favorite is distinct from new.is_favorite
-  or old.notes is distinct from new.notes
-)
-execute function private.touch_collection_item_updated_at();  -- new security-definer fn, mirrors private.touch_release_updated_at
 ```
 
 - `authenticated` currently has `select`, `insert (release_id)`, `delete` on
   `collection_items` and **no** `UPDATE`. This migration adds `UPDATE` on
   exactly `rating`, `is_favorite`, `notes` - not `user_id`, `release_id`,
   `added_at`, `created_at`, `id`.
-- `service_role` is not touched. No Netlify Function is involved.
+- `service_role` is not touched. `anon` is not touched (still no access). No
+  Netlify Function is involved.
 - The `notes = btrim(notes)` check pairs with the client's trim-then-null
   normalization, matching the repository's existing `*_clean` constraint style.
 
@@ -189,30 +183,49 @@ execute function private.touch_collection_item_updated_at();  -- new security-de
 - `src/lib/supabase/collection.ts`:
   - `CollectionItemWithRelease` gains `rating`, `is_favorite`, `notes` at the
     **item** level (not under `release`).
-  - `loadCollection` selects `rating, is_favorite, notes` (and `updated_at` if
-    added) alongside `id, added_at, created_at`.
-  - New `updateCollectionItemPersonalSignals(client, collectionItemId, {
-    rating, is_favorite, notes })`: normalizes (`notes` trim -> `null` when
-    empty), validates (`rating` is `null` or integer 1..5; trimmed `notes`
-    length <= 1000) and throws a friendly `Error` before any write; then
-    `client.from('collection_items').update({...}).eq('id', collectionItemId)
-    .select('id, rating, is_favorite, notes').single()` and surfaces
+  - `loadCollection` selects `rating, is_favorite, notes` alongside `id,
+    added_at, created_at`.
+  - New `updateCollectionItemPersonalSignals(client, collectionItemId, patch)`
+    with **partial-patch** semantics (approved correction):
+    ```ts
+    type CollectionItemPersonalSignalsPatch = {
+      rating?: number | null
+      is_favorite?: boolean
+      notes?: string | null
+    }
+    ```
+    The helper: requires at least one of the three supported keys; rejects any
+    other key; normalizes and validates **only** the keys present
+    (`rating` -> `null` or integer 1..5, else throw; `notes` -> trim, empty ->
+    `null`, else <= 1000 chars or throw; `is_favorite` -> boolean or throw);
+    builds an `update` payload containing **only** the present keys; never
+    includes `id` / `user_id` / `release_id` / `added_at` / `created_at`; then
+    `client.from('collection_items').update(payload).eq('id', collectionItemId)
+    .select('id, rating, is_favorite, notes').single()` and returns the saved
+    `{ id, rating, is_favorite, notes }` for a safe state merge; surfaces
     Supabase/PostgREST errors.
   - `updateManualRelease` is not modified and is not coupled to this helper.
+
+Partial-patch semantics prevent the state-clobber / implicit-save class of bug:
+toggling Favorite while a note draft is unsaved sends `{ is_favorite }` only and
+does **not** persist the note; saving a note sends `{ notes }` only and does not
+touch Favorite or Rating; no signal mutation ever writes another signal from
+stale local state.
 
 ## Loading / Saving Behaviour
 
 - Load: the three signals arrive with the normal `loadCollection` and are held
   in `CollectionPanel`'s `items` state.
 - Save: a small `CollectionItemPersonalControls` component (rendered by
-  `CollectionItemCard` or `CollectionPanel` for every item) holds local
-  `rating` / `is_favorite` / `notes` state seeded from the item.
-  - Favorite and rating changes call `updateCollectionItemPersonalSignals`
-    immediately with the new full triple; on success the parent `items` entry
-    is updated in place; on error the local state reverts and an inline error
-    shows.
-  - Notes: local edits are not persisted until "Save note" is pressed;
-    success/error handled the same way.
+  `CollectionItemCard` for every item) holds local `rating` / `is_favorite` /
+  `noteDraft` state seeded from the item.
+  - Favorite change calls the helper with `{ is_favorite: next }` only; rating
+    change calls `{ rating: next }`; "Clear rating" calls `{ rating: null }`.
+    These persist immediately (optimistic); on success the parent `items` entry
+    is merged from the returned saved values; on error the local control
+    reverts and an inline error shows.
+  - "Save note" calls `{ notes: noteDraft }` only. A note draft is never
+    persisted by a favorite or rating change.
 - Personal signals are per collection item, so no cross-copy synchronization is
   needed (unlike manual-release edits, which fan out to same-release copies).
 
@@ -281,31 +294,47 @@ Plus a branch-diff secret/scope scan.
 Focused tests to add:
 
 - **pgTAP** (`collection_item_signals.test.sql`): migration applies after all
-  existing migrations; `rating` / `is_favorite` / `notes` columns exist with
-  the right types and defaults (`is_favorite` NOT NULL default `false`);
-  `rating` NULL / 1 / 5 accepted, `0` / `6` / non-integer rejected (`23514`);
-  `notes` NULL accepted, 1000-char accepted, 1001-char rejected, whitespace-only
-  rejected; `authenticated` has `UPDATE` on `rating` / `is_favorite` / `notes`
-  only and NOT on `user_id` / `release_id` / `added_at` / `created_at` / `id`;
-  behavioural under `SET LOCAL ROLE authenticated` + jwt claims - user A updates
-  own signals; user A's update of user B's row is a no-op / blocked; user A
-  cannot set `user_id` to another user (WITH CHECK); user A cannot set
-  `release_id` (no grant); `anon` cannot read or write `collection_items`;
-  `updated_at` bumps on a signal change (if added); existing suites still pass
+  existing migrations; `rating` is `smallint` and nullable, `is_favorite` is
+  `boolean` NOT NULL default `false`, `notes` is `text` nullable; `rating`
+  NULL / 1 / 5 accepted; **`0` and `6` rejected by the rating-range CHECK**
+  (the test does not assume `1.5` fails with `23514` - `smallint` coercion may
+  intervene before the constraint; a stable direct-SQL fractional case may be
+  recorded separately as an observed result but is not a core schema
+  assertion); `notes` NULL accepted, 1000-char accepted, 1001-char rejected,
+  whitespace-only rejected; `authenticated` has `UPDATE` on `rating` /
+  `is_favorite` / `notes` only and NOT on `id` / `user_id` / `release_id` /
+  `added_at` / `created_at`; behavioural under `SET LOCAL ROLE authenticated` +
+  jwt claims - user A updates own signals; user A's `UPDATE` targeting user B's
+  row **affects zero rows** (RLS `USING` filters it; PostgreSQL does not raise);
+  user A setting `user_id` to another user is rejected by `WITH CHECK`
+  (`SQLSTATE 42501`); user A setting `release_id` is rejected because there is
+  no column grant (`SQLSTATE 42501`); `anon` cannot read or write
+  `collection_items`; existing M2-M6 RLS behaviour intact; existing suites pass
   on a clean reset.
 - **Client** (`collection.test.ts`): `loadCollection` selects and maps
-  `rating` / `is_favorite` / `notes` at the item level (not under `release`);
-  `updateCollectionItemPersonalSignals` sends exactly those three fields,
-  scopes with `.eq('id', ...)`, normalizes whitespace-only notes to `null`,
-  rejects an over-1000 note and an out-of-range rating before any write, and
-  surfaces Supabase errors.
-- **Component** (`CollectionPanel.test.tsx` / a personal-controls test):
-  controls render for a manual item and a catalog item; favorite toggle
-  persists and updates state; rating 1..5 persists; "Clear rating" writes
-  `null`; "Save note" persists; whitespace note -> `null`; over-limit note
-  blocked with a message; a rejected update reverts the control and shows a
-  recoverable error with no "saved" state; a re-render with mocked persisted
-  values shows them.
+  `rating` / `is_favorite` / `notes` at the **item** level (not under
+  `release`); `updateCollectionItemPersonalSignals` with a partial patch sends
+  **only** the keys present, scopes with `.eq('id', ...)`, requires at least
+  one supported key, rejects an unsupported key, normalizes whitespace-only
+  notes to `null`, rejects an over-1000 note / a fractional (`1.5`) or
+  out-of-range rating **before any write**, and surfaces Supabase errors.
+- **Component** (`CollectionItemPersonalControls` test): controls render for a
+  manual item and a catalog item; favorite toggle persists and merges state;
+  rating 1..5 persists; "Clear rating" writes `{ rating: null }`; "Save note"
+  persists `{ notes }`; whitespace note -> `null`; over-limit note blocked with
+  a message; a rejected update reverts the control and shows a recoverable
+  error with no "saved" state; a re-render with mocked persisted values shows
+  them.
+- **State-safety regression** (required, from the approved partial-patch
+  correction):
+  - A: unsaved note draft + toggle Favorite -> the update payload is
+    `{ is_favorite }` only; the note is NOT persisted.
+  - B: unsaved note draft + set Rating -> payload is `{ rating }` only; the
+    note is NOT persisted.
+  - C: existing favorite + rating present, edit + "Save note" -> payload is
+    `{ notes }` only; favorite and rating are unchanged.
+  - D: sequential favorite then rating updates each send a single-key payload
+    and merge correctly into the parent item state; no full-object write.
 
 ## Human Runtime Plan (later - not part of this planning step)
 
@@ -334,23 +363,32 @@ curator's first real server-side candidate queries over `collection_items`.
 
 ## Open Questions Requiring Human Approval
 
-1. **`collection_items.updated_at` + touch trigger.** Recommended: add it. It
-   is small (one column, one security-definer trigger mirroring
-   `private.touch_release_updated_at`), preserves auditability of when a
-   personal signal last changed, and gives Milestone 9 a cheap "recently
-   rated / recently favorited" ordering key. The alternative is to defer it;
-   `collection_items` currently has no `updated_at`.
-2. **Note maximum length = 1000 characters.** Confirm, or set a different cap.
-3. **Filtering/sorting.** Confirm that favorite-filtering and rating-sorting
-   are fully deferred (recommended - smallest slice), rather than adding a
-   minimal "Favorites only" toggle now.
-4. **Save UX.** Confirm favorite + rating persist immediately (optimistic) and
-   notes use an explicit "Save note" button, rather than one combined "Save
-   personal signals" action for all three.
+Resolved with the human on 2026-08-31:
+
+1. **`collection_items.updated_at` + touch trigger.** DECISION: **do not add**
+   in Milestone 7 - no `updated_at` column, no `touch_collection_item_updated_at`
+   function, no signal-update trigger. Nothing in M7 consumes such a timestamp;
+   adding it now is speculative. Milestone 9 may add it if an actual query
+   requires it.
+2. **Note maximum length.** DECISION: **1000 characters** (approved).
+3. **Filtering/sorting.** DECISION: favorite-only filtering, rating filtering,
+   and rating sorting remain **DEFERRED**. The Milestone 6
+   `src/collection/collectionQuery.ts` layer is not modified for these.
+4. **Save UX.** DECISION: favorite persists immediately; rating persists
+   immediately; notes persist **only** through an explicit "Save note".
+
+Plus an approved design correction: the update helper uses **partial-patch**
+semantics, not a full-triple write (see "Client Behaviour" and the state-safety
+regression tests).
 
 ## Stop Point
 
-This specification is PLANNED. Do not begin Milestone 7 implementation until
-the human approves this spec and the implementation plan
-(`docs/plans/008-milestone-7-ratings-favorites-notes.md`), including the answers
-to the Open Questions above.
+Historical pre-implementation gate, satisfied. It read:
+
+> This specification is PLANNED. Do not begin Milestone 7 implementation until
+> the human approves this spec and the implementation plan, including the
+> answers to the Open Questions above.
+
+The human approved the spec and plan with all four Open Questions resolved and
+the partial-patch correction, and directed implementation on this branch.
+Current status is at the top of this document.

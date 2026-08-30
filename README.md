@@ -35,10 +35,8 @@ The recommended baseline is:
 
 Current status: Milestone 6 (Browse / Search / Filter, plus `releases.genres`
 metadata) is merged to `main`. Milestone 7 (Ratings / Favorites / Notes -
-personal preference signals on owned collection items) is in planning on branch
-`claude/milestone-7-ratings-favorites-notes`: the specification
-(`docs/specs/0008-...`) and implementation plan (`docs/plans/008-...`) are
-drafted and awaiting human approval; no Milestone 7 code has been written.
+personal preference signals on owned collection items) is approved and in
+implementation on branch `claude/milestone-7-ratings-favorites-notes`.
 Hosted/production verification and production deployment have not occurred and
 remain later milestones.
 
