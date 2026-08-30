@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CollectionForm } from './CollectionForm.tsx'
 import { CollectionItemCard } from './CollectionItemCard.tsx'
+import { CollectionLibraryControls } from './CollectionLibraryControls.tsx'
+import {
+  DEFAULT_SORT,
+  EMPTY_FILTERS,
+  applyCollectionQuery,
+  availableDecades,
+  availableGenres,
+  type CollectionFilters,
+  type CollectionSort,
+} from './collectionQuery.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import {
   addManualCollectionItem,
@@ -57,6 +67,8 @@ export function CollectionPanel({
   const [editingItem, setEditingItem] = useState<CollectionItemWithRelease | null>(
     null,
   )
+  const [filters, setFilters] = useState<CollectionFilters>(EMPTY_FILTERS)
+  const [sort, setSort] = useState<CollectionSort>(DEFAULT_SORT)
 
   const fetchCollection = useCallback(async () => {
     setIsLoading(true)
@@ -104,6 +116,14 @@ export function CollectionPanel({
   }, [client, refreshKey])
 
   const sortedItems = useMemo(() => sortCollection(items), [items])
+  const decades = useMemo(() => availableDecades(sortedItems), [sortedItems])
+  const genres = useMemo(() => availableGenres(sortedItems), [sortedItems])
+  // Deterministic, local: no request, no LLM, no database write is triggered
+  // by a filter or sort change.
+  const visibleItems = useMemo(
+    () => applyCollectionQuery(sortedItems, filters, sort),
+    [sortedItems, filters, sort],
+  )
 
   async function handleAdd(input: ManualReleaseInput) {
     setActionError(null)
@@ -201,26 +221,50 @@ export function CollectionPanel({
           Your collection is empty. Add a record manually to start the shelf.
         </p>
       ) : (
-        <div className="collection-list" aria-label="Owned records">
-          {sortedItems.map((item) => (
-            <div className="collection-item-shell" key={item.id}>
-              <CollectionItemCard
-                item={item}
-                onEdit={setEditingItem}
-                onRemove={handleRemove}
-              />
-              {editingItem?.id === item.id ? (
-                <CollectionForm
-                  key={item.release.updated_at}
-                  initialRelease={item.release}
-                  mode="edit"
-                  onCancel={() => setEditingItem(null)}
-                  onSubmit={handleEdit}
-                />
-              ) : null}
+        <>
+          <CollectionLibraryControls
+            decades={decades}
+            filters={filters}
+            genres={genres}
+            onClear={() => {
+              setFilters(EMPTY_FILTERS)
+              setSort(DEFAULT_SORT)
+            }}
+            onFiltersChange={setFilters}
+            onSortChange={setSort}
+            sort={sort}
+            totalCount={sortedItems.length}
+            visibleCount={visibleItems.length}
+          />
+
+          {visibleItems.length === 0 ? (
+            <p className="field-hint collection-state">
+              No records match these filters. Use "Clear filters" above to see
+              your whole collection.
+            </p>
+          ) : (
+            <div className="collection-list" aria-label="Owned records">
+              {visibleItems.map((item) => (
+                <div className="collection-item-shell" key={item.id}>
+                  <CollectionItemCard
+                    item={item}
+                    onEdit={setEditingItem}
+                    onRemove={handleRemove}
+                  />
+                  {editingItem?.id === item.id ? (
+                    <CollectionForm
+                      key={item.release.updated_at}
+                      initialRelease={item.release}
+                      mode="edit"
+                      onCancel={() => setEditingItem(null)}
+                      onSubmit={handleEdit}
+                    />
+                  ) : null}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </section>
   )

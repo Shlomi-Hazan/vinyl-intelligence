@@ -605,3 +605,185 @@ describe('CollectionPanel manual genre', () => {
     })
   })
 })
+
+describe('CollectionPanel browse / search / filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  function library() {
+    return [
+      item({
+        id: 'a',
+        added_at: '2026-08-19T13:00:00.000Z',
+        release: {
+          ...item().release,
+          id: 'r-a',
+          artist: 'Miles Davis',
+          title: 'Kind of Blue',
+          release_year: 1959,
+          genres: ['jazz'],
+        },
+      }),
+      item({
+        id: 'b',
+        added_at: '2026-08-19T12:00:00.000Z',
+        release: {
+          ...item().release,
+          id: 'r-b',
+          artist: 'Radiohead',
+          title: 'OK Computer',
+          release_year: 1997,
+          genres: ['rock', 'alternative rock'],
+        },
+      }),
+      item({
+        id: 'c',
+        added_at: '2026-08-19T11:00:00.000Z',
+        release: {
+          ...item().release,
+          id: 'r-c',
+          artist: 'Aphex Twin',
+          title: 'Selected Ambient Works 85-92',
+          release_year: 1992,
+          genres: [],
+        },
+      }),
+    ]
+  }
+
+  it('renders library controls and a result count once there are records', async () => {
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    expect(await screen.findByLabelText('Search collection')).toBeInTheDocument()
+    expect(screen.getByLabelText('Decade')).toBeInTheDocument()
+    expect(screen.getByLabelText('Year')).toBeInTheDocument()
+    expect(screen.getByLabelText('Genre filter')).toBeInTheDocument()
+    expect(screen.getByLabelText('Sort')).toBeInTheDocument()
+    expect(screen.getByText('3 of 3 records')).toBeInTheDocument()
+  })
+
+  it('does not render library controls for an empty collection', async () => {
+    mockCollection([])
+    render(<CollectionPanel client={client} />)
+
+    expect(
+      await screen.findByText(
+        'Your collection is empty. Add a record manually to start the shelf.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Search collection')).not.toBeInTheDocument()
+  })
+
+  it('hides the genre selector when no record has a genre', async () => {
+    mockCollection([
+      item({ release: { ...item().release, genres: [] } }),
+    ])
+    render(<CollectionPanel client={client} />)
+
+    await screen.findByLabelText('Search collection')
+    expect(screen.queryByLabelText('Genre filter')).not.toBeInTheDocument()
+  })
+
+  it('filters by artist/title search, case-insensitively, and updates the count', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Search collection'), '  RADIO ')
+
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+    expect(screen.queryByText('Kind of Blue')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3 records')).toBeInTheDocument()
+  })
+
+  it('filters by decade and by genre, combined as AND', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.selectOptions(await screen.findByLabelText('Decade'), '1990s')
+    expect(screen.getByText('2 of 3 records')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Genre filter'), 'rock')
+    expect(screen.getByText('1 of 3 records')).toBeInTheDocument()
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+  })
+
+  it('filters by exact year', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Year'), '1959')
+    expect(screen.getByText('1 of 3 records')).toBeInTheDocument()
+    expect(screen.getByText('Kind of Blue')).toBeInTheDocument()
+  })
+
+  it('shows a no-results state and Clear filters restores the full collection', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.type(await screen.findByLabelText('Search collection'), 'nonexistent')
+    expect(
+      screen.getByText(/No records match these filters/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('0 of 3 records')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+
+    expect(screen.getByText('3 of 3 records')).toBeInTheDocument()
+    expect(screen.getByText('Kind of Blue')).toBeInTheDocument()
+  })
+
+  it('sorts by artist A-Z', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await user.selectOptions(await screen.findByLabelText('Sort'), 'artist-asc')
+
+    const titles = screen.getAllByRole('article').map(
+      (card) => within(card).getByRole('heading').textContent,
+    )
+    expect(titles).toEqual([
+      'Selected Ambient Works 85-92',
+      'Kind of Blue',
+      'OK Computer',
+    ])
+  })
+
+  it('a filter change triggers no reload and no collection write', async () => {
+    const user = userEvent.setup()
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    await screen.findByLabelText('Search collection')
+    expect(loadCollection).toHaveBeenCalledTimes(1)
+
+    await user.type(screen.getByLabelText('Search collection'), 'miles')
+    await user.selectOptions(screen.getByLabelText('Decade'), '1950s')
+    await user.selectOptions(screen.getByLabelText('Sort'), 'year-desc')
+
+    expect(loadCollection).toHaveBeenCalledTimes(1)
+    expect(addManualCollectionItem).not.toHaveBeenCalled()
+    expect(updateManualRelease).not.toHaveBeenCalled()
+    expect(deleteCollectionItem).not.toHaveBeenCalled()
+  })
+
+  it('shows genres on collection cards', async () => {
+    mockCollection(library())
+    render(<CollectionPanel client={client} />)
+
+    const okComputerCard = (await screen.findAllByRole('article')).find((card) =>
+      within(card).queryByText('OK Computer'),
+    )
+    expect(okComputerCard).toBeDefined()
+    expect(
+      within(okComputerCard as HTMLElement).getByText('rock, alternative rock'),
+    ).toBeInTheDocument()
+  })
+})

@@ -1,16 +1,52 @@
 # 007 Milestone 6 Browse / Search / Filter Implementation Plan
 
-Status: PLANNED - awaiting human approval before implementation
+Status: implemented; automated verification passed; awaiting independent
+implementation review and human runtime verification before the pull request
 
 Milestone: 6 - Browse / Search / Filter
 
 Date: 2026-08-30
+
+Approved: 2026-08-30 (with the four Open Questions answered)
+
+Implemented: 2026-08-30
 
 Branch: `claude/milestone-6-browse-search-filter`
 
 Baseline: `2c125bc006bb2631da8356d8c51daf5ef9772a13` (Milestone 5 merge on `main`)
 
 Specification: `docs/specs/0007-milestone-6-browse-search-filter.md`
+
+## Implementation Outcome
+
+Landed in three commits: `db: add release genre metadata`,
+`feat: enrich catalog releases with genres`,
+`feat: add collection browse search and filters`.
+
+Changes from this plan applied during implementation, at the human's direction:
+
+- **Genre validator.** A CHECK constraint cannot contain a subquery, so the
+  element-wise rule (trimmed / lowercase / 1..40 chars, <= 12, no NULL element)
+  is a small pure `IMMUTABLE` function `public.release_genres_valid(text[])`.
+  It is in `public`, not `private`: a CHECK function executes in the DML
+  executor's security context and `authenticated` has no USAGE on `private`.
+  `EXECUTE` is granted only to `authenticated` and `service_role`.
+- **No GIN index.** Milestone 6 filtering is entirely client-side over the
+  already-loaded owned collection - there is no database genre query - so the
+  planned `releases_genres_gin_idx` is deliberately omitted and documented as
+  deferred.
+- **Genre pacing.** The second MusicBrainz GET (release-group genres) runs
+  after `paceProviderRequest()`, and the handler wraps the lookup in a
+  try/catch in addition to the adapter's own never-throw contract.
+- **No-erase rule.** `catalogReleasePayload` includes `genres` in the
+  on-conflict upsert only when enrichment produced one or more, so a failed or
+  empty enrichment never overwrites an existing shared row's genres; a new row
+  falls back to the column default `'{}'`.
+- **CatalogCandidate unchanged.** Genres are a local variable in
+  `handleCatalogAdd`; only the Add response / owned-release type carry
+  persisted genres.
+- Removed local untracked `"* 2.*"` stray duplicate files that broke
+  `supabase db reset` / `supabase test db` (a sync-tool artifact; never tracked).
 
 ## Current Repository Baseline
 
@@ -292,17 +328,21 @@ secret or real `.env` is staged; the branch contains only Milestone 6 scope.
   page only - out of scope now.
 - Diacritic-insensitive search is out of scope for Milestone 6.
 
-## Human Decisions Required Before Implementation
+## Human Decisions Made Before Implementation
 
-See "Open Questions Requiring Human Approval" in the spec:
-
-1. Add the optional manual Genre field? (recommended yes)
-2. Genre source: one best-effort release-group GET per Add (recommended) vs.
-   sparse release-level only vs. defer genre.
-3. Show genres on the collection card? (recommended yes)
-4. Standalone ADR for the genre decision? (recommended: not needed)
+The four "Open Questions Requiring Human Approval" in the spec were resolved:
+(1) manual Genre field APPROVED; (2) genre source APPROVED - one best-effort
+release-group GET per confirmed Add; (3) genres shown on the card APPROVED;
+(4) standalone ADR NOT REQUIRED.
 
 ## Stop Point
 
-This plan is PLANNED. Implementation begins only after the human approves this
-plan, the specification, and the answers to the Open Questions above.
+Historical pre-implementation gate, satisfied. It read:
+
+> This plan is PLANNED. Implementation begins only after the human approves
+> this plan, the specification, and the answers to the Open Questions above.
+
+The human approved and directed implementation on this branch; it is complete
+and passed automated verification. An independent implementation review and
+human runtime verification precede the pull request. Current status is at the
+top of this document.

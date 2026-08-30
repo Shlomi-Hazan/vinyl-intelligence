@@ -1,14 +1,25 @@
 # 0007 Milestone 6 Browse / Search / Filter Specification
 
-Status: PLANNED - awaiting human approval before implementation
+Status: implemented; automated verification passed; awaiting independent
+implementation review and human runtime verification before the pull request
 
 Milestone: 6 - Browse / Search / Filter
 
 Date: 2026-08-30
 
+Approved: 2026-08-30 (spec + plan approved with the four Open Questions
+answered - see "Open Questions Requiring Human Approval")
+
+Implemented: 2026-08-30
+
 Branch: `claude/milestone-6-browse-search-filter`
 
 Baseline: `2c125bc006bb2631da8356d8c51daf5ef9772a13` (Milestone 5 merge on `main`)
+
+Human decisions recorded: (1) manual Genre field - APPROVED; (2) genre source -
+APPROVED, one best-effort MusicBrainz release-group genre lookup during
+confirmed catalog Add; (3) genres shown on collection cards - APPROVED;
+(4) standalone genre ADR - NOT REQUIRED, this spec is sufficient.
 
 ## Intent
 
@@ -174,38 +185,55 @@ A single pure function pipeline over the loaded `CollectionItemWithRelease[]`:
 
 ## Database Implications
 
-One new forward migration (`20260830xxxxxx_add_release_genres.sql`). No
+One new forward migration (`20260830120000_add_release_genres.sql`). No
 historical migration is edited.
 
+As implemented (a CHECK constraint cannot contain a subquery, so the
+element-wise rule is a small validator function):
+
 ```sql
+-- Pure, deterministic, IMMUTABLE. In `public`, not `private`, because a CHECK
+-- function runs in the DML executor's security context and `authenticated`
+-- has no USAGE on `private`. Examines only its argument.
+create or replace function public.release_genres_valid(genres text[])
+returns boolean language sql immutable parallel safe set search_path = ''
+as $$
+  select
+    genres is not null
+    and coalesce(array_length(genres, 1), 0) <= 12
+    and coalesce(
+      (
+        select bool_and(
+          g is not null and g = btrim(g) and g = lower(g)
+          and char_length(g) between 1 and 40
+        )
+        from unnest(genres) as g
+      ),
+      true
+    );
+$$;
+
+revoke all on function public.release_genres_valid(text[]) from public;
+grant execute on function public.release_genres_valid(text[]) to authenticated;
+grant execute on function public.release_genres_valid(text[]) to service_role;
+
 alter table public.releases
   add column genres text[] not null default '{}';
 
 alter table public.releases
-  add constraint releases_genres_clean check (
-    array_length(genres, 1) is null
-    or (
-      array_length(genres, 1) <= 12
-      and array_position(genres, null) is null
-      and (
-        select bool_and(
-          g = btrim(g)
-          and g = lower(g)
-          and char_length(g) between 1 and 40
-        )
-        from unnest(genres) as g
-      )
-    )
-  );
+  add constraint releases_genres_valid check (public.release_genres_valid(genres));
 
-create index releases_genres_gin_idx on public.releases using gin (genres);
-
--- Manual genre editing (only if the optional manual Genre field is approved):
+-- Manual genre editing (APPROVED).
 grant insert (genres) on table public.releases to authenticated;
 grant update (genres) on table public.releases to authenticated;
--- and extend private.touch_release_updated_at's `before update of ...` column
--- list and its `when (...)` clause to include `genres`.
+-- touch_release_updated_at_before_metadata_update is recreated with `genres`
+-- added to its `before update of ...` column list and its `when (...)` clause.
 ```
+
+**No GIN index in Milestone 6.** Filtering is client-side over the already
+loaded owned collection; there is no database genre-containment query, so an
+unused GIN index would be pure write overhead. Add one in a later milestone if
+server-side genre querying is introduced.
 
 - `service_role` already holds table-level `select, insert, update` on
   `public.releases` (migration `20260829120000`), so catalog-add genre writes
@@ -349,28 +377,28 @@ evidence in `docs/verification.md`. Do not claim production verification.
 
 ## Open Questions Requiring Human Approval
 
-1. **Manual Genre field.** Add one optional free-text "Genre" input to the
-   manual add/edit form (stored as a 0-or-1-element `genres` array)? Recommended
-   yes - it is small and it is what makes the genre filter useful for
-   manual-heavy collections - but it touches the manual form, the
-   `authenticated` column grants, and the `updated_at` trigger.
-2. **Genre source cost.** Accept one additional best-effort MusicBrainz
-   release-group GET per confirmed catalog Add (recommended), OR take only
-   sparse release-level genres by extending the existing single lookup with
-   `inc=genres` (zero extra calls, weaker coverage), OR defer the genre filter
-   to a later milestone and ship Milestone 6 with artist/title/year/decade
-   only.
-3. **Genre display on cards.** Show genres on the collection card metadata line,
-   or keep them filter-only for Milestone 6? (Recommended: show them - it is a
-   one-line change and helps the user understand the filter.)
-4. **ADR.** Is a standalone `docs/decisions/0004-*` record wanted for the genre
-   source decision, or is this spec section sufficient? (Recommended:
-   sufficient; the provider and boundary are unchanged from Milestone 4.)
+Resolved with the human before implementation:
+
+1. **Manual Genre field.** APPROVED. One optional free-text "Genre" input on the
+   manual add/edit form, stored as a 0-or-1-element `genres` array.
+2. **Genre source.** APPROVED: one additional best-effort MusicBrainz
+   release-group genre lookup during a confirmed catalog Add (not the sparse
+   release-level option, not deferral).
+3. **Genre display on cards.** APPROVED. Genres are shown on the collection
+   card.
+4. **Standalone genre ADR.** NOT REQUIRED. This spec section is sufficient; the
+   provider and trust boundary are unchanged from Milestone 4.
 
 ## Stop Point
 
-This specification is PLANNED. Do not begin Milestone 6 implementation until the
-human approves this spec and the implementation plan
-(`docs/plans/007-milestone-6-browse-search-filter.md`), including the answers to
-the Open Questions above (in particular the manual Genre field and the genre
-source).
+Historical pre-implementation gate, satisfied. It read:
+
+> This specification is PLANNED. Do not begin Milestone 6 implementation until
+> the human approves this spec and the implementation plan, including the
+> answers to the Open Questions above.
+
+The human approved the spec and plan with all four Open Questions answered and
+directed implementation on this branch. Implementation is complete and passed
+automated verification; an independent implementation review and human runtime
+verification precede the pull request. Current status is at the top of this
+document.
