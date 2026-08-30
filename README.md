@@ -33,13 +33,13 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 4 Catalog API is merged to `main`. Milestone 5
-(Photo Recognition + Candidate Confirmation) is implemented and human
-runtime-verified on branch `claude/milestone-5-photo-recognition` and is open
-as a pull request against `main` (not merged). The final multi-agent review
-(`/code-review ultra`) returned PASS WITH NOTES; the promoted findings were
-closed on the branch. Hosted/production verification and production deployment
-have not occurred and remain later milestones.
+Current status: Milestone 5 (Photo Recognition + Candidate Confirmation) is
+merged to `main`. Milestone 6 (Browse / Search / Filter) is in planning on
+branch `claude/milestone-6-browse-search-filter`: the specification
+(`docs/specs/0007-...`) and implementation plan (`docs/plans/007-...`) are
+drafted and awaiting human approval; no Milestone 6 code has been written.
+Hosted/production verification and production deployment have not occurred and
+remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
