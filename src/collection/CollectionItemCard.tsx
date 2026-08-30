@@ -1,6 +1,10 @@
 import {
   CollectionItemPersonalControls,
 } from './CollectionItemPersonalControls.tsx'
+import {
+  CollectionItemListeningControls,
+} from './CollectionItemListeningControls.tsx'
+import type { ListeningSummary } from './listeningSummary.ts'
 import type {
   CollectionItemPersonalSignals,
   CollectionItemWithRelease,
@@ -10,8 +14,10 @@ import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 type CollectionItemCardProps = {
   client: BrowserSupabaseClient
   item: CollectionItemWithRelease
+  listeningSummary: ListeningSummary
   onEdit: (item: CollectionItemWithRelease) => void
   onRemove: (item: CollectionItemWithRelease) => void
+  onMarkPlayed: (itemId: string) => Promise<void>
   onSignalsSaved: (
     itemId: string,
     saved: CollectionItemPersonalSignals & { id: string },
@@ -34,8 +40,10 @@ function metadataLine(item: CollectionItemWithRelease): string {
 export function CollectionItemCard({
   client,
   item,
+  listeningSummary,
   onEdit,
   onRemove,
+  onMarkPlayed,
   onSignalsSaved,
 }: CollectionItemCardProps) {
   const detailLine = metadataLine(item)
@@ -60,6 +68,11 @@ export function CollectionItemCard({
           Remove
         </button>
       </div>
+
+      <CollectionItemListeningControls
+        summary={listeningSummary}
+        onMarkPlayed={() => onMarkPlayed(item.id)}
+      />
 
       <CollectionItemPersonalControls
         client={client}

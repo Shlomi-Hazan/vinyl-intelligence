@@ -14,6 +14,11 @@ import {
   updateCollectionItemPersonalSignals,
   updateManualRelease,
 } from '../lib/supabase/collection.ts'
+import {
+  addListeningEvent,
+  loadListeningEvents,
+} from '../lib/supabase/listeningEvents.ts'
+import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
 
 const MANUAL_DRAFT_KEY = buildUserSessionKey('manual-collection-draft', 'user-1')
 
@@ -39,7 +44,34 @@ vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/supabase/listeningEvents.ts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../lib/supabase/listeningEvents.ts')>()
+
+  return {
+    ...actual,
+    loadListeningEvents: vi.fn(async () => [] as ListeningEventRecord[]),
+    addListeningEvent: vi.fn(),
+  }
+})
+
 const client = {} as BrowserSupabaseClient
+
+function listeningEvent(
+  overrides: Partial<ListeningEventRecord> = {},
+): ListeningEventRecord {
+  return {
+    id: 'event-1',
+    collection_item_id: 'item-1',
+    listened_at: '2026-08-20T10:00:00.000Z',
+    created_at: '2026-08-20T10:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function mockListeningEvents(events: ListeningEventRecord[]) {
+  vi.mocked(loadListeningEvents).mockResolvedValue(events)
+}
 
 function item(
   overrides: Partial<CollectionItemWithRelease> = {},
@@ -80,6 +112,7 @@ describe('CollectionPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockListeningEvents([])
     mockCollection([])
   })
 
@@ -361,6 +394,7 @@ describe('CollectionPanel manual add-form draft persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockListeningEvents([])
     mockCollection([])
   })
 
@@ -535,6 +569,7 @@ describe('CollectionPanel manual genre', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockListeningEvents([])
     mockCollection([])
   })
 
@@ -623,6 +658,7 @@ describe('CollectionPanel browse / search / filter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockListeningEvents([])
   })
 
   function library() {
@@ -805,6 +841,7 @@ describe('CollectionPanel personal signals', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockListeningEvents([])
   })
 
   it('renders personal controls for every owned record', async () => {
@@ -845,5 +882,167 @@ describe('CollectionPanel personal signals', () => {
       )
     })
     expect(favorite).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('CollectionPanel listening history', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockListeningEvents([])
+  })
+
+  function twoRecords() {
+    return [
+      item({ id: 'a', release: { ...item().release, id: 'r-a', artist: 'Miles Davis', title: 'Kind of Blue' } }),
+      item({ id: 'b', release: { ...item().release, id: 'r-b', artist: 'Radiohead', title: 'OK Computer' } }),
+    ]
+  }
+
+  it('shows a Mark played control and a "Never played" summary on every card', async () => {
+    mockCollection(twoRecords())
+    render(<CollectionPanel client={client} />)
+
+    const cards = await screen.findAllByRole('article')
+    expect(cards).toHaveLength(2)
+    for (const card of cards) {
+      expect(within(card).getByRole('button', { name: 'Mark played' })).toBeInTheDocument()
+      expect(within(card).getByText('Never played')).toBeInTheDocument()
+    }
+  })
+
+  it('derives per-card counts and last-listened from loaded events', async () => {
+    mockCollection(twoRecords())
+    mockListeningEvents([
+      listeningEvent({ id: 'e2', collection_item_id: 'a', listened_at: '2026-08-21T09:00:00.000Z' }),
+      listeningEvent({ id: 'e1', collection_item_id: 'a', listened_at: '2026-08-20T09:00:00.000Z' }),
+    ])
+    render(<CollectionPanel client={client} />)
+
+    const cards = await screen.findAllByRole('article')
+    const milesCard = cards.find((c) => within(c).queryByText('Kind of Blue')) as HTMLElement
+    const radioheadCard = cards.find((c) => within(c).queryByText('OK Computer')) as HTMLElement
+
+    expect(within(milesCard).getByText('Played 2 times')).toBeInTheDocument()
+    expect(within(milesCard).getByText(/Last listened:/)).toBeInTheDocument()
+    expect(within(radioheadCard).getByText('Never played')).toBeInTheDocument()
+  })
+
+  it('marks a record played: sends only collection_item_id and updates the derived count', async () => {
+    const user = userEvent.setup()
+    mockCollection(twoRecords())
+    vi.mocked(addListeningEvent).mockResolvedValue(
+      listeningEvent({ id: 'new', collection_item_id: 'a', listened_at: '2026-08-22T12:00:00.000Z' }),
+    )
+    render(<CollectionPanel client={client} />)
+
+    const milesCard = (await screen.findAllByRole('article')).find((c) =>
+      within(c).queryByText('Kind of Blue'),
+    ) as HTMLElement
+    await user.click(within(milesCard).getByRole('button', { name: 'Mark played' }))
+
+    await waitFor(() => {
+      expect(within(milesCard).getByText('Played 1 time')).toBeInTheDocument()
+    })
+    expect(addListeningEvent).toHaveBeenCalledWith(client, 'a')
+  })
+
+  it('keeps the count unchanged and shows a recoverable error when Mark played fails', async () => {
+    const user = userEvent.setup()
+    mockCollection(twoRecords())
+    vi.mocked(addListeningEvent).mockRejectedValue(new Error('insert blocked by RLS'))
+    render(<CollectionPanel client={client} />)
+
+    const milesCard = (await screen.findAllByRole('article')).find((c) =>
+      within(c).queryByText('Kind of Blue'),
+    ) as HTMLElement
+    const button = within(milesCard).getByRole('button', { name: 'Mark played' })
+    await user.click(button)
+
+    expect(await within(milesCard).findByRole('alert')).toHaveTextContent('insert blocked by RLS')
+    expect(within(milesCard).getByText('Never played')).toBeInTheDocument()
+    expect(button).toBeEnabled()
+  })
+
+  it('lists history newest-first with artist / title, and empties to a clear message', async () => {
+    const user = userEvent.setup()
+    mockCollection(twoRecords())
+    render(<CollectionPanel client={client} />)
+
+    await screen.findAllByRole('article')
+    const toggle = screen.getByRole('button', { name: /Listening history/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('No plays recorded yet.')).toBeInTheDocument()
+  })
+
+  it('renders history rows in listened_at DESC, id DESC order including a freshly added play', async () => {
+    const user = userEvent.setup()
+    mockCollection(twoRecords())
+    mockListeningEvents([
+      listeningEvent({ id: 'a1', collection_item_id: 'a', listened_at: '2026-08-20T10:00:00.000Z' }),
+      listeningEvent({ id: 'b1', collection_item_id: 'b', listened_at: '2026-08-20T10:00:00.000Z' }),
+    ])
+    vi.mocked(addListeningEvent).mockResolvedValue(
+      listeningEvent({ id: 'c1', collection_item_id: 'a', listened_at: '2026-08-20T10:00:00.000Z' }),
+    )
+    render(<CollectionPanel client={client} />)
+
+    const milesCard = (await screen.findAllByRole('article')).find((c) =>
+      within(c).queryByText('Kind of Blue'),
+    ) as HTMLElement
+    await user.click(within(milesCard).getByRole('button', { name: 'Mark played' }))
+    await waitFor(() =>
+      expect(within(milesCard).getByText('Played 2 times')).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /Listening history/ }))
+    const rows = screen.getAllByRole('listitem').map((li) => li.textContent)
+    // Equal timestamps -> id DESC: c1, b1, a1.
+    expect(rows[0]).toContain('Kind of Blue')
+    expect(rows[1]).toContain('OK Computer')
+    expect(rows[2]).toContain('Kind of Blue')
+  })
+
+  it('drops a removed record’s events from history and derived counts', async () => {
+    const user = userEvent.setup()
+    mockCollection(twoRecords())
+    mockListeningEvents([
+      listeningEvent({ id: 'a1', collection_item_id: 'a', listened_at: '2026-08-20T10:00:00.000Z' }),
+    ])
+    vi.mocked(deleteCollectionItem).mockResolvedValue()
+    render(<CollectionPanel client={client} />)
+
+    const milesCard = (await screen.findAllByRole('article')).find((c) =>
+      within(c).queryByText('Kind of Blue'),
+    ) as HTMLElement
+    expect(within(milesCard).getByText('Played 1 time')).toBeInTheDocument()
+
+    await user.click(within(milesCard).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(screen.getByText('Record removed.')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /Listening history/ }))
+    expect(screen.getByText('No plays recorded yet.')).toBeInTheDocument()
+  })
+
+  it('surfaces an events-load failure without hiding the collection', async () => {
+    const user = userEvent.setup()
+    mockCollection(twoRecords())
+    vi.mocked(loadListeningEvents)
+      .mockRejectedValueOnce(new Error('events unavailable'))
+      .mockResolvedValueOnce([])
+    render(<CollectionPanel client={client} />)
+
+    expect(await screen.findByText('Kind of Blue')).toBeInTheDocument()
+    // The load failure is visible without expanding the section.
+    expect(await screen.findByText(/events unavailable/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() =>
+      expect(screen.queryByText(/events unavailable/)).not.toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: /Listening history/ }))
+    expect(screen.getByText('No plays recorded yet.')).toBeInTheDocument()
   })
 })
