@@ -1,10 +1,18 @@
 # 006 Milestone 5 Photo Recognition Implementation Plan
 
-Status: proposed; awaiting human approval before implementation
+Status: implemented and verified; ready for milestone pull request
 
 Milestone: 5 - Photo Recognition + Candidate Confirmation
 
 Date: 2026-08-29
+
+Approved: 2026-08-29 (human-directed implementation on this branch)
+
+Implemented: 2026-08-29 through 2026-08-30
+
+Human runtime verification: 2026-08-30 (PASS; real recognition E2E on
+2026-08-29, session-persistence + controlled no-extra-call refresh on
+2026-08-30)
 
 Branch: `claude/milestone-5-photo-recognition`
 
@@ -13,6 +21,65 @@ Baseline: `0f5ee08632e485b951cab225ed617e27d5232d0f` (Milestone 4 merge on `main
 Specification: `docs/specs/0006-milestone-5-photo-recognition.md`
 
 Decision record: `docs/decisions/0003-openrouter-vision-provider.md`
+
+## Implementation Outcome
+
+The approved scope landed across `7d35cfe` (`model_calls` table), `cdc8109`
+(authenticated recognition function + vision adapter), `ace2045` (photo
+recognition UI wired to the Milestone 4 search/add path), and `05845d7`
+(stricter structured-output validation).
+
+Three post-implementation corrections followed, all inside the approved
+architecture:
+
+- `2ec1e63` `fix: preserve unsaved catalog session state` - `sessionStorage`
+  persistence (per-tab, per-user) for the photo recognition clues/query, the
+  catalog search draft/results, and the manual add-form draft. No database
+  auto-save, no `localStorage`. Prevents an unnecessary repeated paid
+  recognition or MusicBrainz call on refresh, and stops losing partially typed
+  manual-add work. This was scope the human explicitly requested after runtime
+  testing surfaced the state loss.
+- `685e515` `fix: use unique user-scoped panel keys` - the sibling
+  `CatalogPanel` / `CollectionPanel` elements had the same React key; now
+  `catalog-<id>` / `collection-<id>` so a user switch cleanly remounts the
+  user-scoped UI.
+- `bf35eac` `fix: close milestone 5 pre-pr review findings` - after the final
+  multi-agent review (`/code-review ultra`, verdict PASS WITH NOTES): synced
+  the spec DDL to the implemented least-privilege grant (see
+  "Implementation reconciliation" below); added a minimal per-user rate guard
+  (10 recognitions / 10 minutes, counted from `model_calls` via the caller's
+  own token, enforced before any OpenRouter call, HTTP 429 `rate_limited`,
+  no provider or telemetry call on rejection, fails closed); disabled the
+  cover-photo file input while a recognition is in flight; corrected the
+  "non-blocking" telemetry wording.
+
+The single planned `docs: record milestone 5 verification` step is kept as this
+documentation pass. Full evidence is in "Milestone 5 Evidence - Photo
+Recognition + Candidate Confirmation" in `docs/verification.md`.
+
+### Implementation reconciliation (final Milestone 5)
+
+- **`model_calls` `service_role` privilege.** The original plan text below
+  (and the spec DDL) expected `grant select, insert` to `service_role`. During
+  implementation the Milestone 4 privilege lesson was applied more strictly:
+  the final migration `20260829140000_add_model_calls.sql` grants
+  `service_role` **INSERT only**. The recognition function only appends a
+  telemetry row, and the per-user rate-limit read runs through the
+  authenticated caller's token against the own-row `SELECT` RLS policy, so
+  `service_role` never needs `SELECT`. `supabase/tests/database/model_calls_rls.test.sql`
+  asserts INSERT-only (`has_table_privilege` plus a behavioral
+  `SET LOCAL ROLE service_role` check that a `SELECT` throws). The spec DDL and
+  prose were corrected to match; the historical plan/spec wording is annotated,
+  not rewritten.
+- **Per-user rate guard.** Not in the original plan. Added in the final pre-PR
+  review pass as the minimal `intent.txt` §15 "reasonable abuse/rate
+  protection for costly AI/API endpoints": 10 recognitions per 10 minutes per
+  authenticated user, counted from `model_calls`. It is course/demo-scoped, not
+  a distributed quota system.
+- **`recognizeCover` dependency set.** The DI seam described below as
+  `{ createClient, recognizeCover, recordModelCall, now }` also carries
+  `countRecentRecognitionAttempts` in the final implementation, for the rate
+  check.
 
 ## Current Repository Baseline
 
@@ -122,6 +189,10 @@ Exactly the DDL block in the specification. One table, one index, RLS on,
 `revoke all` from `anon`/`authenticated`, `grant select` to `authenticated`,
 `grant select, insert` to `service_role`, one own-row `SELECT` policy. `feature`
 check constrained to `cover_vision` for now.
+
+> Implementation reconciliation: the final migration grants `service_role`
+> **INSERT only**, not `select, insert` - see "Implementation reconciliation
+> (final Milestone 5)" above. The rest of this DDL description is unchanged.
 
 ### Recognition function
 
@@ -270,6 +341,11 @@ user A cannot read user B's rows; check constraints reject blank/overlong
 `service_role_catalog_privileges.test.sql` conventions, including
 self-isolating inserts so the file passes without a clean reset.
 
+> Implementation reconciliation: the final pgTAP file asserts `service_role`
+> has **INSERT only** - `has_table_privilege('service_role', ..., 'SELECT')`
+> is false and a `SET LOCAL ROLE service_role` `SELECT` throws. See
+> "Implementation reconciliation (final Milestone 5)" above.
+
 UI (`CatalogPhotoPanel.test.tsx`): renders the input; submit calls
 `recognizeCover` once and shows clues + editable query; duplicate submit while
 in flight is ignored; "Search candidates" calls `searchCatalog` with the
@@ -371,8 +447,11 @@ keeping the schema change isolated is cleaner for audit.
 
 ## Human Decisions Required Before Implementation
 
-Listed in "Open Questions Requiring Human Approval" below and in the spec Stop
-Point. Implementation does not start until they are answered.
+Historical planning note. These were the open questions before implementation
+(model choice, the new `OPENROUTER_API_KEY` server secret, the `model_calls`
+schema, base64 image transport with no Storage, and acceptance of one small
+paid vision call for human verification). They were resolved with the human via
+the spec Stop Point and ADR 0003 before implementation began.
 
 ## Pre-PR Repository Evidence Gate
 
@@ -384,7 +463,23 @@ feature is represented as implemented; no Milestone 6+ work started; historical
 planning language stays historical; no secret or real `.env` is staged; the
 branch contains only Milestone 5 scope.
 
+Gate outcome (2026-08-30): run before opening the PR. Spec / plan / ADR status
+lines updated to "implemented and verified"; README status synced; the
+`service_role` grant drift and "non-blocking" telemetry wording reconciled
+(annotated, not rewritten); `docs/verification.md` Milestone 5 section records
+the actual clean-DB automated results and distinguishes human-observed,
+agent-observed local, and repository-static evidence; LOW/NOTE items recorded
+without code churn; no Milestone 6 work on the branch; no secret staged.
+
 ## Stop Point
 
-Stop here. Implementation begins only after the human approves this plan, the
-specification, and `docs/decisions/0003-openrouter-vision-provider.md`.
+Historical pre-implementation gate, satisfied. It read:
+
+> Stop here. Implementation begins only after the human approves this plan, the
+> specification, and `docs/decisions/0003-openrouter-vision-provider.md`.
+
+The human approved the plan, specification, and ADR 0003 and directed
+implementation on this branch. Implementation completed and was human
+runtime-verified; current status is at the top of this document and in
+"Milestone 5 Evidence - Photo Recognition + Candidate Confirmation" in
+`docs/verification.md`.

@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-29.
+Last updated: 2026-08-30.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -1208,3 +1208,319 @@ These are documented limitations, not Milestone 4 blockers.
 Hosted Supabase smoke testing and Netlify production deployment were not
 performed for Milestone 4. Production deployment and hosted verification remain
 later-milestone work. No production deployment is claimed.
+
+## Milestone 5 Evidence - Photo Recognition + Candidate Confirmation
+
+Date: 2026-08-29 through 2026-08-30
+
+Branch: `claude/milestone-5-photo-recognition`
+
+Baseline (Milestone 4 merge on `main`):
+`0f5ee08632e485b951cab225ed617e27d5232d0f`
+
+Documentation head for this evidence pass: `bf35eac397d76a1eefbc8fec966b8ed2c0ea460b`
+
+Implementation commits:
+
+- `7d35cfe` - `feat: add model-call telemetry table`
+- `cdc8109` - `feat: add authenticated cover recognition function`
+- `ace2045` - `feat: add photo recognition workflow`
+- `05845d7` - `fix: validate structured recognition output`
+
+Post-implementation corrections (all inside the approved architecture):
+
+- `2ec1e63` - `fix: preserve unsaved catalog session state` - human-requested
+  per-tab `sessionStorage` persistence for recognition clues/query, catalog
+  search draft/results, and the manual add-form draft.
+- `685e515` - `fix: use unique user-scoped panel keys` - distinct
+  `catalog-<id>` / `collection-<id>` React keys so a user switch remounts the
+  user-scoped UI.
+- `bf35eac` - `fix: close milestone 5 pre-pr review findings` - spec/least-
+  privilege reconciliation, minimal per-user rate guard, file-input lock during
+  recognition, telemetry wording.
+
+Final multi-agent review: `/code-review ultra` verdict **PASS WITH NOTES** (no
+BLOCKER, no remaining meaningful MEDIUM after `bf35eac`).
+
+### Implemented
+
+- Authenticated server-side cover recognition: `POST /api/catalog/recognize`
+  (Netlify Function `catalog-recognize.mts` -> `_shared/recognition-handlers.mts`,
+  Milestone 4 handler/adapter + dependency-injection pattern).
+- OpenRouter vision model (`google/gemini-3.1-flash-lite` default, optional
+  `OPENROUTER_VISION_MODEL` override); exactly one `chat/completions` call per
+  submit; JSON-schema `response_format`; capped `max_tokens`; ~15 s
+  `AbortController` timeout; no automatic retry; no cross-model fallback.
+- Strict structured-output validation: the model response must match the
+  `CoverRecognition` contract field-by-field before normalization; malformed
+  output -> `provider_bad_response` and never reaches the UI as data. Strings
+  trimmed/capped, `visibleText` deduped/capped, `releaseYearHint` bounded to
+  `1900..(currentYear + 1)`, `confidence` clamped `0..1`. Unknown fields
+  dropped.
+- Image validation: client MIME allow-list (JPEG/PNG/WebP) + byte-size limit +
+  canvas downscale/re-encode to a bounded payload; server re-validates MIME,
+  decoded size, and magic bytes and is authoritative.
+- No permanent image storage: the image exists only in function memory for one
+  request; never written to Supabase Storage, a column, a log line, or
+  `model_calls`.
+- MusicBrainz factual-candidate flow: deterministic clue -> query builder (no
+  model call), then the existing Milestone 4 `GET /api/catalog/search` and the
+  existing normalized `CatalogCandidate` UI. The recognition function never
+  calls MusicBrainz.
+- Explicit human confirmation before persistence: the model never auto-adds; a
+  release/collection row is written only by the user's explicit "Add to
+  collection" click, which routes through the unchanged Milestone 4
+  `POST /api/catalog/add`. A "could not identify" result shows a manual search
+  fallback.
+- `model_calls` telemetry: one row per recognition attempt (success or
+  failure) with user id, feature, provider, model, success, latency, token
+  counts, estimated cost, and a sanitized error category. Never the image,
+  prompt, raw payload, or any secret. A telemetry insert failure is caught,
+  logged as a category only, and never changes the user-visible outcome. The
+  insert is awaited before responding (a fire-and-forget write can be lost on
+  serverless container freeze); the earlier spec wording "non-blocking" was
+  corrected.
+- Least-privilege `model_calls` access: `anon` no access; `authenticated`
+  `SELECT` own rows only via RLS, no write; `service_role` **INSERT only** (no
+  `SELECT`/`UPDATE`/`DELETE`). Migration
+  `20260829140000_add_model_calls.sql`.
+- Per-user recognition abuse guard: 10 recognitions per 10 minutes per
+  authenticated user, counted from `model_calls` through the caller's own
+  bearer token against the authenticated own-row `SELECT` policy (no
+  `service_role` read). Enforced after auth, before any OpenRouter call.
+  Over-limit -> HTTP 429, application code `rate_limited` (distinct from
+  `provider_rate_limited`), no provider call, no telemetry row. Fails closed if
+  the rate-check query itself errors. Course/demo-scoped, not a distributed
+  quota system.
+- Per-tab, per-user `sessionStorage` persistence (versioned keys
+  `vinyl-intelligence:{cover-recognition|catalog-search|manual-collection-draft}:v1:<userId>`):
+  - recognition clues + editable derived query
+  - catalog search draft text + last successful candidate results (or a
+    legitimate zero-result state)
+  - manual add-form field draft (all editable fields)
+  Restore is UI-state only: no OpenRouter, MusicBrainz, or database call, and
+  no auto-submit. Selecting a new image clears the stored recognition; a
+  successful manual Add clears the stored draft; malformed stored JSON is
+  ignored and removed.
+- Per-user session isolation: `CatalogPanel` / `CollectionPanel` carry distinct
+  user-derived React keys so an in-tab user switch remounts the user-scoped UI;
+  storage keys are namespaced by user id.
+- New-image-during-recognition race guard: the cover-photo file input is
+  disabled while a recognition is in flight, so a stale in-flight result cannot
+  be applied against a newer selection.
+
+### Automated Verification (agent-run / local; fake provider only, zero paid calls)
+
+These results were produced by the implementation agent in the local
+development environment. They are agent-run/local evidence, not human runtime
+verification.
+
+Run on a clean database at documentation head `bf35eac` on 2026-08-30:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed: no whitespace errors |
+| `npm run typecheck` (`tsc -b --noEmit`) | Passed |
+| `npm run lint` (`eslint .`) | Passed |
+| `npm run test:run` (`vitest run`) | Passed: 16 test files, 180 tests |
+| `npm run build` (`tsc -b && vite build`) | Passed |
+| `npx supabase db reset` | Passed: migrations `20260818134203`, `20260819000100`, `20260826000100`, `20260829120000`, `20260829140000` apply in order (expected no-seed-file warning) |
+| `npx supabase test db` | Passed: 5 database test files, 241 tests. The Milestone 4 `catalog_releases_rls.test.sql` dirty-data assertion, which failed against the pre-reset local DB that still held human runtime rows, passes on this clean reset. |
+| `npx supabase db lint` | Passed: no schema errors found |
+| `npm audit --omit=dev` | Passed: `found 0 vulnerabilities` |
+
+The full `npm audit` (including dev dependencies) continues to report the same
+9 high-severity findings in the development-only Netlify local-tooling
+dependency chain (`@netlify/vite-plugin`) documented in the Milestone 1-4
+evidence. No `npm audit fix` was run; no dependency change was made for
+Milestone 5.
+
+Milestone 5 automated test coverage added:
+
+- Vision adapter (`src/lib/vision/openrouter.test.ts`): request shape (one
+  image part, JSON-schema `response_format`, capped `max_tokens`), usage/cost
+  parsing, `429`/`503` -> `provider_rate_limited`, other 5xx ->
+  `provider_unavailable`, abort -> `provider_timeout`, non-JSON/schema mismatch
+  -> `provider_bad_response`, key never surfaced.
+- Vision client (`src/lib/vision/client.test.ts`): authenticated call,
+  sanitized error mapping, key/payload never returned.
+- Structured-output contract (`openrouter.test.ts`): every approved field must
+  be present with the correct type; a missing or wrongly typed required field
+  throws `provider_bad_response`.
+- Recognition function (`netlify/functions/recognition-functions.test.ts`,
+  node env, fake deps): auth rejection before any provider/rate-check/telemetry
+  call; bad data URL / disallowed MIME / oversized / magic-number mismatch;
+  `config_error` when the key is missing; happy path returns `{ recognition }`
+  and writes one `success=true` row; provider failure returns the sanitized
+  code and writes one `success=false` row; telemetry insert failure does not
+  fail the response; no automatic retry; key/payload never returned.
+- Rate limit: under-limit allows the call; exactly 10 recent rows -> HTTP 429
+  with no provider or telemetry call; the check runs only after authentication
+  and is scoped to `{ userId, token, windowStartIso = now - 10 min }`; a
+  rate-check query failure fails closed with no provider call.
+  `countRecentRecognitionAttemptsWithUserToken`: filters `user_id` + `feature`
+  + `created_at >= window`, sends the bearer token, throws on query error, does
+  not count another user's rows.
+- Clue -> query builder (`src/lib/vision/query.test.ts`): artist+title,
+  title-only, artist-only, visible-text fallback, empty -> null, truncation.
+- Image helper (`src/lib/vision/image.test.ts`): MIME allow-list, oversize
+  reject, data-URL shape with a stubbed canvas.
+- Photo UI (`src/catalog/CatalogPhotoPanel.test.tsx`): recognize once and show
+  editable clues; duplicate submit while in flight ignored; not-identified
+  fallback; recoverable errors; file input disabled while a recognition is
+  pending and re-enabled after it settles; `sessionStorage` persistence of
+  recognition + query; remount restore with no `recognizeCover` call;
+  new-image clear; malformed/wrong-shape stored JSON ignored and removed;
+  per-user namespacing.
+- Catalog panel (`src/catalog/CatalogPanel.test.tsx`): draft-query persistence
+  while typing; remount restores an unsubmitted draft with no search;
+  submitted query + normalized results persisted; remount restores results
+  with no `searchCatalog` call; later search replaces the persisted result;
+  zero-result state restored without re-searching; transient error not
+  persisted; malformed stored JSON removed; per-user namespacing.
+- Manual add-form draft (`src/collection/CollectionPanel.test.tsx`): single- and
+  multi-field draft persistence; remount restores every field with no add
+  mutation; partial form survives remount; successful Add clears the draft;
+  failed Add keeps it; malformed / missing-field stored JSON ignored and
+  removed; per-user namespacing; no reset/clear control present.
+- Session-storage helper (`src/lib/session/sessionDraft.test.ts`): key format,
+  round-trip, malformed removal, shape rejection, per-user scoping.
+- Auth shell (`src/auth/auth-state.test.tsx`): switching the authenticated
+  user id remounts the user-scoped catalog/collection UI (draft cleared) with
+  no duplicate-key console error.
+- Database (`supabase/tests/database/model_calls_rls.test.sql`, pgTAP):
+  table/columns/constraints/index; RLS on; exactly one own-row `SELECT`
+  policy; `anon` no access; `authenticated` `SELECT` only; `service_role`
+  **INSERT only** (`has_table_privilege` plus a behavioral
+  `SET LOCAL ROLE service_role` check that `SELECT`/`UPDATE`/`DELETE` throw);
+  user A cannot read user B's rows; check constraints reject blank/overlong
+  `provider`/`model` and negative metrics; browser role cannot insert.
+
+### Human Runtime Evidence
+
+The human performed browser/runtime verification against the local Supabase
+stack and local Vite/Netlify runtime. Recognition made real, paid OpenRouter
+calls funded by the human. The following distinguishes what the human observed
+in the browser, what the agent observed in the local database, and what is
+repository-static.
+
+#### A. Real photo-recognition end-to-end (human-observed, 2026-08-29)
+
+- Signed in.
+- Selected a real Kendrick Lamar album-cover image.
+- One real OpenRouter vision recognition succeeded and identified
+  **Kendrick Lamar - good kid, m.A.A.d city**.
+- Structured clues were shown; the derived MusicBrainz query appeared and was
+  editable.
+- An explicit MusicBrainz search returned a plausible matching release.
+- The human explicitly selected "Add to collection"; the catalog Add succeeded.
+- A page refresh confirmed the owned record persisted.
+
+#### B. Session persistence (human-observed, 2026-08-30)
+
+- Manual Collection: entered a partial unsaved Artist + Title, refreshed; the
+  values remained populated; no collection record was added automatically.
+- Catalog Search: performed a real catalog search, results appeared, refreshed;
+  the query stayed populated and the previous candidate results remained
+  visible without pressing Search again.
+- Photo Recognition: refreshed with previously persisted clues + derived query
+  present; the clues/query remained; the human did not choose a new image and
+  did not press "Recognize cover".
+
+#### C. Controlled no-extra-OpenRouter-call restore proof (2026-08-30)
+
+- Agent-observed local DB baseline before the test: 3 `cover_vision` rows;
+  latest id `f03837cc...`; latest `created_at` `2026-08-30 08:46:28.177833+00`.
+- The human then performed exactly one page refresh and did not choose a file,
+  press Recognize, press Search, or press Add.
+- Agent-observed local DB after the refresh: still 3 `cover_vision` rows; same
+  latest id; same latest timestamp.
+- Conclusion: **session restore / page refresh generated zero additional
+  OpenRouter recognition calls.**
+- Audit note: an earlier third `cover_vision` row was created during the
+  broader runtime window on 2026-08-30 at `08:46:28+00`. Its exact initiating
+  action was **not** independently established; it is not claimed to be
+  definitively human-initiated. The controlled test above proves only that the
+  isolated refresh added no call. The recognition code cannot call the provider
+  on mount/restore (`handleRecognize` requires a non-persisted `selectedFile`
+  and an explicit click).
+
+#### D. Safe telemetry observed by the agent in the local DB before reset
+
+`public.model_calls` held 3 `cover_vision` rows, all `provider = openrouter`,
+`model = google/gemini-3.1-flash-lite`, `success = true`, `error_category`
+null:
+
+| created_at (UTC) | latency_ms | prompt_tokens | completion_tokens | estimated_cost_usd |
+| --- | --- | --- | --- | --- |
+| 2026-08-29 14:11:11 | 2203 | 1474 | 167 | 0.000619 |
+| 2026-08-29 14:15:18 | 1784 | 1225 | 140 | 0.000516 |
+| 2026-08-30 08:46:28 | 2328 | 1474 | 167 | 0.000619 |
+
+Total stored estimated cost: **0.001754 USD** (estimate only, not a billing
+figure). The table has no image, prompt, raw-payload, token-secret, or
+key column; none was stored. These rows were removed by the clean
+`supabase db reset` in this pass and were not reinserted.
+
+#### E. Manual-draft DB evidence observed by the agent before reset
+
+- `public.releases`: 1 row total, 0 with `source = 'manual'`, 0 created on
+  2026-08-30. Newest `created_at` `2026-08-29 14:15:42+00`.
+- `public.collection_items`: 1 row total; newest `created_at`
+  `2026-08-29 14:15:42+00` - the catalog-confirmed Kendrick Lamar record from
+  section A.
+- The partial manual-add draft the human entered on 2026-08-30 created **no**
+  `releases` row and **no** `collection_items` row: manual draft restore causes
+  no automatic database write.
+
+### Repository / Static Evidence
+
+- `.env` is git-ignored and not tracked (`git ls-files` shows only
+  `.env.example`; `HEAD:.env` does not exist). No real `OPENROUTER_API_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`, JWT, or private key appears in the branch diff
+  `0f5ee08..bf35eac`.
+- `.env.example` gained placeholder-only `OPENROUTER_API_KEY=` (empty) and
+  non-secret `OPENROUTER_VISION_MODEL=google/gemini-3.1-flash-lite`.
+- `OPENROUTER_API_KEY` is read only inside the recognition Netlify Function via
+  `requiredEnv`; it is never `VITE_`-prefixed, returned to the browser, logged,
+  or written to a row (asserted by `recognition-functions.test.ts`).
+- Branch scope: the diff contains only Milestone 5 work (recognition function +
+  vision adapter, `model_calls` table + pgTAP, photo UI, session-persistence
+  helpers, docs). No Milestone 6 (AI curator / recommendation) code, no
+  browse/filter redesign, no listening history, no Supabase Storage, no
+  embeddings/RAG/vector DB, no production deployment config.
+
+### Human Verification Boundary
+
+The human runtime pass exercised the real recognition -> clues -> MusicBrainz
+candidate -> explicit Add -> persistence flow, the three session-persistence
+restores, and the controlled no-extra-call refresh. Not human-tested (covered
+by the automated suites above unless separately tested later): the rate-limit
+429 path, cross-user `model_calls` RLS, the provider adapter failure branches,
+the image magic-byte rejection, and the "could not identify" fallback.
+
+### Known LOW / NOTE Items (recorded, no code churn)
+
+1. The browser `recognizeCover` fetch has no independent client-side
+   `AbortController`; it is bounded in practice by the Netlify Functions
+   platform timeout and the server-side ~15 s OpenRouter abort. LOW.
+2. `capture="environment"` on the cover-photo file input can be restrictive on
+   some mobile browsers (camera forced, gallery hidden). `accept="image/*"` is
+   also set. LOW.
+3. Cost estimation may fall back to the known-model pricing map if the provider
+   `cost` field is absent; `estimated_cost_usd` is null for a model outside
+   that map. The configured default model is in the map (runtime rows show
+   non-null cost). NOTE.
+4. The per-user rate limit is course/demo-appropriate (per-user count from
+   `model_calls`), not a production-scale distributed quota system. NOTE.
+5. `catalog_releases_rls.test.sql` retains a `source = 'catalog'` count
+   assertion that assumes a clean starting database - the same test-isolation
+   limitation documented for Milestone 4. It passes on the canonical
+   `supabase db reset` + `supabase test db` flow. NOTE.
+
+### Production / Hosted Status
+
+Production/hosted verification of Milestone 5 has **not** been performed. There
+is no Netlify production deployment and no hosted Supabase run. Production
+verification is deferred to the deployment milestone. No production deployment
+is claimed.

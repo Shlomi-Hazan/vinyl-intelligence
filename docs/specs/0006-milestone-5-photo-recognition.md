@@ -1,14 +1,26 @@
 # 0006 Milestone 5 Photo Recognition Specification
 
-Status: proposed; awaiting human approval before implementation
+Status: implemented and verified; ready for milestone pull request
 
 Milestone: 5 - Photo Recognition + Candidate Confirmation
 
 Date: 2026-08-29
 
+Approved: 2026-08-29 (spec, plan, and ADR 0003 approved; human-directed
+implementation on this branch)
+
+Implemented: 2026-08-29 through 2026-08-30
+
+Human runtime verification: 2026-08-30 (PASS; real recognition E2E 2026-08-29,
+session-persistence + controlled no-extra-OpenRouter-call refresh 2026-08-30)
+
 Branch: `claude/milestone-5-photo-recognition`
 
 Baseline: `0f5ee08632e485b951cab225ed617e27d5232d0f` (Milestone 4 merge on `main`)
+
+Final pre-PR review: `/code-review ultra` verdict PASS WITH NOTES; the promoted
+findings were closed in `bf35eac` (see `docs/plans/006-...` "Implementation
+Outcome" and `docs/verification.md`).
 
 ## Intent
 
@@ -65,6 +77,25 @@ box, pre-filled where any clue is available.
 - Tests for the vision adapter, the recognition function, the rate limit, the
   clue->query builder, the image helper, the telemetry write, and the UI.
 - Human runtime verification.
+
+### Post-approval scope additions (human-directed)
+
+Two items were added after this spec was approved, both surfaced by human
+runtime testing and explicitly requested by the human. They stay inside the
+approved architecture (no new dependency, no schema change, no `localStorage`,
+no database auto-save):
+
+- **Per-tab session persistence (`sessionStorage`), scoped per authenticated
+  user, versioned keys.** Preserves, across a page refresh or same-tab
+  navigation: the normalized recognition clues + editable derived query; the
+  catalog search draft text + last successful candidate results (or a
+  legitimate zero-result state); and the manual add-form field draft. Restore
+  is UI-state only - it makes no OpenRouter, MusicBrainz, or database call, and
+  never auto-submits. Selecting a new image clears the stored recognition; a
+  successful manual Add clears the stored draft. Malformed stored JSON is
+  ignored and removed.
+- **Minimal per-user rate limit** (see "Rate limiting"). Added in the final
+  pre-PR review pass as the `intent.txt` §15 minimum.
 
 ## Out of Scope
 
@@ -505,10 +536,19 @@ must be distinguished in `docs/verification.md`.
 
 ## Stop Point
 
-This specification is proposed. Do not begin Milestone 5 implementation until
-the human approves this spec, the implementation plan
-(`docs/plans/006-milestone-5-photo-recognition.md`), and
-`docs/decisions/0003-openrouter-vision-provider.md`, including the OpenRouter
-model choice, the new `OPENROUTER_API_KEY` server secret, the `model_calls`
-schema, the no-Storage image transport, and acceptance that human runtime
-verification will make one small paid vision call.
+Historical pre-implementation gate, satisfied. It read:
+
+> This specification is proposed. Do not begin Milestone 5 implementation until
+> the human approves this spec, the implementation plan
+> (`docs/plans/006-milestone-5-photo-recognition.md`), and
+> `docs/decisions/0003-openrouter-vision-provider.md`, including the OpenRouter
+> model choice, the new `OPENROUTER_API_KEY` server secret, the `model_calls`
+> schema, the no-Storage image transport, and acceptance that human runtime
+> verification will make one small paid vision call.
+
+The human approved all three documents and the listed decisions, and directed
+implementation on this branch. Implementation completed, the final
+`/code-review ultra` returned PASS WITH NOTES, the promoted findings were
+closed, and human runtime verification passed. Current status is at the top of
+this document and in "Milestone 5 Evidence - Photo Recognition + Candidate
+Confirmation" in `docs/verification.md`.

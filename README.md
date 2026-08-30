@@ -34,11 +34,12 @@ The recommended baseline is:
 ## Project Status
 
 Current status: Milestone 4 Catalog API is merged to `main`. Milestone 5
-(Photo Recognition + Candidate Confirmation) is in planning on branch
-`claude/milestone-5-photo-recognition`: the specification, implementation plan,
-and vision-provider decision record are proposed and awaiting human approval;
-no Milestone 5 code has been written. Hosted/production verification and
-production deployment have not occurred and remain later milestones.
+(Photo Recognition + Candidate Confirmation) is implemented and human
+runtime-verified on branch `claude/milestone-5-photo-recognition` and is open
+as a pull request against `main` (not merged). The final multi-agent review
+(`/code-review ultra`) returned PASS WITH NOTES; the promoted findings were
+closed on the branch. Hosted/production verification and production deployment
+have not occurred and remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -68,13 +69,30 @@ Implemented:
   rate-limit responses (best-effort pacing, not a distributed guarantee)
 - Browser-safe catalog UI with normalized candidates and recoverable errors
 - Milestone 4 automated/local verification and human runtime verification
+- Authenticated server-side cover-photo recognition (`POST /api/catalog/recognize`)
+  through an OpenRouter vision model, server-only API key
+- Client + server image validation (MIME allow-list, byte-size limit, magic
+  bytes); browser downscale/re-encode; no permanent image storage
+- Strict server-side validation of the model's structured JSON output;
+  model-inferred year/label/catalog number treated as search hints only
+- Deterministic clue-to-MusicBrainz-query builder; candidate lookup and
+  confirmation reuse the Milestone 4 search/add path (explicit human
+  confirmation before any collection write; the model never auto-persists)
+- `model_calls` telemetry (one row per recognition attempt), least-privilege
+  access (`authenticated` reads own rows via RLS; `service_role` INSERT only)
+- Per-user recognition rate limit (10 per 10 minutes, counted from
+  `model_calls`, enforced before the provider call), course/demo-scoped
+- Per-tab per-user `sessionStorage` persistence for the recognition
+  clues/query, the catalog search draft/results, and the manual add-form draft
+  (restore is UI-state only; no provider or database call, no auto-submit)
+- Milestone 5 automated verification, final multi-agent review, and human
+  runtime verification
 
 Planned:
 
 - Browse/search/filter milestone beyond the basic Milestone 3 collection list
 - Listening history
 - AI recommendation workflow
-- Photo recognition workflow
 - Production deployment
 
 ## Local Setup
@@ -137,11 +155,15 @@ npm run preview
 Browser code must use only `VITE_SUPABASE_URL` and
 `VITE_SUPABASE_PUBLISHABLE_KEY`. Milestone 4 catalog add uses
 `SUPABASE_SERVICE_ROLE_KEY` only inside Netlify Functions after verifying the
-browser Supabase user token.
+browser Supabase user token. Milestone 5 photo recognition uses
+`OPENROUTER_API_KEY` (server-only) and optional `OPENROUTER_VISION_MODEL` only
+inside the recognition Netlify Function; the key is never sent to the browser,
+logged, or written to a database row. Running the photo-recognition flow makes
+a paid OpenRouter call.
 
 Expected future requirements:
 
-- LLM provider API key
+- Hosted Supabase / Netlify credentials for production deployment
 
 Never commit `.env` or local credentials. This repository includes a safe `.env.example` for documented public scaffold settings.
 
