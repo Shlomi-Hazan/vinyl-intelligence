@@ -1919,3 +1919,138 @@ invalidate the recorded evidence.
 
 Production/hosted verification of Milestone 7 has **not** been performed. No
 production deployment is claimed.
+
+## Milestone 8 Evidence - Listening History
+
+Date: 2026-08-30
+
+Branch: `claude/milestone-8-listening-history`
+
+Baseline (Milestone 7 merge on `main`):
+`2affd718481a3c6da745c9f1b99667635a87adff`
+
+Planning commit: `6458ed8` (`docs: plan milestone 8 listening history`).
+
+Status: implemented and verified locally - automated verification (below) and a
+focused implementation review (below). Human runtime verification is **pending**
+(not yet performed). Not merged. Hosted Supabase migration / production
+deployment NOT performed.
+
+### Implemented
+
+- `public.listening_events` (`20260901120000_add_listening_events.sql`):
+  immutable, append-only. `id uuid pk default gen_random_uuid()`,
+  `user_id uuid not null default auth.uid() references profiles(id) on delete
+  cascade`, `collection_item_id uuid not null references collection_items(id) on
+  delete cascade`, `listened_at timestamptz not null default now()`,
+  `created_at timestamptz not null default now()`. No `note`, `updated_at`,
+  duration, source, or soft-delete column.
+- Indexes: automatic PK on `(id)`;
+  `listening_events_user_listened_idx (user_id, listened_at desc, id desc)`;
+  `listening_events_collection_item_idx (collection_item_id)` (plain -
+  FK-column index for the `ON DELETE CASCADE`). The aspirational
+  `(user_id, collection_item_id, listened_at desc)` composite was **not** added:
+  per-item counts are derived client-side, so no server query needs it.
+- Least privilege: `revoke all` from `anon` and `authenticated`, then
+  `grant select` and `grant insert (collection_item_id)` to `authenticated`
+  only. No `UPDATE` / `DELETE` grant - rows are immutable from the browser. Two
+  RLS policies: own-row `SELECT` (`user_id = auth.uid()`); own-item `INSERT`
+  (`with check` that `user_id = auth.uid()` **and** the target
+  `collection_item_id` belongs to the caller). `service_role` unchanged
+  (Milestone 8 has no server path).
+- **No denormalization:** no `listening_count` / `last_listened_at` column on
+  `collection_items`, no counter trigger, no aggregate view.
+- `src/lib/supabase/listeningEvents.ts` - `loadListeningEvents(client)` (select
+  `id, collection_item_id, listened_at, created_at`; order `listened_at desc`
+  then `id desc`; surfaces read errors) and `addListeningEvent(client, id)`
+  (inserts **exactly** `{ collection_item_id }`, `.select().single()`, surfaces
+  insert errors). `compareListeningEventsNewestFirst` - shared deterministic
+  comparator (`listened_at` desc, `id` desc tie-break) matching the DB order.
+- `src/collection/listeningSummary.ts` - pure, order-independent
+  `summarizeListeningForItem(events, id) -> { count, lastListenedAt }` (newest by
+  parsed timestamp; 0 events -> `null`); `formatListenedAt` (local render;
+  unparseable input returned unchanged).
+- `CollectionItemListeningControls` on every owned card (manual + provider-
+  backed): "Mark played" button, per-item in-flight lock ("Marking...",
+  disabled), "Played N time/times" / "Never played", "Last listened: <local>"
+  with a machine-readable `<time dateTime>`. On failure: no fabricated local
+  event, count unchanged, inline `role="alert"`.
+- `ListeningHistory` - compact collapsible section inside `CollectionPanel`
+  below the list (`aria-expanded` toggle, no route/dashboard). Newest-first;
+  each row resolves artist/title by matching `collection_item_id` against the
+  loaded collection items (no `releases` join); empty state
+  "No plays recorded yet."; its own error + Retry that does not block the
+  collection.
+- `CollectionPanel` loads events in parallel with the collection (an events
+  failure never hides the collection); `handleMarkPlayed` merges + re-sorts
+  local events with the shared comparator so equal-timestamp order is
+  `id desc` immediately; deleting a collection item also drops its events from
+  local state (DB cascade is authoritative; no separate delete call).
+
+### Automated Verification (agent-run / local; no external calls)
+
+Run on a clean database, 2026-08-30:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm run test:run` | Passed: 21 Vitest files, 261 tests |
+| `npx supabase db reset` | Passed: 8 migrations apply in order (adds `20260901120000`) |
+| `npx supabase test db` | Passed: 8 pgTAP files, 372 tests (`listening_events.test.sql` added) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New test coverage: pgTAP for the column shape/defaults, both FK targets +
+`ON DELETE CASCADE` (`delete_rule = 'CASCADE'`), the PK index + both named
+indexes with the right columns/ordering, absence of the deferred composite
+index, no denormalized column on `collection_items`, the exact
+`authenticated` privileges (`SELECT`, `INSERT (collection_item_id)` only; no
+`user_id`/`listened_at` insert, no `UPDATE`/`DELETE`), `anon` no access, exactly
+two RLS policies, `user_id` defaulting from `auth.uid()`, a cross-user insert
+rejected `42501`, `UPDATE`/`DELETE` rejected `42501` (immutability), and a
+collection-item delete cascading its events while another user's events are
+untouched. Client tests for `loadListeningEvents` (select/order args, error
+surface), `addListeningEvent` (exact `{ collection_item_id }` payload, error
+surface), the comparator tie-break, the pure summary helper (order
+independence, newest-by-timestamp, 0 -> null, unparseable timestamp ignored),
+`ListeningHistory` (collapsed by default, newest-first ordering, missing-record
+label, error + Retry), and `CollectionPanel` integration (Mark played sends only
+the id and bumps the derived count; failure keeps "Never played" + shows alert +
+re-enables; equal-timestamp local ordering after a fresh play; delete drops
+events; events-load failure surfaces without hiding the collection).
+
+### Focused Implementation Review (2026-08-30)
+
+Reviewed against: M8 approved scope, the immutable append-only contract, no
+denormalization, RLS/column-grant correctness, derived-facts correctness,
+ordering determinism (immediate + equal-timestamp tie-break), events-load
+failure isolation, Mark-played failure honesty, delete-cascade mirrored in
+local state, history plain-text safety, migration correctness, M3-M7 regression
+risk, secret hygiene, and no AI / external calls.
+
+- **BLOCKER: 0. MEDIUM: 0** (after the fix below).
+- MEDIUM (fixed in this milestone's UI commit): a `loadListeningEvents` failure
+  left the per-card summaries showing "Never played" with the only error signal
+  hidden inside the collapsed "Listening history" section, so a user who never
+  expanded it would silently see understated play data. `ListeningHistory` now
+  renders the error + Retry banner even while collapsed.
+- LOW / NOTE (deferred): `summarizeListeningForItem` is recomputed per visible
+  card per render (O(cards x events)); negligible for a personal collection and
+  consistent with the M6/M7 client-derivation pattern.
+- LOW / NOTE: on a `refreshKey` bump the events list is not visually reset to a
+  loading state before the reload resolves (matches the existing collection-load
+  behaviour); the stale list is briefly shown, then replaced.
+- NOTE: no optimistic local event is created on "Mark played" - the derived
+  count updates only after the insert resolves. Deliberate: it guarantees the
+  UI never shows a play that was not persisted.
+
+### Human Runtime Evidence
+
+Pending - not yet performed.
+
+### Production / Hosted Status
+
+Production/hosted verification of Milestone 8 has **not** been performed. No
+production deployment is claimed.
