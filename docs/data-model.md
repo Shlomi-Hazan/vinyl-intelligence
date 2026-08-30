@@ -102,6 +102,15 @@ Important fields:
 - `created_at timestamptz`
 - `updated_at timestamptz`
 
+As implemented through Milestone 7, `public.collection_items` has
+`id`, `user_id`, `release_id`, `added_at`, `created_at`, and the Milestone 7
+personal signals `rating smallint` (NULL or 1..5), `is_favorite boolean not
+null default false`, and `notes text` (trimmed, <= 1000 chars, or NULL). It has
+no `source`, `copy_label`, or `updated_at` column yet. The `(user_id, favorite)`
+and `(user_id, rating)` indexes below are deferred until a milestone introduces
+a server-side query that needs them (Milestone 7 filters personal signals in the
+browser).
+
 Relationships:
 
 - Belongs to a user.

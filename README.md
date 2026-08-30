@@ -35,10 +35,12 @@ The recommended baseline is:
 
 Current status: Milestone 6 (Browse / Search / Filter, plus `releases.genres`
 metadata) is merged to `main`. Milestone 7 (Ratings / Favorites / Notes -
-personal preference signals on owned collection items) is approved and in
-implementation on branch `claude/milestone-7-ratings-favorites-notes`.
-Hosted/production verification and production deployment have not occurred and
-remain later milestones.
+personal preference signals on owned collection items) is implemented and
+verified locally on branch `claude/milestone-7-ratings-favorites-notes` -
+automated verification, a focused implementation review (0 BLOCKER, 0 MEDIUM),
+and human runtime verification (PASS, 6 focused tests) - and is ready for its
+pull request (not yet open, not merged). Hosted/production verification and
+production deployment have not occurred and remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -96,8 +98,8 @@ Implemented:
 
 Planned:
 
-- Ratings, favorites, and personal notes on owned records (Milestone 7, in
-  planning)
+- Ratings, favorites, and personal notes on owned records (Milestone 7,
+  verified locally, PR pending)
 - Listening history
 - AI recommendation workflow
 - Production deployment

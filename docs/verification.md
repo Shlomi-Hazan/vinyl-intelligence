@@ -1758,7 +1758,7 @@ production deployment is claimed.
 
 ## Milestone 7 Evidence - Ratings / Favorites / Notes
 
-Date: 2026-08-31
+Date: 2026-08-30
 
 Branch: `claude/milestone-7-ratings-favorites-notes`
 
@@ -1772,9 +1772,11 @@ Implementation commits:
 - `feat: add personal-signal controls to collection cards`
 - `fix: tighten the personal-signals partial patch` (focused review)
 
-Status: implemented; automated verification below passed; a focused
-implementation review ran (findings below). **Human runtime verification is
-pending** and is not recorded here yet.
+Status: implemented and verified locally - automated verification (below), a
+focused implementation review (0 BLOCKER, 0 MEDIUM after one correction), and
+human runtime verification (PASS, 6 focused tests, below). Ready for the
+milestone pull request. Hosted Supabase migration / production deployment NOT
+verified (deferred).
 
 ### Implemented
 
@@ -1808,7 +1810,7 @@ pending** and is not recorded here yet.
 
 ### Automated Verification (agent-run / local; no external calls)
 
-Run on a clean database, 2026-08-31:
+Run on a clean database, 2026-08-30:
 
 | Check | Result |
 | --- | --- |
@@ -1835,7 +1837,7 @@ component tests including the required state-safety regression cases A-D
 single-key merges) plus render, immediate persistence, note normalization,
 and failure rollback.
 
-### Focused Implementation Review (2026-08-31)
+### Focused Implementation Review (2026-08-30)
 
 Reviewed against: M7 approved scope, the data-ownership boundary, RLS/column
 grants, partial-update semantics, unsaved-note isolation, failure rollback,
@@ -1858,10 +1860,52 @@ hygiene.
 
 ### Human Runtime Evidence
 
-Not yet performed. The spec's "Human Runtime Plan" (favorite + refresh; rating
-set/clear + refresh; note + refresh; the same on a catalog-added record;
-ownership by pgTAP) is pending and will be recorded here, distinguished from
-the agent-run automated evidence above, before the pull request.
+**Human-observed local runtime.** The human performed the browser actions
+against the local app (`http://127.0.0.1:5173`) and local Supabase on
+implementation revision `9f8a0770daf9a6d1f129e4f697e512384280c773` and reported
+each result. The coding agent did not observe the browser actions - it prepared
+the local stack and two deterministic owned records for the runtime account.
+Hosted Supabase was not touched.
+
+Seed (local DB insert, no MusicBrainz):
+
+- Record A - **manual** release: Pink Floyd - The Dark Side of the Moon (1973,
+  genre `progressive rock`).
+- Record B - **provider-backed** release: Miles Davis - Kind of Blue (1959,
+  genre `jazz`), `source = catalog`, `provider = musicbrainz`, seeded locally
+  without a real MusicBrainz call.
+- Both started `rating = NULL`, `is_favorite = false`, `notes = NULL`.
+
+| # | Human test | Human-observed result |
+| --- | --- | --- |
+| 1 | Favorite persistence: toggle Favorite on Pink Floyd, refresh | Favorite remained active after refresh. PASS |
+| 2 | Rating persistence + clear: set Pink Floyd to 4 stars, refresh (persisted), Clear rating, refresh | 4 stars persisted; after Clear + refresh the rating returned to Unrated. PASS |
+| 3 | Note persistence + clear: enter "Late night listening", Save note, refresh (persisted); clear the textarea, Save note, refresh | The exact note persisted; after clearing + saving + refresh the note was empty / no note. PASS |
+| 4 | Unsaved-note isolation: type note draft "Do not save this", do **not** Save note, toggle Favorite, refresh | The Favorite change persisted; the unsaved text did **not** persist; the note reloaded empty. PASS - human confirmation of the partial-patch behaviour that a Favorite change never implicitly saves an unsaved note draft. (The precise single-key payload semantics are covered by the component/unit tests; this is not exhaustive concurrency verification.) |
+| 5 | Provider-backed item signals: on Miles Davis - Kind of Blue (catalog release), toggle Favorite on, set rating 5, enter "Essential jazz", Save note, refresh | After refresh: Favorite active, rating 5, note exactly "Essential jazz". PASS - personal signals are per collection item and work for a provider-backed release, independent of manual-release editing. No real MusicBrainz call was made. |
+| 6 | Final refresh stability: refresh the collection again | Both records loaded normally; Miles Davis still showed Favorite active / rating 5 / note "Essential jazz"; Pink Floyd did not contain the unsaved Test-4 note; no runtime error. PASS |
+
+**Milestone 7 human runtime: PASS.** All 6 focused tests passed. Human-visible
+behaviour verified: Favorite persists through refresh; rating persists and can
+be cleared back to Unrated (NULL); notes persist and can be cleared back to no
+note (NULL); an unsaved note draft is not implicitly persisted by a Favorite
+mutation; provider-backed catalog items support the same personal signals; the
+final reload is stable.
+
+Ownership / cross-user isolation was **not** browser-tested in this human run;
+it is covered by the pgTAP / RLS evidence above (own-row signal update allowed;
+a cross-user update affects zero rows; `user_id` / `release_id` mutation blocked
+with `42501`; `anon` has no access). The evidence categories are kept distinct.
+
+Provider-call accounting: M7 automated implementation - 0 OpenRouter,
+0 MusicBrainz, 0 new external APIs. Human-runtime preparation - 0 OpenRouter,
+0 MusicBrainz. Human browser runtime - 0 OpenRouter, 0 MusicBrainz. Record B
+was a deterministic local provider-backed fixture only.
+
+Local disposable runtime fixtures (the two runtime users and their two
+collection items) were removed with a local `npx supabase db reset` after this
+evidence was recorded. Nothing hosted was touched; the cleanup does not
+invalidate the recorded evidence.
 
 ### Deferred Scope (documented, not defects)
 

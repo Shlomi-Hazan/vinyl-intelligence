@@ -1,13 +1,16 @@
 # 008 Milestone 7 Ratings / Favorites / Notes Implementation Plan
 
-Status: approved and in implementation
+Status: implemented and verified locally (automated + focused review + human
+runtime PASS); ready for milestone pull request. Not merged, not deployed.
 
 Milestone: 7 - Ratings / Favorites / Notes
 
-Date: 2026-08-31
+Date: 2026-08-30
 
-Approved: 2026-08-31 (four Open Questions resolved; partial-patch helper
+Approved: 2026-08-30 (four Open Questions resolved; partial-patch helper
 correction)
+
+Human runtime verification: 2026-08-30 (PASS)
 
 Branch: `claude/milestone-7-ratings-favorites-notes`
 

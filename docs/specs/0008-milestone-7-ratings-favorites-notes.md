@@ -1,18 +1,23 @@
 # 0008 Milestone 7 Ratings / Favorites / Notes Specification
 
-Status: approved and in implementation
+Status: implemented and verified locally (automated verification + focused
+implementation review [0 BLOCKER, 0 MEDIUM] + human runtime PASS); ready for
+milestone pull request. Not merged, not deployed, hosted Supabase not verified.
 
 Milestone: 7 - Ratings / Favorites / Notes (personal preference signals)
 
-Date: 2026-08-31
+Date: 2026-08-30
 
 Branch: `claude/milestone-7-ratings-favorites-notes`
 
 Baseline: `3583900cc19dae9db9a2e6f37846de7a8af5a665` (Milestone 6 merge on `main`)
 
-Approved: 2026-08-31, with the four Open Questions resolved and a partial-patch
+Approved: 2026-08-30, with the four Open Questions resolved and a partial-patch
 correction to the update helper - see "Open Questions Requiring Human Approval"
 and "Client Behaviour".
+
+Human runtime verification: 2026-08-30 (PASS - 6 focused tests; see
+`docs/verification.md`).
 
 ## Intent
 
@@ -363,7 +368,7 @@ curator's first real server-side candidate queries over `collection_items`.
 
 ## Open Questions Requiring Human Approval
 
-Resolved with the human on 2026-08-31:
+Resolved with the human on 2026-08-30:
 
 1. **`collection_items.updated_at` + touch trigger.** DECISION: **do not add**
    in Milestone 7 - no `updated_at` column, no `touch_collection_item_updated_at`
