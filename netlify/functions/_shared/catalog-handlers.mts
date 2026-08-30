@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
 import {
   lookupMusicBrainzRelease,
+  lookupMusicBrainzReleaseGroupGenres,
   MUSICBRAINZ_RELEASE_ID_PATTERN,
   MusicBrainzError,
   searchMusicBrainzReleases,
@@ -33,6 +34,7 @@ const CATALOG_ITEM_SELECT = `
     catalog_number,
     country,
     format,
+    genres,
     updated_at
   )
 `
@@ -45,6 +47,7 @@ type CatalogFunctionDependencies = {
   createClient: SupabaseFactory
   delay: (ms: number) => Promise<void>
   lookupRelease: typeof lookupMusicBrainzRelease
+  lookupReleaseGroupGenres: typeof lookupMusicBrainzReleaseGroupGenres
   paceProviderRequest: () => Promise<void>
   searchReleases: typeof searchMusicBrainzReleases
 }
@@ -79,6 +82,7 @@ function defaultDependencies(): CatalogFunctionDependencies {
     createClient,
     delay: defaultDelay,
     lookupRelease: lookupMusicBrainzRelease,
+    lookupReleaseGroupGenres: lookupMusicBrainzReleaseGroupGenres,
     paceProviderRequest: paceMusicBrainzRequest,
     searchReleases: searchMusicBrainzReleases,
   }
@@ -258,8 +262,8 @@ async function parseAddRequest(request: Request): Promise<{
   }
 }
 
-function catalogReleasePayload(candidate: CatalogCandidate) {
-  return {
+function catalogReleasePayload(candidate: CatalogCandidate, genres: string[]) {
+  const payload = {
     artist: candidate.artist,
     catalog_number: candidate.catalogNumber,
     country: candidate.country,
@@ -273,6 +277,12 @@ function catalogReleasePayload(candidate: CatalogCandidate) {
     source: 'catalog',
     title: candidate.title,
   }
+
+  // releases rows are shared across users. Only write `genres` when the
+  // optional enrichment actually produced one or more - omitting the key on an
+  // on-conflict upsert leaves any existing genres untouched, and a brand-new
+  // row falls back to the column default '{}'.
+  return genres.length > 0 ? { ...payload, genres } : payload
 }
 
 function normalizeCatalogReleaseRow(value: unknown): CatalogReleaseRow {
@@ -319,7 +329,10 @@ function normalizeCollectionItemRow(value: unknown): CatalogAddResponse['item'] 
     id: row.id,
     added_at: row.added_at,
     created_at: row.created_at,
-    release,
+    release: {
+      ...release,
+      genres: Array.isArray(release.genres) ? release.genres : [],
+    },
   }
 }
 
@@ -327,6 +340,7 @@ async function upsertCatalogRelease(
   env: Environment,
   createClientImpl: SupabaseFactory,
   candidate: CatalogCandidate,
+  genres: string[],
 ): Promise<CatalogReleaseRow> {
   const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
   const serviceRoleKey = requiredEnv(env, 'SUPABASE_SERVICE_ROLE_KEY')
@@ -339,7 +353,7 @@ async function upsertCatalogRelease(
 
   const { data, error } = await serviceClient
     .from('releases')
-    .upsert(catalogReleasePayload(candidate), {
+    .upsert(catalogReleasePayload(candidate, genres), {
       onConflict: 'provider,provider_release_id',
     })
     .select('id')
@@ -481,10 +495,30 @@ export async function handleCatalogAdd(
       providerReleaseId,
       userAgent,
     )
+
+    // Optional best-effort genre enrichment: a second MusicBrainz GET for the
+    // release-group's community genre tags. Paced like every provider request,
+    // no retry, and never allowed to fail the confirmed Add.
+    let genres: string[] = []
+
+    if (candidate.providerReleaseGroupId) {
+      await dependencies.paceProviderRequest()
+
+      try {
+        genres = await dependencies.lookupReleaseGroupGenres({
+          releaseGroupId: candidate.providerReleaseGroupId,
+          userAgent,
+        })
+      } catch {
+        genres = []
+      }
+    }
+
     const release = await upsertCatalogRelease(
       env,
       dependencies.createClient,
       candidate,
+      genres,
     )
     const item = await createCatalogCollectionItem(
       env,

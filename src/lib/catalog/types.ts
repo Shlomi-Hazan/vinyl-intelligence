@@ -33,6 +33,7 @@ export type CatalogCollectionItem = {
     catalog_number: string | null
     country: string | null
     format: string | null
+    genres: string[]
     updated_at: string
   }
 }

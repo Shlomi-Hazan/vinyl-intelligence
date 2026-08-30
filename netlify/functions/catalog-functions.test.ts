@@ -59,6 +59,7 @@ function createDependencies(options: {
 } = {}) {
   const searchReleases = vi.fn(async () => [catalogCandidate()])
   const lookupRelease = vi.fn(async () => catalogCandidate())
+  const lookupReleaseGroupGenres = vi.fn(async (): Promise<string[]> => [])
   const paceProviderRequest = vi.fn(async () => undefined)
   const delay = vi.fn(async () => undefined)
   const authClient = {
@@ -77,7 +78,11 @@ function createDependencies(options: {
       data: options.releaseUpsertError ? null : { id: 'release-1' },
       error: options.releaseUpsertError ?? null,
     })),
-    upsert: vi.fn(() => releaseQuery),
+    upsert: vi.fn((payload: Record<string, unknown>, options?: unknown) => {
+      void payload
+      void options
+      return releaseQuery
+    }),
   }
   const itemQuery = {
     insert: vi.fn(() => itemQuery),
@@ -129,6 +134,7 @@ function createDependencies(options: {
     createClient,
     delay,
     lookupRelease,
+    lookupReleaseGroupGenres,
     paceProviderRequest,
     searchReleases,
   } as unknown as NonNullable<Parameters<typeof handleCatalogSearch>[2]>
@@ -140,6 +146,7 @@ function createDependencies(options: {
     dependencies,
     itemQuery,
     lookupRelease,
+    lookupReleaseGroupGenres,
     paceProviderRequest,
     releaseQuery,
     searchReleases,
@@ -545,5 +552,81 @@ describe('catalog Netlify functions', () => {
     expect(response.status).toBe(503)
     expect(searchReleases).toHaveBeenCalledTimes(1)
     expect(delay).not.toHaveBeenCalled()
+  })
+
+  it('catalog search performs no release-group genre lookup', async () => {
+    const { dependencies, lookupReleaseGroupGenres } = createDependencies()
+
+    await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(lookupReleaseGroupGenres).not.toHaveBeenCalled()
+  })
+
+  function addRequest() {
+    return authedRequest('http://app.test/api/catalog/add', {
+      body: JSON.stringify({ provider: 'musicbrainz', providerReleaseId }),
+      method: 'POST',
+    })
+  }
+
+  it('paces the release-group genre lookup and persists the enriched genres', async () => {
+    const { dependencies, lookupReleaseGroupGenres, paceProviderRequest, releaseQuery } =
+      createDependencies()
+    lookupReleaseGroupGenres.mockResolvedValue(['progressive rock', 'psychedelic rock'])
+
+    const response = await handleCatalogAdd(addRequest(), env, dependencies)
+
+    expect(response.status).toBe(200)
+    // one pace before the release lookup, one before the genre lookup.
+    expect(paceProviderRequest).toHaveBeenCalledTimes(2)
+    expect(lookupReleaseGroupGenres).toHaveBeenCalledWith({
+      releaseGroupId: providerReleaseGroupId,
+      userAgent: env.MUSICBRAINZ_USER_AGENT,
+    })
+    expect(releaseQuery.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ genres: ['progressive rock', 'psychedelic rock'] }),
+      { onConflict: 'provider,provider_release_id' },
+    )
+  })
+
+  it('omits genres from the upsert when enrichment returns nothing (no-erase on shared rows)', async () => {
+    const { dependencies, lookupReleaseGroupGenres, releaseQuery } = createDependencies()
+    lookupReleaseGroupGenres.mockResolvedValue([])
+
+    const response = await handleCatalogAdd(addRequest(), env, dependencies)
+
+    expect(response.status).toBe(200)
+    const upsertPayload = releaseQuery.upsert.mock.calls[0]?.[0] ?? {}
+    expect(upsertPayload).not.toHaveProperty('genres')
+  })
+
+  it('still succeeds when the genre lookup throws (best effort)', async () => {
+    const { dependencies, lookupReleaseGroupGenres, releaseQuery } = createDependencies()
+    lookupReleaseGroupGenres.mockRejectedValue(new Error('genre lookup exploded'))
+
+    const response = await handleCatalogAdd(addRequest(), env, dependencies)
+
+    expect(response.status).toBe(200)
+    const upsertPayload = releaseQuery.upsert.mock.calls[0]?.[0] ?? {}
+    expect(upsertPayload).not.toHaveProperty('genres')
+  })
+
+  it('skips the genre lookup entirely when the candidate has no release-group id', async () => {
+    const { dependencies, lookupRelease, lookupReleaseGroupGenres, paceProviderRequest } =
+      createDependencies()
+    lookupRelease.mockResolvedValue({
+      ...catalogCandidate(),
+      providerReleaseGroupId: null,
+    })
+
+    const response = await handleCatalogAdd(addRequest(), env, dependencies)
+
+    expect(response.status).toBe(200)
+    expect(lookupReleaseGroupGenres).not.toHaveBeenCalled()
+    expect(paceProviderRequest).toHaveBeenCalledTimes(1)
   })
 })
