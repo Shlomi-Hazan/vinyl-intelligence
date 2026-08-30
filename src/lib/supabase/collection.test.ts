@@ -598,6 +598,10 @@ describe('updateCollectionItemPersonalSignals (partial patch)', () => {
     await expect(
       updateCollectionItemPersonalSignals(client, 'item-1', {}),
     ).rejects.toThrow(/No personal-signal changes/)
+    // A stray `undefined` value is not a present key and cannot clobber a signal.
+    await expect(
+      updateCollectionItemPersonalSignals(client, 'item-1', { rating: undefined }),
+    ).rejects.toThrow(/No personal-signal changes/)
     await expect(
       updateCollectionItemPersonalSignals(
         client,

@@ -375,9 +375,7 @@ export async function updateCollectionItemPersonalSignals(
   collectionItemId: string,
   patch: CollectionItemPersonalSignalsPatch,
 ): Promise<CollectionItemPersonalSignals & { id: string }> {
-  const keys = Object.keys(patch)
-
-  const unknownKey = keys.find(
+  const unknownKey = Object.keys(patch).find(
     (key): key is string => !PERSONAL_SIGNAL_KEYS.includes(key as PersonalSignalKey),
   )
 
@@ -387,11 +385,13 @@ export async function updateCollectionItemPersonalSignals(
 
   const payload: CollectionItemPersonalSignalsPatch = {}
 
-  if ('rating' in patch) {
+  // A key is "present" only when its value is not undefined, so a stray
+  // `{ rating: undefined }` can never clobber the stored rating.
+  if (patch.rating !== undefined) {
     payload.rating = normalizeRatingPatch(patch.rating)
   }
 
-  if ('is_favorite' in patch) {
+  if (patch.is_favorite !== undefined) {
     if (typeof patch.is_favorite !== 'boolean') {
       throw new Error('Favorite must be true or false.')
     }
@@ -399,7 +399,7 @@ export async function updateCollectionItemPersonalSignals(
     payload.is_favorite = patch.is_favorite
   }
 
-  if ('notes' in patch) {
+  if (patch.notes !== undefined) {
     payload.notes = normalizeNotesPatch(patch.notes)
   }
 

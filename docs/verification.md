@@ -1755,3 +1755,123 @@ recorded. Nothing was applied to hosted Supabase.
 
 Production/hosted verification of Milestone 6 has **not** been performed. No
 production deployment is claimed.
+
+## Milestone 7 Evidence - Ratings / Favorites / Notes
+
+Date: 2026-08-31
+
+Branch: `claude/milestone-7-ratings-favorites-notes`
+
+Baseline (Milestone 6 merge on `main`):
+`3583900cc19dae9db9a2e6f37846de7a8af5a665`
+
+Implementation commits:
+
+- `db: add collection item personal signals`
+- `feat: load and persist collection item personal signals`
+- `feat: add personal-signal controls to collection cards`
+- `fix: tighten the personal-signals partial patch` (focused review)
+
+Status: implemented; automated verification below passed; a focused
+implementation review ran (findings below). **Human runtime verification is
+pending** and is not recorded here yet.
+
+### Implemented
+
+- `public.collection_items.rating` (`smallint`, nullable, CHECK
+  `rating is null or rating between 1 and 5`), `is_favorite`
+  (`boolean NOT NULL DEFAULT false`), `notes` (`text`, nullable, CHECK
+  `notes = btrim(notes) and char_length between 1 and 1000` when non-null).
+  Migration `20260831120000_add_collection_item_signals.sql`. **No
+  `updated_at`, no trigger, no index** (approved decision A + deferred-index
+  decision).
+- Least privilege: `grant update (rating, is_favorite, notes)` to
+  `authenticated` (only those three columns) + one own-row `for update` RLS
+  policy (`using` + `with check` on `user_id = auth.uid()`). Existing
+  `collection_items` policies/grants, `service_role`, and `anon` unchanged.
+- The signals live at the collection-item level (never on the shared
+  `releases` row); two collection items pointing at the same `release_id` keep
+  independent values. `loadCollection` returns them at the item level.
+- `updateCollectionItemPersonalSignals(client, id, patch)` - **partial patch**:
+  writes only the key(s) present, validates/normalizes only those, never
+  touches `id` / `user_id` / `release_id` / timestamps, returns the saved
+  values. So toggling Favorite never persists an unsaved note draft, and
+  saving a Note never clobbers Favorite/Rating.
+- A compact per-item control block on every owned record: `aria-pressed`
+  Favorite toggle (immediate, optimistic, revert + inline error on failure);
+  five `aria-labelled` star buttons + "Clear rating" (immediate, same
+  behaviour); a labelled textarea (`maxLength` 1000) + live character count +
+  explicit "Save note"; whitespace note -> no note; a failed save keeps the
+  draft and shows an "unsaved" hint with no false "saved" state. Notes are
+  escaped plain React text - no `dangerouslySetInnerHTML`, no sanitizer
+  dependency. No album-detail page; the collection card is not redesigned.
+
+### Automated Verification (agent-run / local; no external calls)
+
+Run on a clean database, 2026-08-31:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm run test:run` | Passed: 18 Vitest files, 237 tests |
+| `npm run build` | Passed |
+| `npx supabase db reset` | Passed: 7 migrations apply in order (adds `20260831120000`) |
+| `npx supabase test db` | Passed: 7 pgTAP files, 321 tests (`collection_item_signals.test.sql` = 41) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New test coverage: pgTAP for the column shape, rating-range CHECK boundary
+(0 and 6 rejected; fractional input not asserted against `23514`), notes
+clean/length boundary, the exact `authenticated` UPDATE column privileges, a
+cross-user UPDATE affecting zero rows, `user_id`/`release_id` mutation being
+`42501`, and `anon` having no access; client tests for the partial-patch
+helper (single-key writes, clear-to-null, whitespace->null, rejects
+over-limit note / fractional or out-of-range rating / empty patch /
+unsupported key / stray `undefined` before any write, surfaces RLS errors);
+component tests including the required state-safety regression cases A-D
+(unsaved note + Favorite / + Rating; Save note single-key; sequential
+single-key merges) plus render, immediate persistence, note normalization,
+and failure rollback.
+
+### Focused Implementation Review (2026-08-31)
+
+Reviewed against: M7 approved scope, the data-ownership boundary, RLS/column
+grants, partial-update semantics, unsaved-note isolation, failure rollback,
+note plain-text safety, migration correctness, M3-M6 regression risk, secret
+hygiene.
+
+- **BLOCKER: 0. MEDIUM: 0** (after the fix below).
+- MEDIUM (fixed in `fix: tighten the personal-signals partial patch`): the
+  helper counted a key as "present" via `'key' in patch`, so a stray
+  `{ rating: undefined }` would have written `rating = null`. Now a key counts
+  only when its value is not `undefined`; a regression test covers it.
+- LOW / NOTE (deferred under deadline mode): rapid repeated clicks on
+  Favorite/Rating issue overlapping optimistic updates with no request
+  serialization; if two concurrent requests both fail, the optimistic control
+  can settle on a stale value. Very narrow (double-click + double-failure);
+  the persisted value is always authoritative on the next load. A request
+  mutex or last-write-wins guard can be added later if it matters.
+- LOW / NOTE: the note is shown only through the always-editable textarea (no
+  separate read-only rendering) - intentional minimal UX, not a defect.
+
+### Human Runtime Evidence
+
+Not yet performed. The spec's "Human Runtime Plan" (favorite + refresh; rating
+set/clear + refresh; note + refresh; the same on a catalog-added record;
+ownership by pgTAP) is pending and will be recorded here, distinguished from
+the agent-run automated evidence above, before the pull request.
+
+### Deferred Scope (documented, not defects)
+
+- Favorite-only filtering, rating filtering, and rating sorting (decision C).
+  The Milestone 6 `collectionQuery.ts` layer is unchanged.
+- `(user_id, is_favorite)` / `(user_id, rating)` indexes - deferred to
+  Milestone 9 if the curator introduces server-side candidate queries.
+- `collection_items.updated_at` / a signal-change timestamp (decision A).
+
+### Production / Hosted Status
+
+Production/hosted verification of Milestone 7 has **not** been performed. No
+production deployment is claimed.
