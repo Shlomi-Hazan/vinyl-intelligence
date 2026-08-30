@@ -11,6 +11,7 @@ export const RELEASE_FIELD_LIMITS = {
   catalogNumber: 120,
   country: 80,
   format: 80,
+  genre: 40,
 } as const
 
 const RELEASE_YEAR_MIN = 1900
@@ -24,6 +25,7 @@ export type ManualReleaseInput = {
   catalogNumber: string
   country: string
   format: string
+  genre: string
 }
 
 export type NormalizedManualReleaseInput = {
@@ -34,6 +36,7 @@ export type NormalizedManualReleaseInput = {
   catalog_number: string | null
   country: string | null
   format: string | null
+  genres: string[]
 }
 
 export type CollectionItemWithRelease = Pick<
@@ -50,6 +53,7 @@ export type CollectionItemWithRelease = Pick<
     | 'catalog_number'
     | 'country'
     | 'format'
+    | 'genres'
     | 'updated_at'
   >
 }
@@ -75,6 +79,14 @@ function normalizeYear(value: string): number | null {
   return trimmed.length > 0 ? Number(trimmed) : null
 }
 
+// Milestone 6: a single optional manual genre, stored lowercase/trimmed as a
+// 0-or-1-element array so it matches the catalog-sourced `genres text[]` shape
+// and the client genre filter.
+function normalizeGenre(value: string): string[] {
+  const genre = value.trim().toLocaleLowerCase()
+  return genre.length > 0 ? [genre] : []
+}
+
 export function normalizeManualReleaseInput(
   input: ManualReleaseInput,
 ): NormalizedManualReleaseInput {
@@ -86,6 +98,7 @@ export function normalizeManualReleaseInput(
     catalog_number: nullIfBlank(input.catalogNumber),
     country: nullIfBlank(input.country),
     format: nullIfBlank(input.format),
+    genres: normalizeGenre(input.genre),
   }
 }
 
@@ -135,6 +148,11 @@ export function validateManualReleaseInput(
     ),
     validateOptionalText(input.country, 'Country', RELEASE_FIELD_LIMITS.country),
     validateOptionalText(input.format, 'Format', RELEASE_FIELD_LIMITS.format),
+    validateOptionalText(
+      input.genres[0] ?? null,
+      'Genre',
+      RELEASE_FIELD_LIMITS.genre,
+    ),
   ].filter((error): error is string => error !== null)
 
   if (
@@ -195,6 +213,7 @@ export async function loadCollection(
           catalog_number,
           country,
           format,
+          genres,
           updated_at
         )
       `,
@@ -219,7 +238,7 @@ export async function addManualCollectionItem(
   const { data: release, error: releaseError } = await client
     .from('releases')
     .insert(normalized)
-    .select('id, artist, title, release_year, label, catalog_number, country, format, updated_at')
+    .select('id, artist, title, release_year, label, catalog_number, country, format, genres, updated_at')
     .single()
 
   if (releaseError) {
@@ -243,6 +262,7 @@ export async function addManualCollectionItem(
           catalog_number,
           country,
           format,
+          genres,
           updated_at
         )
       `,
@@ -268,7 +288,7 @@ export async function updateManualRelease(
     .from('releases')
     .update(normalized)
     .eq('id', releaseId)
-    .select('id, artist, title, release_year, label, catalog_number, country, format, updated_at')
+    .select('id, artist, title, release_year, label, catalog_number, country, format, genres, updated_at')
     .single()
 
   if (error) {

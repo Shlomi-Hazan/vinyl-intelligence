@@ -21,6 +21,7 @@ export type Release = {
   catalog_number: string | null
   country: string | null
   format: string | null
+  genres: string[]
   created_at: string
   updated_at: string
 }
@@ -100,6 +101,7 @@ type Database = {
           catalog_number?: string | null
           country?: string | null
           format?: string | null
+          genres?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -111,6 +113,7 @@ type Database = {
           catalog_number?: string | null
           country?: string | null
           format?: string | null
+          genres?: string[]
         }
         Relationships: [
           {

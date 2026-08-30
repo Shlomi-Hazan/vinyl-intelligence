@@ -47,6 +47,7 @@ function item(
       catalog_number: 'AS-9203',
       country: 'US',
       format: 'LP',
+      genres: ['spiritual jazz'],
       updated_at: '2026-08-19T10:00:00.000Z',
     },
     ...overrides,
@@ -139,6 +140,7 @@ describe('CollectionPanel', () => {
       catalogNumber: '',
       country: '',
       format: '',
+      genre: '',
     })
     expect(screen.getByText('Journey in Satchidananda')).toBeInTheDocument()
     expect(screen.getByLabelText('Artist')).toHaveValue('')
@@ -372,6 +374,7 @@ describe('CollectionPanel manual add-form draft persistence', () => {
     await user.type(screen.getByLabelText('Catalog number'), 'B001753602')
     await user.type(screen.getByLabelText('Country'), 'US')
     await user.type(screen.getByLabelText('Format'), '2xLP')
+    await user.type(screen.getByLabelText('Genre'), 'hip hop')
 
     const stored = JSON.parse(sessionStorage.getItem(MANUAL_DRAFT_KEY) ?? 'null')
     expect(stored).toEqual({
@@ -382,6 +385,7 @@ describe('CollectionPanel manual add-form draft persistence', () => {
       catalogNumber: 'B001753602',
       country: 'US',
       format: '2xLP',
+      genre: 'hip hop',
     })
   })
 
@@ -499,5 +503,105 @@ describe('CollectionPanel manual add-form draft persistence', () => {
     await screen.findByLabelText('Artist')
     expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
+  })
+
+  it('preserves the Genre draft across remount', async () => {
+    const user = userEvent.setup()
+    const view = render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Genre'), 'krautrock')
+    view.unmount()
+
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    expect(await screen.findByLabelText('Genre')).toHaveValue('krautrock')
+  })
+})
+
+describe('CollectionPanel manual genre', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockCollection([])
+  })
+
+  it('adds a manual record with a genre', async () => {
+    const user = userEvent.setup()
+    vi.mocked(addManualCollectionItem).mockResolvedValue(item())
+    render(<CollectionPanel client={client} userId="user-1" />)
+
+    await user.type(await screen.findByLabelText('Artist'), 'Alice Coltrane')
+    await user.type(screen.getByLabelText('Title'), 'Journey in Satchidananda')
+    await user.type(screen.getByLabelText('Genre'), 'Spiritual Jazz')
+    await user.click(screen.getByRole('button', { name: 'Add record' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Record added.')).toBeInTheDocument()
+    })
+    expect(addManualCollectionItem).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ genre: 'Spiritual Jazz' }),
+    )
+  })
+
+  it('shows the existing genre in the edit form and saves an edited genre', async () => {
+    const user = userEvent.setup()
+    mockCollection([item({ release: { ...item().release, genres: ['jazz'] } })])
+    vi.mocked(updateManualRelease).mockResolvedValue({
+      ...item().release,
+      genres: ['fusion'],
+    })
+
+    render(<CollectionPanel client={client} />)
+
+    await user.click(
+      within((await screen.findAllByRole('article'))[0]).getByRole('button', {
+        name: 'Edit',
+      }),
+    )
+
+    const genreInput = screen.getAllByLabelText('Genre')[1]
+    expect(genreInput).toHaveValue('jazz')
+
+    await user.clear(genreInput)
+    await user.type(genreInput, 'fusion')
+    await user.click(screen.getByRole('button', { name: 'Save record' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Record saved.')).toBeInTheDocument()
+    })
+    expect(updateManualRelease).toHaveBeenCalledWith(
+      client,
+      'release-1',
+      expect.objectContaining({ genre: 'fusion' }),
+    )
+  })
+
+  it('saves a cleared genre as blank', async () => {
+    const user = userEvent.setup()
+    mockCollection([item({ release: { ...item().release, genres: ['jazz'] } })])
+    vi.mocked(updateManualRelease).mockResolvedValue({
+      ...item().release,
+      genres: [],
+    })
+
+    render(<CollectionPanel client={client} />)
+
+    await user.click(
+      within((await screen.findAllByRole('article'))[0]).getByRole('button', {
+        name: 'Edit',
+      }),
+    )
+    await user.clear(screen.getAllByLabelText('Genre')[1])
+    // Title must stay valid for the Save button to enable.
+    await user.click(screen.getByRole('button', { name: 'Save record' }))
+
+    await waitFor(() => {
+      expect(updateManualRelease).toHaveBeenCalledWith(
+        client,
+        'release-1',
+        expect.objectContaining({ genre: '' }),
+      )
+    })
   })
 })

@@ -35,6 +35,7 @@ const emptyInput: ManualReleaseInput = {
   catalogNumber: '',
   country: '',
   format: '',
+  genre: '',
 }
 
 function releaseToInput(
@@ -52,6 +53,9 @@ function releaseToInput(
     catalogNumber: release.catalog_number ?? '',
     country: release.country ?? '',
     format: release.format ?? '',
+    // One optional manual genre; a catalog release may carry several, of which
+    // this form edits only the first.
+    genre: release.genres?.[0] ?? '',
   }
 }
 
@@ -214,6 +218,18 @@ export function CollectionForm({
             placeholder="Optional"
             type="text"
             value={input.format}
+          />
+        </label>
+
+        <label>
+          Genre
+          <input
+            maxLength={RELEASE_FIELD_LIMITS.genre + 8}
+            name="genre"
+            onChange={(event) => updateField('genre', event.target.value)}
+            placeholder="Optional"
+            type="text"
+            value={input.genre}
           />
         </label>
       </div>

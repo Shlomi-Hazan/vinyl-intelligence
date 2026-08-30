@@ -27,6 +27,7 @@ const FIELDS: readonly (keyof ManualReleaseInput)[] = [
   'catalogNumber',
   'country',
   'format',
+  'genre',
 ]
 
 function parseDraft(value: unknown): ManualReleaseInput | null {
