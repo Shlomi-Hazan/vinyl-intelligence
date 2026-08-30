@@ -1,8 +1,8 @@
 # 0008 Milestone 7 Ratings / Favorites / Notes Specification
 
 Status: implemented and verified locally (automated verification + focused
-implementation review [0 BLOCKER, 0 MEDIUM] + human runtime PASS); ready for
-milestone pull request. Not merged, not deployed, hosted Supabase not verified.
+implementation review [0 BLOCKER, 0 MEDIUM] + human runtime PASS); merged to
+`main` in PR #7. Not deployed; hosted Supabase not verified.
 
 Milestone: 7 - Ratings / Favorites / Notes (personal preference signals)
 

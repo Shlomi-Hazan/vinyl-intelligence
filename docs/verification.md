@@ -1774,9 +1774,9 @@ Implementation commits:
 
 Status: implemented and verified locally - automated verification (below), a
 focused implementation review (0 BLOCKER, 0 MEDIUM after one correction), and
-human runtime verification (PASS, 6 focused tests, below). Ready for the
-milestone pull request. Hosted Supabase migration / production deployment NOT
-verified (deferred).
+human runtime verification (PASS, 6 focused tests, below). Merged to `main` in
+PR #7 (`2affd718481a3c6da745c9f1b99667635a87adff`). Hosted Supabase migration /
+production deployment NOT verified (deferred).
 
 ### Implemented
 
