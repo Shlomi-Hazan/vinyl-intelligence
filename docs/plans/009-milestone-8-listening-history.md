@@ -1,8 +1,8 @@
 # 009 Milestone 8 Listening History Implementation Plan
 
-Status: implemented and verified locally (automated + focused review [0 BLOCKER,
-0 MEDIUM] + human runtime PASS); ready for a milestone pull request. Not merged.
-Not deployed.
+Status: implemented and verified (automated + focused review [0 BLOCKER,
+0 MEDIUM] + human runtime PASS); merged to `main` in PR #8 (merge commit
+`9af8beec701cb108b3ed6de7bdf3962fbf938ee3`). Not deployed.
 
 Milestone: 8 - Listening History
 

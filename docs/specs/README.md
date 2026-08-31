@@ -26,7 +26,7 @@ Existing specs/spikes:
 - [0006 Milestone 5 Photo Recognition](0006-milestone-5-photo-recognition.md) - implemented and verified (merged)
 - [0007 Milestone 6 Browse / Search / Filter](0007-milestone-6-browse-search-filter.md) - implemented and verified (merged)
 - [0008 Milestone 7 Ratings / Favorites / Notes](0008-milestone-7-ratings-favorites-notes.md) - implemented and verified (merged)
-- [0009 Milestone 8 Listening History](0009-milestone-8-listening-history.md) - implemented and verified locally; ready for milestone PR (not merged)
+- [0009 Milestone 8 Listening History](0009-milestone-8-listening-history.md) - implemented and verified (merged in PR #8)
 
 Likely milestone specs:
 
