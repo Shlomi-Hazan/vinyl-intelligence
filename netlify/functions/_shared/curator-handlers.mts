@@ -157,7 +157,11 @@ async function parseCuratorRequestBody(request: Request): Promise<string> {
   return text
 }
 
-function boundedText(value: unknown, field: string): string {
+function boundedText(
+  value: unknown,
+  field: string,
+  tooLongCode: CuratorErrorCode = 'invalid_request',
+): string {
   if (typeof value !== 'string') {
     throw new CuratorError('invalid_request', `${field} must be a string.`)
   }
@@ -166,7 +170,7 @@ function boundedText(value: unknown, field: string): string {
     throw new CuratorError('invalid_request', `${field} must not be empty.`)
   }
   if (text.length > MAX_REQUEST_LENGTH) {
-    throw new CuratorError('request_too_long', `${field} must be under ${MAX_REQUEST_LENGTH} characters.`)
+    throw new CuratorError(tooLongCode, `${field} must be under ${MAX_REQUEST_LENGTH} characters.`)
   }
   return text
 }
@@ -200,7 +204,9 @@ async function parseCuratorRefineBody(
     throw new CuratorError('invalid_request', 'The refinement must contain only "request" and "context".')
   }
 
-  const followUp = boundedText(obj.request, 'The refinement')
+  // The top-level follow-up keeps the M9 `request_too_long` code; a too-long
+  // value inside `context` is a corrupted/tampered client state -> invalid_request.
+  const followUp = boundedText(obj.request, 'The refinement', 'request_too_long')
 
   if (
     typeof obj.context !== 'object'
