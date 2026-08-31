@@ -1,9 +1,12 @@
 # 012 Visual Experience & Product Identity Pass - Implementation Plan
 
-Status: DRAFT - awaiting human design approval (spec section 20, decisions A-K).
-No implementation, migration, dependency, or asset until approved. This turn
-produced only this plan, the spec (`docs/specs/0012-...`), the proposed ADR
-(`docs/decisions/0005-...`), and lightweight status updates.
+Status: **APPROVED 2026-08-31** (spec section 20, decisions A-K), with the
+mandatory provider-artwork correction (no `releases.cover_url`, no catalog-add
+Cover Art Archive lookup - artwork is a client-side display-time concern) and
+the canonical `cover.webp` custom-cover object. **Phase 0 is implemented** on
+this branch (migration `20260903120000_add_custom_cover_storage.sql` + pgTAP +
+`config.toml` storage). Phases A-E are unstarted and gated on the Phase 0 PR
+merging.
 
 Date: 2026-08-31
 
@@ -59,12 +62,13 @@ product/design intent, screen states, tokens, and acceptance criteria).
 - `src/collection/*` - `CollectionPanel` split into `CollectionPage` (grid+list)
   and `AlbumDetailPage`; `CollectionItemCard` -> `AlbumCard`/`AlbumRow`;
   `collectionQuery.ts` reused as-is + a grid/list view state + URL-query sync.
-- `netlify/functions/_shared/catalog-handlers.mts` - after
-  `upsertCatalogRelease`, one Cover Art Archive lookup -> `releases.cover_url`
-  (`service_role` UPDATE). New helper `src/lib/catalog/coverArt.ts` (pure,
-  testable, `fetch`-injected).
-- `supabase/config.toml` - `[storage] enabled = true` + `collection-covers`
-  bucket block.
+- `netlify/functions/_shared/catalog-handlers.mts` - **not changed** (the
+  provider-artwork correction removes the planned catalog-add CAA lookup). New
+  pure helper `src/media/coverArtUrl.ts` builds the deterministic CAA
+  release / release-group front-image URLs from the MBIDs the client already
+  has; consumed only by `AlbumArtwork`.
+- `supabase/config.toml` - `[storage] enabled = true` +
+  `[storage.buckets.collection-covers]` (done in Phase 0).
 - `eslint`/`tsconfig` - add the new `src/*` dirs to project references if
   needed.
 
@@ -78,40 +82,50 @@ telemetry, and prompts.
 
 ## 2. Database implications
 
-One migration (Phase 0 only), file `supabase/migrations/<ts>_add_artwork_storage.sql`:
+One migration (Phase 0 only): `supabase/migrations/20260903120000_add_custom_cover_storage.sql`
+(implemented). `public.releases` is **not touched**.
 
-- `alter table public.collection_items add column custom_cover_path text`,
-  `add column custom_cover_updated_at timestamptz`;
-  `check (custom_cover_path is null or (custom_cover_path ~
-  ('^' || user_id::text || '/[0-9a-f-]{36}\.(jpe?g|png|webp)$')))`.
+- `alter table public.collection_items add column custom_cover_path text,
+  add column custom_cover_updated_at timestamptz;` (both nullable).
+- `check (custom_cover_path is null or custom_cover_path = user_id::text || '/'
+  || id::text || '/cover.webp')` - the value, when set, must be exactly the
+  canonical object name for that same row.
 - `grant update (custom_cover_path, custom_cover_updated_at) on
-  public.collection_items to authenticated;` (own-row UPDATE RLS already exists).
-- `alter table public.releases add column cover_url text`,
-  `add constraint releases_cover_url_catalog_only check (cover_url is null or
-  source = 'catalog')`. No new `authenticated` grant (`service_role` table
-  UPDATE already covers catalog writes).
-- Create the `collection-covers` storage bucket + `storage.objects` RLS
-  policies (SELECT/INSERT/UPDATE/DELETE for `authenticated` scoped to
-  `bucket_id = 'collection-covers' and (storage.foldername(name))[1] =
-  auth.uid()::text`). Bucket `public = false`, size 3 MiB, mime allow-list
-  jpeg/png/webp.
-- pgTAP: `supabase/tests/database/artwork_storage.test.sql` - column grant,
-  own-row policy still scoping the new columns, `cover_url` constraint,
-  `collection-covers` object policies (a user reaches only their own folder).
+  public.collection_items to authenticated;` (the Milestone 7 own-row UPDATE
+  policy already governs the row; no new policy on this table).
+- `insert into storage.buckets (...) values ('collection-covers', ..., false,
+  3145728, array['image/webp']) on conflict (id) do update set public,
+  file_size_limit, allowed_mime_types` - self-healing private bucket.
+- Four `storage.objects` RLS policies for bucket `collection-covers`, role
+  `authenticated`:
+  - INSERT: bucket + exactly two folder segments + segment 1 = `auth.uid()` +
+    filename `cover.webp` + segment 2 is a `collection_item` owned by
+    `auth.uid()`.
+  - SELECT / UPDATE: as INSERT plus `owner_id = auth.uid()::text` (UPDATE
+    checks both USING and WITH CHECK).
+  - DELETE: bucket + segment 1 = `auth.uid()` + `owner_id = auth.uid()::text`
+    (no item-ownership requirement, for orphan cleanup).
+- pgTAP: `supabase/tests/database/custom_cover_storage.test.sql` - column
+  shape, canonical-path CHECK (7 cases), least-privilege grant, `releases` has
+  no `cover_url`, `collection_items` still has exactly 4 policies, own-row
+  behavioural, bucket config, four object policies, cross-user isolation
+  (User B cannot select / insert / update / delete User A's object), tamper
+  cases, orphan-delete path, anon denied.
 
 No other phase touches the schema.
 
 ## 3. External API implications
 
-- **Cover Art Archive** (`coverartarchive.org`): one server-side `fetch` per
-  catalog add (release MBID, release-group fallback), 5s timeout, no retry,
-  redirects followed, `Content-Type: image/*` validated, descriptive
-  `User-Agent`. Result URL persisted to `releases.cover_url` or `null`.
-  Behind `src/lib/catalog/coverArt.ts` (service boundary, `fetch` injected for
-  tests). No key. Not called from the browser except as an `<img src>`.
+- **Cover Art Archive** (`coverartarchive.org`): **no backend call**. The
+  browser builds deterministic front-image URLs
+  (`/release/{mbid}/front-{size}`, `/release-group/{mbid}/front-{size}`) from
+  the MBIDs already present on catalog releases and `CatalogCandidate`s, and
+  renders them as `<img src loading="lazy">`. `<img onError>` advances the
+  four-tier source chain. No key, no `crossorigin`, no proxy, no persistence.
 - **MusicBrainz**: unchanged; we only reuse the MBIDs already stored.
 - **OpenRouter**: unchanged.
-- No automated test performs a real call to any of these.
+- No automated test performs a real call to any of these; `AlbumArtwork` tests
+  assert URL construction + `onError` fall-through with stub images.
 
 ## 4. AI / model implications
 
@@ -125,25 +139,26 @@ presentation only. `/vin` reuses the M9/M10 client functions verbatim.
   folder-prefix policies, private bucket, no public listing, signed short-TTL
   URLs, server-enforced mime/size, pgTAP coverage, and **one focused security
   review in Phase 0**.
-- `releases.cover_url` is catalog-only (constraint) and `service_role`-written;
-  a manual release cannot carry a URL, so no user can inject a URL onto a shared
-  row.
+- `public.releases` is not changed at all - no `cover_url`, no new grant, no
+  catalog-add write. Nothing can be injected onto the shared release row.
 - Custom covers never touch `releases`; one user's photo is never another user's
   release image.
 - Cover Art Archive URLs are public; hotlinking leaks no user data (the `<img>`
   request carries no auth). The `Referer` on the image request is the app
   origin - acceptable.
-- No secret is added, logged, or exposed. `.env.example` gains only
-  `COVER_ART_ARCHIVE_USER_AGENT` (or reuse `MUSICBRAINZ_USER_AGENT`) - names
-  only.
+- No secret is added, logged, or exposed. No `.env.example` change (no backend
+  CAA call).
 
-## 6. Phase 0 - architecture gate (requires approval + focused security review)
+## 6. Phase 0 - architecture gate (IMPLEMENTED)
 
-Deliverables: the one migration (section 2), `config.toml` storage enablement,
-`.env.example` name addition, pgTAP, ADR `0005` moved to accepted. No UI, no
-dependency. Automated verification + **one focused security review** of the
-Storage RLS. This phase merges (or lands as the first staged commit) before
-Phase C can wire custom covers, but Phases A-B do not depend on it.
+Deliverables (done on this branch): migration
+`20260903120000_add_custom_cover_storage.sql` (section 2), `config.toml`
+storage enablement + bucket block, pgTAP
+`custom_cover_storage.test.sql`, ADR `0005` accepted, spec/plan approved.
+**No UI, no dependency, no `react-router-dom`.** Automated verification +
+**one focused security review** of the Storage RLS. This phase is its own PR
+and must merge before Phase C wires custom covers; Phases A-B do not depend on
+it.
 
 ## 7. Phases A-E
 
@@ -177,19 +192,22 @@ check of the landing bundle size.
 
 ### Phase C - artwork infrastructure + collection / discover / scan
 
-1. Cover Art Archive resolution in `catalog-handlers.mts` +
-   `src/lib/catalog/coverArt.ts` + `releases.cover_url` wired into
-   `CatalogCollectionItem` / catalog types.
-2. `AlbumArtwork` full precedence (custom signed URL > `cover_url` > fallback);
-   `useSignedCoverUrl` batching + cache.
-3. `src/lib/collection/customCover.ts` + the "Replace / remove cover" dialog on
-   `AlbumDetailPage`.
+1. `src/media/coverArtUrl.ts` - pure builder for the deterministic CAA
+   release / release-group front-image URLs from `provider_release_id` /
+   `provider_release_group_id` (already on catalog releases and
+   `CatalogCandidate`). No backend change.
+2. `AlbumArtwork` full four-tier chain (custom signed URL > CAA release > CAA
+   release-group > branded fallback), `<img onError>` advancing one tier
+   without looping; `useSignedCoverUrl` batching + cache for tier 1.
+3. `src/lib/collection/customCover.ts` (WebP conversion + downscale + upload /
+   replace / remove) + the "Replace / remove cover" dialog on `AlbumDetailPage`.
 4. `CollectionPage` grid + compact list + `FilterBar` + URL-query sync + view
    persistence; `DiscoverPage` visual results + owned-state + manual fallback;
    `ScanPage` visual candidates.
 
-Exit: artwork precedence tests; custom-cover lifecycle tests; discover/scan
-state tests; Storage pgTAP green; **no real CAA call in tests**.
+Exit: artwork four-tier + `onError` fall-through tests; custom-cover lifecycle
+tests; discover/scan state tests; Storage pgTAP green; **no real CAA call in
+tests**.
 
 ### Phase D - VIN + history + settings + album detail
 
@@ -223,13 +241,13 @@ Exit: spec section 19 acceptance criteria all met.
 - **Feature preservation:** each ported suite runs against its new page host and
   asserts the same client calls/args. `src/curator/*` and
   `netlify/functions/curator-functions.test.ts` suites are **unchanged**.
-- **`AlbumArtwork`:** the 4 precedence cases; `onError` fall-through (no loop);
+- **`AlbumArtwork`:** the four-tier chain; `onError` fall-through (no loop);
   deterministic fallback hue; `loading="lazy"`; alt text.
-- **Custom cover:** client validation reject (type/size); success path updates
-  the column via a mocked Supabase client; replace; remove (+ best-effort
-  `remove` called); precedence flips.
-- **Cover Art Archive helper:** mocked `fetch` - hit, miss (404 -> null),
-  timeout -> null, wrong content-type -> null, release-group fallback.
+- **`coverArtUrl.ts`:** builds the right `/release/{mbid}/front-{size}` and
+  `/release-group/{mbid}/front-{size}` URLs; null MBIDs skip that tier.
+- **Custom cover:** client WebP-conversion + downscale; validation reject
+  (type/size); success path updates the column via a mocked Supabase client;
+  replace; remove (+ best-effort `remove` called); precedence flips.
 - **Discover/scan:** artwork + skeleton + empty/no-match/error/owned states.
 - **Collection:** grid<->list toggle + persistence; `applyCollectionQuery`
   parity; URL query round-trip; both empty states.
@@ -237,7 +255,7 @@ Exit: spec section 19 acceptance criteria all met.
 - **History:** Today/Yesterday/Earlier bucketing from fixed timestamps.
 - **A11y basics:** each page has one `h1`; interactive elements have accessible
   names; focus lands on `h1` after navigation; skeleton `aria-hidden`.
-- **DB:** `supabase test db` incl. the new `artwork_storage.test.sql`;
+- **DB:** `supabase test db` incl. the new `custom_cover_storage.test.sql`;
   `supabase db lint`.
 - **No real OpenRouter / MusicBrainz / Cover Art Archive calls anywhere in the
   automated suite.**
@@ -250,7 +268,7 @@ recorded in `docs/verification.md` when the work runs.
 
 | Scope | Review |
 | --- | --- |
-| Phase 0 Storage RLS + column grant + `cover_url` constraint | **one focused security review** |
+| Phase 0 Storage RLS + column grant + canonical-path CHECK | **one focused security review** |
 | Phases A-E code | **one focused code review** at the end (no per-phase loops) |
 | Every phase | automated checks: `typecheck`, `lint`, `test:run`, `build`, `supabase test db`, `supabase db lint`, `npm audit --omit=dev` |
 | Phases B-E | page-by-page human visual inspection (desktop + tablet + mobile) |
@@ -272,13 +290,12 @@ fix BLOCKER + meaningful MEDIUM; record/defer LOW/NOTE.
 
 Net: **+1 runtime (`react-router-dom`)**, optionally **+1 dev (`vitest-axe`)**.
 
-## 11. Phasing / PR shape (decision K)
+## 11. Phasing / PR shape (decision K - APPROVED)
 
-Recommended: a single long-lived branch `claude/visual-experience-product-
-identity` with **Phase 0 landing first** (its own PR, because it carries the
-migration + security review), then **Phases A-E as staged commits on one
-follow-up PR** (or two: A-C, then D-E) to avoid dozens of micro-PRs while
-keeping the diff reviewable. The human confirms the exact cut in decision K.
+**Phase 0 is its own PR** (`Visual experience Phase 0: custom cover storage`,
+base `main`), because it carries the migration + Storage RLS + focused security
+review. After it merges, **Phases A-E land on one follow-up visual branch / PR
+with coherent staged commits** - not five separate PRs.
 
 Each phase leaves the app in a working, deployable-if-needed state; no phase
 starts by destabilising an unfinished earlier one.
@@ -293,8 +310,13 @@ starts by destabilising an unfinished earlier one.
   security review before any UI wiring.
 - **Bundle regression.** Mitigation: route-level `React.lazy` + a bundle-size
   check in Phase E.
-- **Cover Art Archive latency on add.** Mitigation: 5s timeout, no retry,
-  failure => `null` and the add still succeeds.
+- **Cover Art Archive 404 / slow image.** Mitigation: it is only ever an
+  `<img src>` the browser is about to display; `onError` advances to the next
+  tier (release-group, then branded fallback). No backend call, no add-time
+  coupling.
+- **Local/hosted bucket drift.** Mitigation: the migration `insert ... on
+  conflict (id) do update` re-enforces private + 3 MiB + webp-only on every
+  apply; `config.toml` mirrors it for local dev.
 - **Font/asset licensing.** Mitigation: OFL fonts only, bundled woff2 + a
   `LICENSES` note; original logo/mascot/icons; no copyrighted album art
   committed.

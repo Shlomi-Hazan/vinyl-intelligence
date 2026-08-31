@@ -1,9 +1,14 @@
 # 0012 Visual Experience & Product Identity Pass - Design / Product / Architecture Specification
 
-Status: DRAFT - awaiting human design approval. This document is DESIGN + PRODUCT +
-ARCHITECTURE PLANNING ONLY. No product code, migration, dependency, or asset has
-been created. Nothing is implemented until the human approves the open decisions
-in section 20.
+Status: **HUMAN-APPROVED** 2026-08-31 (decisions A-K in section 20), with the
+mandatory architecture corrections recorded inline: provider artwork is
+resolved at **display time** from stored MusicBrainz IDs (no `releases.cover_url`,
+no catalog-add Cover Art Archive lookup); custom covers are one canonical
+`cover.webp` per item; VIN recommendation artwork resolves locally from
+`collectionItemId` without touching the M9/M10 model contract. **Phase 0
+(custom-cover storage) is implemented** on branch
+`claude/visual-experience-product-identity`. Phases A-E remain unstarted and
+require the Phase 0 PR to merge first.
 
 Date: 2026-08-31
 
@@ -291,9 +296,12 @@ in incidental copy, never as a required label.
    short symmetric EQ/waveform wrapped in a ring: disc + sound + data. Compact
    mark: the ring-waveform. Favicon: three bars in a circle.
 
-Recommendation: concept 1 or 2. All three are original vector, deliverable as
-an inline `<Logo/>` SVG React component with `variant="wordmark|mark|favicon"` -
-no raster asset, no dependency. The favicon is generated from the `mark` SVG.
+**APPROVED (decision F): Concept 1 - Grooved V-I - is the primary product
+mark.** Concept 2 (needle-drop) may be used only as a **secondary visual
+motif** (e.g. a loading accent or a section divider), not as the logo. All
+concepts are original vector, deliverable as an inline `<Logo variant=
+"wordmark|mark|favicon">` React component - no raster asset, no dependency. The
+favicon is generated from the `mark` SVG.
 
 ### 6.2 VIN / Vinny mascot concept (asset NOT created this pass)
 
@@ -345,22 +353,28 @@ Provider artwork stays provider-derived at runtime.
 Artwork is a first-class product concern. A record without any artwork is the
 **fallback case, not the normal case**.
 
-### 7.1 Precedence
+### 7.1 Precedence (four tiers)
 
-For any owned record, `<AlbumArtwork item />` resolves in order:
+`<AlbumArtwork>` resolves in order, advancing to the next tier on `<img>`
+error, and **never looping**:
 
 1. **User custom cover** - `collection_items.custom_cover_path` set -> a
    short-TTL signed URL from the private `collection-covers` bucket.
-2. **Provider / catalog cover** - `releases.cover_url` set (catalog releases
-   only, populated from Cover Art Archive) -> `<img>` directly.
-3. **Vinyl Intelligence branded fallback** - deterministic CSS/SVG cover
+2. **Cover Art Archive release front** - deterministic URL from
+   `provider_release_id`: `https://coverartarchive.org/release/{mbid}/front-{size}`.
+3. **Cover Art Archive release-group front** - deterministic URL from
+   `provider_release_group_id`:
+   `https://coverartarchive.org/release-group/{mbid}/front-{size}`.
+4. **Vinyl Intelligence branded fallback** - deterministic CSS/SVG cover
    (section 7.4).
 
-For a catalog **search candidate** (not yet owned), precedence is 2 then 3.
-For a **scan candidate**, precedence is 2 then 3.
-
-`<img>` `onError` on tier 1 or 2 falls through to the next tier (guarded against
-loops). Every tier renders into a `1/1` `aspect-ratio` box -> zero layout shift.
+For a **catalog search candidate** and a **scan candidate** (not yet owned),
+precedence is 2 -> 3 -> 4 (the `CatalogCandidate` already carries
+`providerReleaseId` and `providerReleaseGroupId`). Tiers 2 and 3 are just
+`<img src>` values built client-side - **no backend call, no persisted
+`cover_url`**. Every tier renders into a `1/1` `aspect-ratio` box -> zero layout
+shift. `size` = `250` for grid/thumb, `500` (and `srcset` `1200`) for the
+detail hero.
 
 ### 7.2 Where artwork appears
 
@@ -370,44 +384,52 @@ listening history rows, favourites surfaces. One `<AlbumArtwork>` component
 everywhere; size via a `size` prop (`grid` ~150-220px, `thumb` ~48px, `hero`
 up to 480px).
 
-### 7.3 Cover Art Archive plan (provider artwork)
+### 7.3 Cover Art Archive plan (provider artwork) - DISPLAY-TIME, NO PERSISTENCE
 
-- **Source:** Cover Art Archive (CAA), `https://coverartarchive.org`. Front
-  image endpoints: `/release/{release-mbid}/front-{250|500|1200}` and
-  `/release-group/{rg-mbid}/front-{...}` (302 -> Internet Archive CDN). We hold
-  `provider_release_id` (release MBID) and `provider_release_group_id` on every
-  catalog release.
-- **Resolution point:** at **catalog-add time** in
-  `netlify/functions/_shared/catalog-handlers.mts`, after `upsertCatalogRelease`,
-  the function performs one CAA lookup (release MBID first, release-group MBID
-  fallback), with a 5s timeout, no retry, following redirects, validating
-  `Content-Type: image/*`. On success it writes the resolved front-500 URL to
-  `releases.cover_url` via the existing `service_role` UPDATE grant; on any
-  failure it writes `null`. Optionally the same resolution runs opportunistically
-  during `POST /api/catalog/search` for display only (not persisted).
-- **Serving:** the browser renders `<img src={releases.cover_url}
-  loading="lazy" decoding="async">` **directly from CAA / archive.org**. `<img>`
-  tags are not subject to CORS (no `crossorigin` attribute), so hotlinking the
-  front image works. Netlify's CDN and the browser cache the response;
-  archive.org sends long cache headers. We do **not** proxy image bytes through
-  a function (keeps functions cheap) and we do **not** re-host provider art in
-  our own Storage.
-- **Sizing:** grid/thumb request `front-250`, detail hero `front-500`
-  (optionally `front-1200` via `srcset` for hi-DPI). Stored `cover_url` is the
-  `front-500`; the component rewrites the suffix for smaller sizes.
-- **Failure handling:** function - any non-2xx / timeout / wrong content-type
-  => `cover_url = null` (no throw, add still succeeds). Browser - `<img onError>`
-  => branded fallback.
-- **Rate / etiquette:** one lookup per add; cache aggressively; send a
-  descriptive `User-Agent` (reuse the existing `MUSICBRAINZ_USER_AGENT`
-  convention). CAA is generally lenient; the per-add cost is negligible.
-- **Privacy / security:** CAA data is public; no secret involved; the function
-  logs only success/failure category, never the image. No new dependency
-  (`fetch` in a function). **No Discogs.**
+**Mandatory correction (human-directed): `releases.cover_url` and a
+catalog-add Cover Art Archive lookup are rejected.** Artwork must render in
+Discover and Scan *before* the candidate is added, so it cannot depend on an
+add-time write, and there must be no backend Cover Art Archive call and no new
+`service_role` grant.
+
+- **Source:** Cover Art Archive (CAA), `https://coverartarchive.org`, which
+  exposes **deterministic** front-image URLs keyed by MusicBrainz IDs:
+  - release: `/release/{release_mbid}/front-{250|500|1200}`
+  - release group: `/release-group/{release_group_mbid}/front-{250|500|1200}`
+  A missing image returns 404 (no bytes); a present image 302-redirects to an
+  Internet Archive CDN object.
+- **Resolution:** entirely **client-side, at display time**. `AlbumArtwork`
+  builds tier-2 and tier-3 URLs from `provider_release_id` /
+  `provider_release_group_id` (present on every catalog release and on every
+  `CatalogCandidate` from search/scan) and renders `<img src loading="lazy"
+  decoding="async">`. `<img>` is not subject to CORS (no `crossorigin`), so
+  hotlinking works; the browser and any CDN cache the redirected object. No
+  Netlify function, no image proxy, no re-hosting.
+- **Sizing:** grid/thumb `front-250`; detail hero `front-500` (+ `srcset`
+  `front-1200`).
+- **Failure handling:** `<img onError>` advances tier 2 -> tier 3 -> tier 4
+  (branded fallback), guarded against loops (an attempted-tier set per
+  component instance).
+- **Backend:** unchanged. `public.releases` gets no column; catalog-add does no
+  CAA lookup; `catalog-handlers.mts` is untouched by artwork.
+- **Rate / etiquette:** the browser only requests an image it is about to
+  display; failures are a cheap 404. No server-side crawling of CAA.
+- **Privacy / security:** CAA data is public; the `<img>` request carries no
+  auth and no user data (only the app-origin `Referer`). No secret, no new
+  dependency. **No Discogs.**
+
+### 7.5 VIN recommendation artwork - trust boundary
+
+Future VIN recommendation artwork **must not** widen the Milestone 9 / 10 model
+payload or send provider IDs to the model. The AI result already contains
+`collectionItemId`. The visual layer resolves artwork locally through the
+future `CollectionDataProvider` using that **currently-owned**
+`collectionItemId` (which yields the release MBIDs and any custom cover). The
+M9/M10 model and security contracts are byte-unchanged.
 
 ### 7.4 Branded fallback cover
 
-`<AlbumArtwork>` tier 3 is a pure CSS/SVG composition, no network, no raster:
+`<AlbumArtwork>` tier 4 is a pure CSS/SVG composition, no network, no raster:
 
 - A vinyl-disc geometry: concentric grooves (`repeating-radial-gradient`), a
   centre label, a spindle hole.
@@ -653,71 +675,76 @@ This is different from the transient photo-recognition input (which is never
 stored). A user's cover must **never** be written to the shared `releases` row -
 that would make one user's photo the release image for everyone.
 
-### 9.1 Proposed architecture
+### 9.1 Architecture (as implemented in Phase 0)
 
-- **Storage:** a new **private** Supabase Storage bucket `collection-covers`
-  (no public listing, `public = false`), `file_size_limit = "3MiB"`,
-  `allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]`. Enable
-  Storage locally: `supabase/config.toml` `[storage] enabled = true` +
-  a `[storage.buckets.collection-covers]` block.
-- **Object path convention:** `{user_id}/{collection_item_id}.{ext}`. The first
-  path segment is the owner's `auth.uid()`.
-- **Storage RLS policies** on `storage.objects` for the `collection-covers`
-  bucket, role `authenticated`:
-  - `SELECT` / `INSERT` / `UPDATE` / `DELETE` allowed only when
-    `bucket_id = 'collection-covers'` and
-    `(storage.foldername(name))[1] = auth.uid()::text`.
-  - No `anon` access. No cross-user access. Deleting/replacing is confined to
-    the user's own folder.
-- **Schema:** one migration adds to `public.collection_items`:
-  - `custom_cover_path text` (nullable) - check: `null` or matches
-    `^[0-9a-f-]{36}/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$` and the first segment
-    equals `user_id::text` (enforced via a `check` referencing `user_id`).
-  - `custom_cover_updated_at timestamptz` (nullable).
-  - Grant `update (custom_cover_path, custom_cover_updated_at)` to
-    `authenticated`; the existing own-row UPDATE RLS policy already scopes it.
-    No new SELECT/INSERT/DELETE grant. `service_role` unchanged.
-- **`releases.cover_url`:** the same migration adds `cover_url text` to
-  `public.releases`, check `cover_url is null or source = 'catalog'` (catalog
-  art only; manual releases fall through to custom-or-fallback). No new
-  `authenticated` grant - it is written only by `service_role` in
-  `catalog-handlers.mts`.
-- **Upload flow (browser, no function):** client validates type + size + (via
-  the existing image util) downscales to <= ~1400px / <= 3 MB, then
-  `supabase.storage.from('collection-covers').upload(path, file, { upsert: true })`
-  - Storage RLS enforces ownership, the bucket config enforces type/size
-  server-side. On success the browser updates
-  `collection_items.custom_cover_path` + `custom_cover_updated_at` via the
-  authenticated client (own-row UPDATE RLS + column grant).
-- **Serving:** the browser calls
-  `supabase.storage.from('collection-covers').createSignedUrl(path, 3600)`
-  (RLS-authorised) and renders the signed URL in `<img>`. Signed URLs are
-  cached in memory keyed by path until ~5 minutes before expiry; a page batches
-  the calls for its visible items.
-- **Replace:** upload to the same path with `upsert: true` (or delete + upload);
-  bump `custom_cover_updated_at` (cache-bust the signed URL query).
-- **Remove:** `remove([path])` then null the two columns.
-- **Lifecycle / orphans:** Storage has no FK cascade. On "Remove from
-  collection" and on "Remove custom cover" the browser does a best-effort
-  `remove([path])` before/after the row change. A residual orphan (e.g. tab
-  closed mid-delete) is a documented minor limitation; a scheduled Netlify
-  sweep function is **deferred** (not in this pass).
-- **Privacy / security:** private bucket, per-user folder, signed short-TTL
-  URLs, strict type/size, no public listing, no secret exposure. This is the
-  **one part of the pass that requires a focused security review** (Storage RLS
-  + the new column grant + the `cover_url` constraint), gated in Phase 0.
+Migration `supabase/migrations/20260903120000_add_custom_cover_storage.sql`.
 
-### 9.2 Required DB / storage changes (summary)
+- **Storage:** a new **private** bucket `collection-covers` (`public = false`,
+  `file_size_limit = 3145728` (3 MiB), `allowed_mime_types = ['image/webp']`).
+  The bucket row is created by the migration with `on conflict (id) do update`
+  (re-applying always re-enforces private + 3 MiB + webp-only) and mirrored in
+  `supabase/config.toml` (`[storage] enabled = true` +
+  `[storage.buckets.collection-covers]`) for local `supabase start` /
+  `db reset`. Milestone 11 applies the same bucket row via the migration.
+- **Canonical object name:** `{user_id}/{collection_item_id}/cover.webp` -
+  exactly one object per item. Any accepted jpeg / png / webp input is
+  converted client-side to a downscaled **WebP** before upload; only
+  `image/webp` is a valid stored object. The recognition-upload flow is
+  entirely separate and transient (untouched).
+- **`public.collection_items` columns:** `custom_cover_path text` (nullable),
+  `custom_cover_updated_at timestamptz` (nullable). CHECK:
+  `custom_cover_path is null or custom_cover_path = user_id::text || '/' ||
+  id::text || '/cover.webp'` - a non-null value must be exactly the canonical
+  path for **that same row**; an arbitrary path, a foreign user prefix, a
+  foreign item id, a wrong filename, or a wrong extension is rejected (23514).
+  Grant `update (custom_cover_path, custom_cover_updated_at)` to
+  `authenticated` (the Milestone 7 own-row UPDATE policy already governs the
+  row). **No new RLS policy on `collection_items`. No `service_role` change.**
+- **`storage.objects` RLS** (bucket `collection-covers` only; `storage.objects`
+  had RLS on with no prior policies -> default deny):
+  - **INSERT** (with check): `bucket_id` + exactly two folder segments +
+    segment 1 = `auth.uid()` + filename = `cover.webp` + segment 2 is a
+    `collection_item` **currently owned** by `auth.uid()`.
+  - **SELECT** (using): the above **plus** `owner_id = auth.uid()::text` (and
+    item still owned).
+  - **UPDATE** (using + with check): same ownership on both sides; `with check`
+    re-verifies the two-segment shape + filename + `owner_id`.
+  - **DELETE** (using): `bucket_id` + segment 1 = `auth.uid()` + `owner_id =
+    auth.uid()::text` - **deliberately not** requiring the collection item to
+    still exist, so an owner can delete an orphan after removing the item.
+  - No `anon` access.
+- **`public.releases`:** unchanged. **No `cover_url` column, no catalog-add
+  lookup, no new grant** (corrected per section 7.3).
+- **Upload / replace / delete (browser, no function):** client converts to
+  WebP + downscales (<= ~1400 px, <= 3 MiB) then
+  `supabase.storage.from('collection-covers').upload(path, blob, { upsert: true })`;
+  on success it writes `custom_cover_path` + `custom_cover_updated_at` via the
+  authenticated client. `remove([path])` + null the columns on delete.
+- **Serving:** `createSignedUrl(path, 3600)` (gated by the SELECT policy -
+  only the owner can mint one), memory-cached per path until ~5 min before
+  expiry, batched per visible page. A signed URL is a bearer credential for
+  its TTL - short TTL, never logged.
+- **Lifecycle / orphans:** Storage has no FK cascade. "Remove from collection"
+  and "Remove custom cover" do a best-effort `remove([path])`; a residual
+  orphan (tab closed mid-delete) is a documented minor limitation, deletable
+  later by its owner via the DELETE policy. A scheduled sweep is **deferred**.
+- **Note (Phase C implementer):** paths must use lowercase canonical UUID text
+  (matches `id::text` / `user_id::text`); a `storage.objects` DELETE via raw
+  SQL is blocked by the `protect_objects_delete` trigger unless the Storage API
+  GUC is set - the browser `.remove()` path is unaffected.
 
-| Change | Type | Review |
-| --- | --- | --- |
-| `collection_items.custom_cover_path` + `custom_cover_updated_at` + check + column grant | migration | focused security review |
-| `releases.cover_url` + check (`catalog` only) | same migration | focused security review |
-| `collection-covers` private bucket + `storage.objects` RLS policies | migration + `config.toml` | focused security review |
-| `[storage] enabled = true` + bucket block (local) | `config.toml` | - |
+### 9.2 DB / storage changes (as implemented)
 
-One migration file, one config change, one focused security review - isolated
-as the **Phase 0 architecture gate** (plan section 6).
+| Change | Type |
+| --- | --- |
+| `collection_items.custom_cover_path` + `custom_cover_updated_at` + canonical-path CHECK + `update` grant on exactly those two columns | migration |
+| private `collection-covers` bucket (webp-only, 3 MiB), `on conflict do update` | migration + `config.toml` |
+| four `storage.objects` RLS policies, bucket + user + item bound | migration |
+| `[storage] enabled = true` + `[storage.buckets.collection-covers]` | `config.toml` |
+| `public.releases` | **not changed** |
+
+One migration file, one `config.toml` change, one focused security review -
+Phase 0. pgTAP: `supabase/tests/database/custom_cover_storage.test.sql`.
 
 ## 10. Motion / micro-interaction system
 
@@ -726,8 +753,10 @@ A defined vocabulary, not ad-hoc animation.
 - **Tokens:** `--dur-fast 120ms`, `--dur 200ms`, `--dur-slow 320ms`,
   `--ease-out cubic-bezier(.2,.7,.2,1)`, `--ease-standard cubic-bezier(.4,0,.2,1)`.
 - **Route transition:** 160ms opacity + 8px `translateY` on the routed view.
-- **Card hover:** `translateY(-2px)` + shadow step, 120ms. **No cover tilt** by
-  default (optional <= 1.5deg on the album-detail hero only).
+- **Album card hover (desktop, approved decision I):** 3-4 px lift + shadow
+  step + a subtle highlight + ~1.015 artwork zoom (`transform: scale(1.015)` on
+  the inner `<img>`, clipped) + quick-action fade-in, ~120-160ms. **No
+  exaggerated 3D tilt.**
 - **Buttons:** `:active` scale .98 (80ms); persistent `:focus-visible` ring.
 - **Sidebar / drawer / dialog:** transform-based slide/scale 200-240ms; dialog
   backdrop fade 120ms; focus trap + `Esc`.
@@ -880,9 +909,8 @@ must stay green (plan section 8).
 ## 17. Review strategy
 
 - **Phase 0 (architecture gate):** one **focused security review** of the
-  Storage bucket RLS, the new `collection_items` column grant, and the
-  `releases.cover_url` constraint. Nothing else in this pass warrants a security
-  review.
+  Storage bucket RLS, the canonical-path CHECK, and the new `collection_items`
+  column grant. Nothing else in this pass warrants a security review.
 - **Phases A-E:** per-phase automated checks (`typecheck`, `lint`, `test:run`,
   `build`, `supabase test db`, `supabase db lint`, `npm audit --omit=dev`);
   **one focused code review at the end** (not per-phase loops); **page-by-page
@@ -914,14 +942,16 @@ production deployment (Milestone 11, still after this pass).
    location; every ported test suite is green; the M9/M10 curator contracts are
    byte-unchanged.
 4. `AlbumArtwork` renders the correct tier for: a record with a custom cover, a
-   catalog record with `cover_url`, a catalog record without art, and a manual
-   record - with no layout shift and correct alt text.
+   catalog record whose CAA release image resolves, a catalog record that only
+   resolves at release-group level, a catalog record with no CAA art, and a
+   manual record - advancing on `<img>` error without looping, with no layout
+   shift and correct alt text.
 5. A user can upload, replace, and remove a custom cover on an owned record;
    another user cannot read or write it (verified by Storage RLS tests + the
    focused security review).
-6. Catalog add resolves and stores `cover_url` from Cover Art Archive when art
-   exists and stores `null` (add still succeeds) when it does not; no automated
-   test makes a real CAA call.
+6. Provider artwork resolves entirely client-side from stored MusicBrainz IDs;
+   `public.releases` has no `cover_url` column and catalog-add makes no Cover
+   Art Archive call; no automated test makes a real CAA call.
 7. Discover results and scan candidates are visual cards with artwork and their
    full state set.
 8. The dashboard shows only data derived from existing loads; the empty-
@@ -937,21 +967,38 @@ production deployment (Milestone 11, still after this pass).
 13. The historical roadmap snapshot is unchanged; this pass is documented as an
     inserted pre-deployment product-quality pass.
 
-## 20. Open decisions requiring human approval
+## 20. Human design decisions (APPROVED 2026-08-31)
 
-| # | Decision | Recommendation |
+| # | Decision | Outcome |
 | --- | --- | --- |
-| A | Brand palette | Adopt section 5.1 (warm near-black + ivory, copper primary, bottle-green + gold secondary). Approve or adjust specific tokens. |
-| B | Routing dependency | Add `react-router-dom` v7 (the only new runtime dependency in the whole pass). Alternative: `wouter` (smaller, less standard). |
-| C | Navigation style | Left sidebar (>= lg, collapsible to icon rail) + bottom tab bar (< md) + persistent top bar. |
-| D | VIN / Vinny naming | Confirm "VIN" (Vinyl Intelligence Navigator), nickname "Vinny", nav label "Ask VIN", route `/vin`. |
-| E | Mascot direction | Record-head curator robot with copper headphones + EQ-bar "thinking" (section 6.2). Confirm direction; asset built later. |
-| F | Logo direction | Pick one of concept 1 (Grooved V-I), 2 (Needle-drop), 3 (Waveform label). Recommendation: 1 or 2. |
-| G | Custom-cover storage / data-model | Private `collection-covers` bucket + per-user folder RLS + `collection_items.custom_cover_path` (section 9). One migration, one focused security review (Phase 0). |
-| H | Artwork source / fallback | Cover Art Archive at catalog-add time -> `releases.cover_url`, browser hotlinks `<img>`; precedence custom > provider > branded CSS/SVG fallback. No Discogs. No image proxy function. |
-| I | Animation intensity | Section 10 vocabulary: subtle route fade, card lift, VIN spinner, skeletons; no cover tilt; full `prefers-reduced-motion` support. Confirm "ambitious but not distracting" is the right level. |
-| J | Dashboard content | Section 8.4 modules, all derived from existing loads. Confirm the module set (esp. whether to include the decade/genre insight). |
-| K | Implementation phase boundaries | Phase 0 (storage/data-model gate + security review) then A (design system + routing + shell) / B (landing + auth + dashboard) / C (artwork infra + collection/discover/scan) / D (VIN + history + settings + detail) / E (motion + responsive + a11y + perf + final review). Confirm the phase cut and whether phases land as separate PRs or one branch with staged commits. |
+| A | Brand palette | **APPROVED as specified** - warm near-black + ivory + copper primary + bottle-green + gold (section 5.1). |
+| B | Routing dependency | **APPROVED** - `react-router-dom` v7. Added in Phase A, **not** Phase 0. |
+| C | Navigation style | **APPROVED** - desktop sidebar + tablet icon rail + mobile bottom navigation + persistent top bar. |
+| D | VIN / Vinny naming | **APPROVED** - identity `VIN` = Vinyl Intelligence Navigator; friendly nickname `Vinny`; nav label "Ask VIN"; route `/vin`. |
+| E | Mascot direction | **APPROVED** - premium retro-futuristic record-head curator robot, copper headphones, subtle EQ states; friendly, sophisticated, not childish. Asset later. |
+| F | Logo direction | **APPROVED - Concept 1 (Grooved V-I) is the primary product mark.** Concept 2 (needle-drop) may be used only as a secondary visual motif. |
+| G | Custom-cover storage / data-model | **APPROVED with the section 4-7 corrections** - private `collection-covers` bucket, canonical `{user_id}/{collection_item_id}/cover.webp` (webp only), `collection_items.custom_cover_path` bound by CHECK to the row, defense-in-depth `storage.objects` RLS. Implemented in Phase 0. |
+| H | Provider artwork | **APPROVED in concept; the `releases.cover_url` persistence architecture is REJECTED and replaced** - artwork resolves at **display time** from stored MusicBrainz IDs via deterministic CAA URLs; source chain custom > CAA release > CAA release-group > branded fallback; advance on `<img>` error, never loop. No `cover_url`, no catalog-add lookup, no `service_role` widening, no Discogs, no image proxy (section 7.3). |
+| I | Animation intensity | **APPROVED** - ambitious but not distracting; full `prefers-reduced-motion`. Desktop album cards may use a 3-4 px lift, ~1.015 artwork zoom, a subtle highlight, and a quick-action fade. **No exaggerated 3D tilt** (section 10). |
+| J | Dashboard content | **APPROVED** - section 8.4 modules; include the honest derived **decade-distribution + top-genres** insight when there is enough collection data, omit it for very small collections. No chart dependency. |
+| K | Implementation phasing | **APPROVED** - Phase 0 = its own PR. After Phase 0 merges, Phases A-E land on **one** follow-up visual branch / PR with coherent staged commits (not five PRs). |
+
+### 20.1 Mandatory architecture corrections applied to this spec
+
+1. **No `releases.cover_url`, no catalog-add Cover Art Archive lookup, no
+   `service_role` widening for artwork** (section 7.3). Provider artwork is a
+   client-side display-time concern using the MBIDs already stored, so it works
+   in Discover and Scan before Add.
+2. **Four-tier artwork source chain** (section 7.1): custom signed cover -> CAA
+   release front -> CAA release-group front -> branded fallback; `<img>` error
+   advances one tier and never loops.
+3. **VIN recommendation artwork trust boundary** (section 7.5): resolved
+   locally from the AI result's `collectionItemId`; the M9/M10 model payload is
+   not widened and provider IDs are never sent to the model.
+4. **Canonical custom-cover object** (section 9): one
+   `{user_id}/{collection_item_id}/cover.webp` per item, `image/webp` only;
+   input jpeg/png/webp is converted to WebP client-side before upload; the
+   recognition-upload flow stays separate and transient.
 
 ## 21. Fonts / assets to be produced later (not this turn)
 

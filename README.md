@@ -63,15 +63,19 @@ verification and production deployment have not occurred and remain later
 milestones; no hosted Supabase migration has been applied.
 
 Before Milestone 11 (Production Deployment), a **Visual Experience & Product
-Identity pass** is being planned on `claude/visual-experience-product-identity`
+Identity pass** is underway on `claude/visual-experience-product-identity`
 (`docs/specs/0012-visual-experience-product-identity.md`,
 `docs/plans/012-visual-experience-product-identity.md`, ADR
-`docs/decisions/0005-visual-experience-and-artwork-architecture.md`). It is in
-**design/architecture planning only** and awaits human approval. It adds real
-multi-page navigation, a brand system (VIN curator identity, logo, dark warm
-hi-fi visual system), first-class album artwork (Cover Art Archive + optional
-user custom covers + a branded fallback), and a motion/responsive/accessibility
-pass. No product code, migration, dependency, or asset has been created yet.
+`docs/decisions/0005-visual-experience-and-artwork-architecture.md`). The design
+is **human-approved** (decisions A-K); it adds real multi-page navigation, a
+brand system (VIN curator identity, Grooved V-I logo, dark warm hi-fi visual
+system), first-class album artwork (client-side Cover Art Archive front images +
+optional user custom covers + a branded fallback), and a
+motion/responsive/accessibility pass. **Phase 0** (private `collection-covers`
+Storage bucket + `collection_items.custom_cover_path`; migration
+`20260903120000_add_custom_cover_storage.sql`) is implemented and pending its
+own PR + focused security review. Phases A-E (design system, routing, pages) are
+not started; `react-router-dom` is not yet a dependency.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
