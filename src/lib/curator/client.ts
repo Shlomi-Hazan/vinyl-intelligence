@@ -5,6 +5,7 @@ import {
   type CuratorErrorCode,
   type CuratorIntent,
   type CuratorRecommendation,
+  type CuratorRefineResult,
   type CuratorResult,
 } from './types.ts'
 
@@ -106,19 +107,34 @@ function normalizeResult(payload: unknown): CuratorResult {
   throw new CuratorError('provider_bad_response', 'The curator returned an unknown status.')
 }
 
-/** POST the free-text request to the curator function and return a typed result. */
-export async function requestCuratorRecommendation(
+function normalizeRefineResult(payload: unknown): CuratorRefineResult {
+  const base = normalizeResult(payload)
+  if (base.status !== 'ok') {
+    return base
+  }
+  const raw = payload as Record<string, unknown>
+  return {
+    ...base,
+    excludedPreviousRecommendations:
+      typeof raw.excludedPreviousRecommendations === 'number'
+        ? raw.excludedPreviousRecommendations
+        : 0,
+  }
+}
+
+async function postCurator(
   client: BrowserSupabaseClient,
-  request: string,
-): Promise<CuratorResult> {
+  path: '/api/curator/recommend' | '/api/curator/refine',
+  body: unknown,
+): Promise<unknown> {
   const accessToken = await getAccessToken(client)
-  const response = await fetch('/api/curator/recommend', {
+  const response = await fetch(path, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ request }),
+    body: JSON.stringify(body),
   })
 
   let payload: unknown
@@ -137,5 +153,32 @@ export async function requestCuratorRecommendation(
     throw new CuratorError(code, message)
   }
 
-  return normalizeResult(payload)
+  return payload
+}
+
+/** POST the free-text request to the curator function and return a typed result. */
+export async function requestCuratorRecommendation(
+  client: BrowserSupabaseClient,
+  request: string,
+): Promise<CuratorResult> {
+  return normalizeResult(await postCurator(client, '/api/curator/recommend', { request }))
+}
+
+/**
+ * POST a follow-up + bounded prior context to the refine function. `context` is
+ * client-supplied semantic state; the backend reconciles it against the current
+ * owned collection.
+ */
+export async function refineCuratorRecommendation(
+  client: BrowserSupabaseClient,
+  request: string,
+  context: {
+    previousRequest: string
+    previousIntent: CuratorIntent
+    previousRecommendationIds: string[]
+  },
+): Promise<CuratorRefineResult> {
+  return normalizeRefineResult(
+    await postCurator(client, '/api/curator/refine', { request, context }),
+  )
 }

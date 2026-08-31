@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyHardFilters,
+  applyPreviousExclusion,
   buildAllowedCandidateSet,
   deriveCandidateFacts,
   rankAndCap,
@@ -240,5 +241,33 @@ describe('buildAllowedCandidateSet', () => {
     })
     expect(Object.keys(facts[0])).not.toContain('added_at')
     expect(JSON.stringify(facts)).not.toContain('added_at')
+  })
+})
+
+describe('applyPreviousExclusion (Milestone 10)', () => {
+  function three() {
+    return deriveCandidateFacts(
+      [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })],
+      [],
+    )
+  }
+
+  it('is a no-op on an empty set (returns the same array reference)', () => {
+    const list = three()
+    expect(applyPreviousExclusion(list, new Set())).toBe(list)
+  })
+
+  it('removes only the ids in the set, order-preserving', () => {
+    const out = applyPreviousExclusion(three(), new Set(['b']))
+    expect(out.map((c) => c.id)).toEqual(['a', 'c'])
+  })
+
+  it('ignores ids not present among the candidates', () => {
+    const out = applyPreviousExclusion(three(), new Set(['ZZZ', 'ABC123']))
+    expect(out.map((c) => c.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('can empty the candidate list (caller then returns no_match)', () => {
+    expect(applyPreviousExclusion(three(), new Set(['a', 'b', 'c']))).toEqual([])
   })
 })

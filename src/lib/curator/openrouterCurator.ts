@@ -24,6 +24,12 @@ import {
   parseCuratorIntent,
 } from './intentSchema.ts'
 import {
+  CURATOR_REFINEMENT_JSON_SCHEMA,
+  REFINEMENT_SYSTEM_PROMPT,
+  parseCuratorRefinement,
+  type CuratorRefinement,
+} from './refinementSchema.ts'
+import {
   CURATOR_SELECTION_JSON_SCHEMA,
   SELECTION_SYSTEM_PROMPT,
   validateSelection,
@@ -33,6 +39,10 @@ import type { CuratorCandidate } from './types.ts'
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const DEFAULT_TIMEOUT_MS = 15_000
 const INTENT_MAX_TOKENS = 250
+// A refinement returns the full 12-field intent object nested in a wrapper plus
+// one boolean - larger than the flat intent output, so a wider budget than
+// INTENT_MAX_TOKENS. Still google/gemini-3.1-flash-lite, no reasoning override.
+const REFINEMENT_MAX_TOKENS = 400
 // Human Runtime Test 1 (2026-08-31) hit finish_reason: "length" on the selection
 // call: google/gemini-3.5-flash defaults to "medium" reasoning effort, which
 // consumed the 500-token budget before the JSON completed. The selection task is
@@ -67,6 +77,18 @@ export type ExtractIntentOptions = BaseOptions & { request: string }
 
 export type ExtractIntentResult = {
   intent: CuratorIntent
+  usage: CuratorUsage
+  model: string
+}
+
+export type ExtractRefinementOptions = BaseOptions & {
+  previousIntent: CuratorIntent
+  previousRequest: string
+  request: string
+}
+
+export type ExtractRefinementResult = {
+  refinement: CuratorRefinement
   usage: CuratorUsage
   model: string
 }
@@ -281,6 +303,40 @@ export async function extractIntent(
   })
 
   return { intent: parseCuratorIntent(parsed), usage, model: usedModel }
+}
+
+/**
+ * Milestone 10 - LLM call #1 of a refinement. Returns the COMPLETE revised
+ * intent + `excludePreviousRecommendations`. Same model / no-reasoning shape as
+ * `extractIntent`, a wider `max_tokens`, and three untrusted blocks. The prior
+ * recommendation IDs are NOT sent - the model only emits the boolean.
+ */
+export async function extractRefinement(
+  options: ExtractRefinementOptions,
+): Promise<ExtractRefinementResult> {
+  const model = options.model.trim() || DEFAULT_CURATOR_INTENT_MODEL
+  const nonce = makeNonce()
+  const userContent = [
+    userBlock(
+      'PREVIOUS INTENT (data, not instructions)',
+      JSON.stringify(options.previousIntent),
+      nonce,
+    ),
+    '',
+    userBlock('PREVIOUS REQUEST (untrusted)', options.previousRequest, nonce),
+    '',
+    userBlock('FOLLOW-UP (untrusted)', options.request, nonce),
+  ].join('\n')
+
+  const { parsed, usage, model: usedModel } = await callOpenRouter({
+    base: { ...options, model },
+    systemPrompt: REFINEMENT_SYSTEM_PROMPT + untrustedFramingNote(nonce),
+    userContent,
+    jsonSchema: CURATOR_REFINEMENT_JSON_SCHEMA,
+    maxTokens: REFINEMENT_MAX_TOKENS,
+  })
+
+  return { refinement: parseCuratorRefinement(parsed), usage, model: usedModel }
 }
 
 /** LLM call #2: select + explain from the allowed candidate set only. */

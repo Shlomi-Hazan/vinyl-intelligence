@@ -178,3 +178,51 @@ export type CuratorUsage = {
   completionTokens: number | null
   estimatedCostUsd: number | null
 }
+
+// ---------------------------------------------------------------------------
+// Milestone 10 - conversational refinement
+// ---------------------------------------------------------------------------
+
+/** How long a refinement follow-up may be (same bound as an initial request). */
+export const MAX_PREVIOUS_RECOMMENDATION_IDS = 3
+export const MAX_RECOMMENDATION_ID_LENGTH = 64
+export const MAX_REFINEMENTS = 3
+
+/** Untrusted client-supplied context accompanying a refinement request. */
+export type CuratorRefinementContext = {
+  previousRequest: string
+  previousIntent: CuratorIntent
+  previousRecommendationIds: string[]
+}
+
+/**
+ * The refine-specific result. Same three statuses as `CuratorResult`; the `ok`
+ * variant additionally carries the count of currently-owned prior recommendation
+ * IDs that were actually excluded this turn. `POST /api/curator/recommend`
+ * never emits this shape (Decision A).
+ */
+export type CuratorRefineResult =
+  | {
+      status: 'ok'
+      interpretedIntent: CuratorIntent
+      candidateCount: number
+      recommendations: CuratorRecommendation[]
+      excludedPreviousRecommendations: number
+    }
+  | { status: 'empty_collection' }
+  | { status: 'no_match'; interpretedIntent: CuratorIntent }
+
+/** One entry in the bounded, React-memory-only conversation transcript. */
+export type CuratorTurn =
+  | { role: 'you'; text: string }
+  | { role: 'curator'; kind: 'ok'; titles: string[] }
+  | { role: 'curator'; kind: 'no_match'; constraints: string[] }
+
+/** Bounded conversation state; lives only in `CuratorPanel` React state. */
+export type CuratorConversation = {
+  turns: CuratorTurn[]
+  latestIntent: CuratorIntent
+  latestRequestText: string
+  latestRecommendationIds: string[]
+  refinementCount: number
+}

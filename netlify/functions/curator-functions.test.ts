@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 import curatorHandler, { config as curatorConfig } from './curator-recommend.mts'
+import refineHandler, { config as refineConfig } from './curator-refine.mts'
 import {
   handleCuratorRecommend,
+  handleCuratorRefine,
   type CuratorFunctionDependencies,
 } from './_shared/curator-handlers.mts'
 import { CuratorError } from '../../src/lib/curator/types.ts'
@@ -106,6 +108,12 @@ function createDependencies(options: Options = {}) {
     model: 'google/gemini-3.1-flash-lite',
   }))
 
+  const extractRefinement = vi.fn<CuratorFunctionDependencies['extractRefinement']>(async () => ({
+    refinement: { intent: validIntent() as never, excludePreviousRecommendations: false },
+    usage: { promptTokens: 800, completionTokens: 130, estimatedCostUsd: 0.0005 },
+    model: 'google/gemini-3.1-flash-lite',
+  }))
+
   const selectRecommendations = vi.fn<CuratorFunctionDependencies['selectRecommendations']>(
     async ({ candidatesById }) => {
       const firstId = [...candidatesById.keys()][0]
@@ -160,13 +168,22 @@ function createDependencies(options: Options = {}) {
   const deps: CuratorFunctionDependencies = {
     createClient: vi.fn(() => supabase) as unknown as CuratorFunctionDependencies['createClient'],
     extractIntent,
+    extractRefinement,
     selectRecommendations,
     recordModelCall,
     countRecentIntentCalls,
     now: () => 1_800_000_000_000,
   }
 
-  return { deps, extractIntent, selectRecommendations, recordModelCall, countRecentIntentCalls, supabase }
+  return {
+    deps,
+    extractIntent,
+    extractRefinement,
+    selectRecommendations,
+    recordModelCall,
+    countRecentIntentCalls,
+    supabase,
+  }
 }
 
 function request(body: unknown, headers: Record<string, string> = { authorization: 'Bearer tok' }) {
@@ -180,6 +197,31 @@ function request(body: unknown, headers: Record<string, string> = { authorizatio
 async function run(body: unknown, options?: Options, headers?: Record<string, string>) {
   const ctx = createDependencies(options)
   const response = await handleCuratorRecommend(request(body, headers), env, ctx.deps)
+  const json = await response.json()
+  return { response, json, ...ctx }
+}
+
+function validContext(over: Record<string, unknown> = {}) {
+  return {
+    previousRequest: 'give me 90s rock',
+    previousIntent: validIntent({ includeGenres: ['rock'], decades: [1990], avoidRecentlyPlayed: true }),
+    previousRecommendationIds: ['a', 'b'],
+    ...over,
+  }
+}
+
+async function runRefine(
+  body: unknown,
+  options?: Options,
+  headers: Record<string, string> = { authorization: 'Bearer tok' },
+) {
+  const ctx = createDependencies(options)
+  const req = new Request('http://localhost/api/curator/refine', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  })
+  const response = await handleCuratorRefine(req, env, ctx.deps)
   const json = await response.json()
   return { response, json, ...ctx }
 }
@@ -362,5 +404,203 @@ describe('curator function - config', () => {
     expect(response.status).toBe(500)
     expect((await response.json()).code).toBe('config_error')
     expect(ctx.extractIntent).not.toHaveBeenCalled()
+  })
+})
+
+// ===========================================================================
+// Milestone 10 - POST /api/curator/refine
+// ===========================================================================
+
+describe('curator refine - routing + M9 regression', () => {
+  it('exports the POST /api/curator/refine config', () => {
+    expect(refineConfig.path).toBe('/api/curator/refine')
+    expect(refineConfig.method).toEqual(['POST'])
+    expect(typeof refineHandler).toBe('function')
+  })
+
+  it('POST /api/curator/recommend is unchanged (no excludedPreviousRecommendations field)', async () => {
+    const { json } = await run({ request: 'x' })
+    expect(json.status).toBe('ok')
+    expect(json).not.toHaveProperty('excludedPreviousRecommendations')
+  })
+})
+
+describe('curator refine - request/context validation', () => {
+  it('401 without a bearer token', async () => {
+    const { response, json, extractRefinement } = await runRefine(
+      { request: 'only favorites', context: validContext() },
+      {},
+      {},
+    )
+    expect(response.status).toBe(401)
+    expect(json.code).toBe('unauthorized')
+    expect(extractRefinement).not.toHaveBeenCalled()
+  })
+
+  it('rejects a body without exactly { request, context }', async () => {
+    expect((await runRefine({ request: 'x' })).json.code).toBe('invalid_request')
+    expect((await runRefine({ request: 'x', context: validContext(), extra: 1 })).json.code).toBe('invalid_request')
+    expect((await runRefine('[]')).json.code).toBe('invalid_request')
+  })
+
+  it('rejects a blank / whitespace / oversized follow-up', async () => {
+    expect((await runRefine({ request: '   ', context: validContext() })).json.code).toBe('invalid_request')
+    const { response, json } = await runRefine({ request: 'a'.repeat(801), context: validContext() })
+    expect(response.status).toBe(400)
+    expect(json.code).toBe('request_too_long')
+  })
+
+  it('rejects a malformed context (wrong keys / blank previousRequest)', async () => {
+    expect(
+      (await runRefine({ request: 'x', context: { previousRequest: 'p', previousIntent: validIntent() } })).json.code,
+    ).toBe('invalid_request')
+    expect(
+      (await runRefine({ request: 'x', context: validContext({ previousRequest: '  ' }) })).json.code,
+    ).toBe('invalid_request')
+  })
+
+  it('rejects a malformed previousIntent as invalid_request (not provider_bad_response)', async () => {
+    const { response, json, extractRefinement } = await runRefine({
+      request: 'x',
+      context: validContext({ previousIntent: validIntent({ decades: [1995] }) }),
+    })
+    expect(response.status).toBe(400)
+    expect(json.code).toBe('invalid_request')
+    expect(extractRefinement).not.toHaveBeenCalled()
+  })
+
+  it('rejects > 3 previousRecommendationIds and non-string entries', async () => {
+    expect(
+      (await runRefine({ request: 'x', context: validContext({ previousRecommendationIds: ['a', 'b', 'c', 'd'] }) })).json
+        .code,
+    ).toBe('invalid_request')
+    expect(
+      (await runRefine({ request: 'x', context: validContext({ previousRecommendationIds: [1, 2] }) })).json.code,
+    ).toBe('invalid_request')
+  })
+})
+
+describe('curator refine - pipeline + something-else', () => {
+  it('normal refinement: 2 provider calls, curator_intent + curator_selection rows', async () => {
+    const { json, extractRefinement, selectRecommendations, recordModelCall } = await runRefine({
+      request: 'only favorites',
+      context: validContext(),
+    })
+    expect(json.status).toBe('ok')
+    expect(json).toHaveProperty('excludedPreviousRecommendations', 0)
+    expect(extractRefinement).toHaveBeenCalledTimes(1)
+    expect(selectRecommendations).toHaveBeenCalledTimes(1)
+    const features = recordModelCall.mock.calls.map((c) => c[1].feature)
+    expect(features).toEqual(['curator_intent', 'curator_selection'])
+  })
+
+  it('the selection call #2 receives ONLY the follow-up text (not previousRequest)', async () => {
+    const ctx = createDependencies()
+    const req = new Request('http://localhost/api/curator/refine', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer tok' },
+      body: JSON.stringify({ request: 'only favorites', context: validContext() }),
+    })
+    await handleCuratorRefine(req, env, ctx.deps)
+    const selectionArgs = ctx.selectRecommendations.mock.calls[0][0]
+    expect(selectionArgs.request).toBe('only favorites')
+    expect(JSON.stringify(selectionArgs)).not.toContain('give me 90s rock')
+  })
+
+  it('"something else": excludes only supplied ∩ currently-owned ids; tampered ids ignored', async () => {
+    const ctx = createDependencies({
+      collectionRows: [collectionRow('a'), collectionRow('b'), collectionRow('c')],
+    })
+    ctx.extractRefinement.mockResolvedValueOnce({
+      refinement: { intent: validIntent() as never, excludePreviousRecommendations: true },
+      usage: { promptTokens: 800, completionTokens: 130, estimatedCostUsd: 0.0005 },
+      model: 'google/gemini-3.1-flash-lite',
+    })
+    const req = new Request('http://localhost/api/curator/refine', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer tok' },
+      // 'a' is owned, 'ABC123' is a tampered non-owned id
+      body: JSON.stringify({
+        request: 'something else',
+        context: validContext({ previousRecommendationIds: ['a', 'ABC123'] }),
+      }),
+    })
+    const response = await handleCuratorRefine(req, env, ctx.deps)
+    const json = await response.json()
+    expect(json.status).toBe('ok')
+    expect(json.excludedPreviousRecommendations).toBe(1) // only 'a'
+    const allowed = new Set(
+      ctx.selectRecommendations.mock.calls[0][0].candidateFacts.map((f) => f.id),
+    )
+    expect(allowed.has('a')).toBe(false) // excluded
+    expect(allowed.has('ABC123')).toBe(false) // never a candidate
+    expect(allowed.has('b')).toBe(true)
+  })
+
+  it('"something else" that excludes everything -> no_match, 1 provider call', async () => {
+    const ctx = createDependencies({ collectionRows: [collectionRow('a')] })
+    ctx.extractRefinement.mockResolvedValueOnce({
+      refinement: { intent: validIntent() as never, excludePreviousRecommendations: true },
+      usage: { promptTokens: 800, completionTokens: 130, estimatedCostUsd: 0.0005 },
+      model: 'google/gemini-3.1-flash-lite',
+    })
+    const req = new Request('http://localhost/api/curator/refine', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer tok' },
+      body: JSON.stringify({ request: 'something else', context: validContext({ previousRecommendationIds: ['a'] }) }),
+    })
+    const response = await handleCuratorRefine(req, env, ctx.deps)
+    const json = await response.json()
+    expect(json.status).toBe('no_match')
+    expect(ctx.selectRecommendations).not.toHaveBeenCalled()
+    expect(ctx.recordModelCall.mock.calls.map((c) => c[1].feature)).toEqual(['curator_intent'])
+  })
+
+  it('empty collection -> empty_collection, 0 provider calls', async () => {
+    const { json, extractRefinement } = await runRefine(
+      { request: 'x', context: validContext() },
+      { collectionRows: [] },
+    )
+    expect(json).toEqual({ status: 'empty_collection' })
+    expect(extractRefinement).not.toHaveBeenCalled()
+  })
+
+  it('rate limited -> 429, 0 provider calls; rate-check failure -> fail closed', async () => {
+    expect((await runRefine({ request: 'x', context: validContext() }, { recentIntentCount: 10 })).json.code).toBe(
+      'rate_limited',
+    )
+    expect((await runRefine({ request: 'x', context: validContext() }, { rateCheckThrows: true })).json.code).toBe(
+      'rate_check_failed',
+    )
+  })
+
+  it('refinement-intent failure -> failed curator_intent row only', async () => {
+    const ctx = createDependencies()
+    ctx.extractRefinement.mockRejectedValueOnce(new CuratorError('provider_timeout', 'slow'))
+    const req = new Request('http://localhost/api/curator/refine', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer tok' },
+      body: JSON.stringify({ request: 'x', context: validContext() }),
+    })
+    const response = await handleCuratorRefine(req, env, ctx.deps)
+    expect(response.status).toBe(504)
+    expect(ctx.recordModelCall.mock.calls).toHaveLength(1)
+    expect(ctx.recordModelCall.mock.calls[0][1]).toMatchObject({ feature: 'curator_intent', success: false })
+    expect(ctx.selectRecommendations).not.toHaveBeenCalled()
+  })
+
+  it('does not send previousRecommendationIds / notes to the refinement model', async () => {
+    const ctx = createDependencies()
+    const req = new Request('http://localhost/api/curator/refine', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer tok' },
+      body: JSON.stringify({ request: 'only favorites', context: validContext() }),
+    })
+    await handleCuratorRefine(req, env, ctx.deps)
+    const refineArgs = ctx.extractRefinement.mock.calls[0][0]
+    expect(JSON.stringify(refineArgs)).not.toContain('"a"') // no prior id 'a'
+    expect(JSON.stringify(refineArgs)).not.toContain('notes')
+    expect(refineArgs.previousRequest).toBe('give me 90s rock')
+    expect(refineArgs.request).toBe('only favorites')
   })
 })

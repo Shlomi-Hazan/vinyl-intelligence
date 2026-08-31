@@ -116,10 +116,19 @@ Costly Netlify Function endpoints should have:
   prompt-injection and privacy surface. The curator also never receives the
   authenticated user id, `created_by`, release/provider ids, exact timestamps, or
   any secret - only a projected fact object per allowed candidate.
-- **Milestone 9 conversation state:** none is persisted; the curator is
-  single-turn. Whether Milestone 10 persists bounded refinement state is still
-  open (above).
 - **Milestone 9 curator data access:** the recommendation candidate set is read
   through the authenticated user's token and RLS. `service_role` is not used to
   read `collection_items`, `listening_events`, or `profiles`; its only
   `model_calls` privilege remains INSERT.
+- **Milestone 10 conversation state (resolved):** bounded refinement state is
+  **not persisted** - it lives only in browser React memory (no database table,
+  no `sessionStorage` / `localStorage`, no server memory) and is cleared by
+  refresh / logout / "Start over". `POST /api/curator/refine` reuses the
+  Milestone 9 RLS + `service_role` boundary exactly (no privilege widening, no
+  new table/policy). Client-supplied prior context (`previousIntent`,
+  `previousRecommendationIds`) is **semantic input only** - prior IDs are
+  intersected against a fresh RLS-owned read before they can affect the
+  candidate set, and never grant or deny ownership. The refinement model
+  receives only the prior validated intent + the two request texts - not prior
+  recommendation IDs, prior AI reason text, the transcript, or Milestone 7
+  notes.

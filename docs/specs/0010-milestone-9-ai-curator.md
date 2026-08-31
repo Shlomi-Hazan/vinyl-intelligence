@@ -1,14 +1,14 @@
 # 0010 Milestone 9 AI Curator Specification
 
-Status: implemented and verified (2026-08-31). Automated verification + one
-focused cloud `/ultrareview` (5 nits, 0 BLOCKER, 0 MEDIUM, all addressed) + a
+Status: implemented and verified; **merged to `main` in PR #10** (merge commit
+`1ad61c0c537dbed0f71f102071bda7dd5d66a444`). Automated verification + one focused
+cloud `/ultrareview` (5 nits, 0 BLOCKER, 0 MEDIUM, all addressed) + a
 runtime-discovered selection-truncation defect found and fixed during human
 runtime (`e9373bc`) + human runtime **PASS 5/5** on
-`e9373bca0c7bc5ad175b7687de66faf472533bd0`. Ready for a milestone pull request.
-**Not merged. Not deployed. No hosted Supabase migration.** See
-`docs/verification.md` "Milestone 9 Evidence". `docs/plans/010-…` APPROVED;
-`docs/decisions/0004-…` ACCEPTED. The "Approved Corrections" block below is
-retained as historical planning evidence.
+`e9373bca0c7bc5ad175b7687de66faf472533bd0`. **Not deployed. No hosted Supabase
+migration applied / verified.** See `docs/verification.md` "Milestone 9
+Evidence". `docs/plans/010-…` APPROVED; `docs/decisions/0004-…` ACCEPTED. The
+"Approved Corrections" block below is retained as historical planning evidence.
 
 Milestone: 9 - AI Curator (single-turn)
 
