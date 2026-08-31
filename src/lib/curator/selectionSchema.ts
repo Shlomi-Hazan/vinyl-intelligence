@@ -184,17 +184,22 @@ export function validateSelection(
       reject('a recommendation id has no candidate facts')
     }
 
+    // evidenceKeys is a required field: it must be an array. Only the entries
+    // INSIDE a valid array are treated non-fatally (unknown values dropped,
+    // unavailable-fact keys dropped, duplicates deduped, empty array allowed).
+    if (!Array.isArray(rec.evidenceKeys)) {
+      reject('evidenceKeys is missing or not an array')
+    }
+
     const evidenceKeys: EvidenceKey[] = []
-    if (Array.isArray(rec.evidenceKeys)) {
-      for (const keyRaw of rec.evidenceKeys) {
-        if (
-          typeof keyRaw === 'string'
-          && (EVIDENCE_KEYS as readonly string[]).includes(keyRaw)
-          && evidenceAvailable(keyRaw as EvidenceKey, candidate as CuratorCandidate)
-          && !evidenceKeys.includes(keyRaw as EvidenceKey)
-        ) {
-          evidenceKeys.push(keyRaw as EvidenceKey)
-        }
+    for (const keyRaw of rec.evidenceKeys as unknown[]) {
+      if (
+        typeof keyRaw === 'string'
+        && (EVIDENCE_KEYS as readonly string[]).includes(keyRaw)
+        && evidenceAvailable(keyRaw as EvidenceKey, candidate as CuratorCandidate)
+        && !evidenceKeys.includes(keyRaw as EvidenceKey)
+      ) {
+        evidenceKeys.push(keyRaw as EvidenceKey)
       }
     }
 

@@ -162,11 +162,47 @@ describe('validateSelection - wholesale rejection', () => {
     })
   })
 
-  it('rejects a missing required field', () => {
+  it('rejects a missing required field (reason)', () => {
     expectReject({
       recommendations: [{ collectionItemId: 'a', evidenceKeys: [] }],
       bestMatchId: 'a',
     })
+  })
+
+  it('rejects a missing evidenceKeys field', () => {
+    expectReject({
+      recommendations: [{ collectionItemId: 'a', reason: 'ok' }],
+      bestMatchId: 'a',
+    })
+  })
+
+  it('rejects evidenceKeys that is a string', () => {
+    expectReject({
+      recommendations: [{ collectionItemId: 'a', reason: 'ok', evidenceKeys: 'rating' }],
+      bestMatchId: 'a',
+    })
+  })
+
+  it('rejects evidenceKeys that is an object or null', () => {
+    expectReject({
+      recommendations: [{ collectionItemId: 'a', reason: 'ok', evidenceKeys: {} }],
+      bestMatchId: 'a',
+    })
+    expectReject({
+      recommendations: [{ collectionItemId: 'a', reason: 'ok', evidenceKeys: null }],
+      bestMatchId: 'a',
+    })
+  })
+
+  it('accepts an empty evidenceKeys array', () => {
+    const cards = validateSelection(
+      {
+        recommendations: [{ collectionItemId: 'a', reason: 'ok', evidenceKeys: [] }],
+        bestMatchId: 'a',
+      },
+      args(),
+    )
+    expect(cards[0].evidenceKeys).toEqual([])
   })
 })
 
