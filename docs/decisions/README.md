@@ -19,6 +19,13 @@ Accepted decisions:
   Milestone 9: `google/gemini-3.1-flash-lite` for intent extraction,
   `google/gemini-3.5-flash` for selection/explanation (accepted 2026-08-31)
 
+- [0005 Visual Experience & Artwork Architecture](0005-visual-experience-and-artwork-architecture.md) -
+  routing dependency (`react-router-dom`), private per-user Storage bucket for
+  custom album covers (canonical `cover.webp`), and **display-time** Cover Art
+  Archive front images for provider artwork - no `releases.cover_url`, no
+  catalog-add lookup (accepted 2026-08-31; Visual Experience & Product Identity
+  pass, spec `0012`)
+
 Proposed decisions (pending human approval):
 
 - [0003 OpenRouter Vision Provider](0003-openrouter-vision-provider.md) - vision

@@ -1,0 +1,328 @@
+# 012 Visual Experience & Product Identity Pass - Implementation Plan
+
+Status: **APPROVED 2026-08-31** (spec section 20, decisions A-K), with the
+mandatory provider-artwork correction (no `releases.cover_url`, no catalog-add
+Cover Art Archive lookup - artwork is a client-side display-time concern) and
+the canonical `cover.webp` custom-cover object. **Phase 0 is implemented** on
+this branch (migration `20260903120000_add_custom_cover_storage.sql` + pgTAP +
+`config.toml` storage). Phases A-E are unstarted and gated on the Phase 0 PR
+merging.
+
+Date: 2026-08-31
+
+Branch: `claude/visual-experience-product-identity`
+
+Baseline (`main`): `bfddeb5109e61eac65b184ff4ff5d58092b3984f`
+
+Spec: `docs/specs/0012-visual-experience-product-identity.md` (authoritative for
+product/design intent, screen states, tokens, and acceptance criteria).
+
+---
+
+## 1. Affected components
+
+### New (all under `src/`)
+
+- `src/app/` - `AppShell`, `Sidebar`, `BottomNav`, `TopBar`, `PageHeader`,
+  `RouteView`, `Container`, `router.tsx` (route table + guards),
+  `CollectionDataProvider` (single post-auth collection + listening-events
+  load).
+- `src/ui/` - `Button`, `IconButton`, `Input`, `Textarea`, `Select`,
+  `SearchInput`, `FilterBar`, `SegmentedControl`, `Badge`, `Chip`,
+  `RatingControl`, `Dialog`, `ToastProvider`/`useToast`, `EmptyState`,
+  `ErrorState`, `LoadingSkeleton` (+ `SkeletonAlbumCard`/`SkeletonRow`/
+  `SkeletonStat`), `Icon`.
+- `src/brand/` - `Logo`, `VINAvatar`, `VINThinking`.
+- `src/media/` - `AlbumArtwork` (precedence resolver + branded fallback),
+  `AlbumCard`, `AlbumRow`, `useSignedCoverUrl` (batched, cached),
+  `fallbackCover.ts` (deterministic hue).
+- `src/pages/` - `LandingPage`, `AuthPage`, `DashboardPage`, `CollectionPage`,
+  `AlbumDetailPage`, `DiscoverPage`, `ScanPage`, `VinPage`, `HistoryPage`,
+  `SettingsPage`, `NotFoundPage`.
+- `src/lib/collection/customCover.ts` - upload / replace / remove +
+  path helpers (browser Supabase client).
+- `src/styles/` - `tokens.css`, `base.css`, `fonts.css`, component CSS
+  (replaces `src/styles.css`).
+- `public/fonts/*`, `public/_redirects`, favicon from `Logo`.
+
+### Changed
+
+- `src/main.tsx` - mount `<RouterProvider>` / `<BrowserRouter>` + `ToastProvider`
+  + `CollectionDataProvider` under `AuthProvider`.
+- `src/App.tsx` - reduced to route composition + auth-guard wiring (status
+  branches move into `AppShell`).
+- `src/auth/AuthForm.tsx` -> folded into `AuthPage` / `AuthCard` (same
+  `signIn`/`signUp` props).
+- `src/profile/ProfilePanel.tsx` -> `SettingsPage` (same handlers).
+- `src/curator/*` - `CuratorPanel` / `CuratorRefinePanel` / `CuratorTranscript`
+  / `CuratorRecommendationCard` restyled and hosted by `VinPage`; **client and
+  contract code untouched**.
+- `src/catalog/*` - `CatalogPanel`/`CatalogPhotoPanel` split into `DiscoverPage`
+  / `ScanPage`; `CatalogCandidateCard` -> `AlbumCard`/candidate card with art.
+- `src/collection/*` - `CollectionPanel` split into `CollectionPage` (grid+list)
+  and `AlbumDetailPage`; `CollectionItemCard` -> `AlbumCard`/`AlbumRow`;
+  `collectionQuery.ts` reused as-is + a grid/list view state + URL-query sync.
+- `netlify/functions/_shared/catalog-handlers.mts` - **not changed** (the
+  provider-artwork correction removes the planned catalog-add CAA lookup). New
+  pure helper `src/media/coverArtUrl.ts` builds the deterministic CAA
+  release / release-group front-image URLs from the MBIDs the client already
+  has; consumed only by `AlbumArtwork`.
+- `supabase/config.toml` - `[storage] enabled = true` +
+  `[storage.buckets.collection-covers]` (done in Phase 0).
+- `eslint`/`tsconfig` - add the new `src/*` dirs to project references if
+  needed.
+
+### Not changed
+
+`src/lib/curator/*`, `src/lib/vision/*`, `netlify/functions/curator-*.mts`,
+`netlify/functions/catalog-recognize.mts` logic, `netlify/functions/_shared/
+curator-handlers.mts`, `recognition-handlers.mts`, `model-calls.mts`, every
+existing migration, the M9/M10 request/response contracts, rate limits,
+telemetry, and prompts.
+
+## 2. Database implications
+
+One migration (Phase 0 only): `supabase/migrations/20260903120000_add_custom_cover_storage.sql`
+(implemented). `public.releases` is **not touched**.
+
+- `alter table public.collection_items add column custom_cover_path text,
+  add column custom_cover_updated_at timestamptz;` (both nullable).
+- `check (custom_cover_path is null or custom_cover_path = user_id::text || '/'
+  || id::text || '/cover.webp')` - the value, when set, must be exactly the
+  canonical object name for that same row.
+- `grant update (custom_cover_path, custom_cover_updated_at) on
+  public.collection_items to authenticated;` (the Milestone 7 own-row UPDATE
+  policy already governs the row; no new policy on this table).
+- `insert into storage.buckets (...) values ('collection-covers', ..., false,
+  3145728, array['image/webp']) on conflict (id) do update set public,
+  file_size_limit, allowed_mime_types` - self-healing private bucket.
+- Four `storage.objects` RLS policies for bucket `collection-covers`, role
+  `authenticated`:
+  - INSERT: bucket + exactly two folder segments + segment 1 = `auth.uid()` +
+    filename `cover.webp` + segment 2 is a `collection_item` owned by
+    `auth.uid()`.
+  - SELECT / UPDATE: as INSERT plus `owner_id = auth.uid()::text` (UPDATE
+    checks both USING and WITH CHECK).
+  - DELETE: bucket + segment 1 = `auth.uid()` + `owner_id = auth.uid()::text`
+    (no item-ownership requirement, for orphan cleanup).
+- pgTAP: `supabase/tests/database/custom_cover_storage.test.sql` - column
+  shape, canonical-path CHECK (7 cases), least-privilege grant, `releases` has
+  no `cover_url`, `collection_items` still has exactly 4 policies, own-row
+  behavioural, bucket config, four object policies, cross-user isolation
+  (User B cannot select / insert / update / delete User A's object), tamper
+  cases, orphan-delete path, anon denied.
+
+No other phase touches the schema.
+
+## 3. External API implications
+
+- **Cover Art Archive** (`coverartarchive.org`): **no backend call**. The
+  browser builds deterministic front-image URLs
+  (`/release/{mbid}/front-{size}`, `/release-group/{mbid}/front-{size}`) from
+  the MBIDs already present on catalog releases and `CatalogCandidate`s, and
+  renders them as `<img src loading="lazy">`. `<img onError>` advances the
+  four-tier source chain. No key, no `crossorigin`, no proxy, no persistence.
+- **MusicBrainz**: unchanged; we only reuse the MBIDs already stored.
+- **OpenRouter**: unchanged.
+- No automated test performs a real call to any of these; `AlbumArtwork` tests
+  assert URL construction + `onError` fall-through with stub images.
+
+## 4. AI / model implications
+
+None. No new model call, prompt, schema, or telemetry feature. The VIN mascot is
+presentation only. `/vin` reuses the M9/M10 client functions verbatim.
+
+## 5. Security / privacy implications
+
+- New: a private per-user Storage bucket. Risk surface = the `storage.objects`
+  RLS policies + the new `collection_items` column grant. Mitigation: strict
+  folder-prefix policies, private bucket, no public listing, signed short-TTL
+  URLs, server-enforced mime/size, pgTAP coverage, and **one focused security
+  review in Phase 0**.
+- `public.releases` is not changed at all - no `cover_url`, no new grant, no
+  catalog-add write. Nothing can be injected onto the shared release row.
+- Custom covers never touch `releases`; one user's photo is never another user's
+  release image.
+- Cover Art Archive URLs are public; hotlinking leaks no user data (the `<img>`
+  request carries no auth). The `Referer` on the image request is the app
+  origin - acceptable.
+- No secret is added, logged, or exposed. No `.env.example` change (no backend
+  CAA call).
+
+## 6. Phase 0 - architecture gate (IMPLEMENTED)
+
+Deliverables (done on this branch): migration
+`20260903120000_add_custom_cover_storage.sql` (section 2), `config.toml`
+storage enablement + bucket block, pgTAP
+`custom_cover_storage.test.sql`, ADR `0005` accepted, spec/plan approved.
+**No UI, no dependency, no `react-router-dom`.** Automated verification +
+**one focused security review** of the Storage RLS. This phase is its own PR
+and must merge before Phase C wires custom covers; Phases A-B do not depend on
+it.
+
+## 7. Phases A-E
+
+### Phase A - design system + routing + shell
+
+1. `react-router-dom` added (decision B). `public/_redirects` SPA fallback.
+2. `src/styles/` token/base/font layers; `public/fonts/` woff2; delete
+   `src/styles.css` after every consumer is migrated.
+3. `src/ui/` primitives + `Icon` sprite + `src/brand/Logo` + `AlbumArtwork`
+   (fallback tier only for now) + skeleton/empty/error components.
+4. `src/app/` `AppShell` + `Sidebar` + `BottomNav` + `TopBar` + `RouteView` +
+   route table + auth guards + `CollectionDataProvider`.
+5. Every existing feature mounted at its new route (spec section 15), visually
+   rough but functional. `App.tsx` reduced to composition.
+6. Port every existing Vitest suite to its new host; keep all green. Router /
+   guard / nav tests added.
+
+Exit: `npm run typecheck|lint|test:run|build` green; every route reachable;
+every M2-M10 feature usable; M9/M10 contract tests unchanged.
+
+### Phase B - landing + auth + dashboard
+
+`LandingPage` (hero + 5 sections + motion), `AuthPage`/`AuthCard` redesign,
+`DashboardPage` (stats + quick actions + recent activity + quick-VIN + optional
+insight; empty-collection state). All dashboard data from
+`CollectionDataProvider`. Route-level `React.lazy` for landing/auth so they do
+not pull the app bundle.
+
+Exit: the three screens match the spec's state matrix; lighthouse-style manual
+check of the landing bundle size.
+
+### Phase C - artwork infrastructure + collection / discover / scan
+
+1. `src/media/coverArtUrl.ts` - pure builder for the deterministic CAA
+   release / release-group front-image URLs from `provider_release_id` /
+   `provider_release_group_id` (already on catalog releases and
+   `CatalogCandidate`). No backend change.
+2. `AlbumArtwork` full four-tier chain (custom signed URL > CAA release > CAA
+   release-group > branded fallback), `<img onError>` advancing one tier
+   without looping; `useSignedCoverUrl` batching + cache for tier 1.
+3. `src/lib/collection/customCover.ts` (WebP conversion + downscale + upload /
+   replace / remove) + the "Replace / remove cover" dialog on `AlbumDetailPage`.
+4. `CollectionPage` grid + compact list + `FilterBar` + URL-query sync + view
+   persistence; `DiscoverPage` visual results + owned-state + manual fallback;
+   `ScanPage` visual candidates.
+
+Exit: artwork four-tier + `onError` fall-through tests; custom-cover lifecycle
+tests; discover/scan state tests; Storage pgTAP green; **no real CAA call in
+tests**.
+
+### Phase D - VIN + history + settings + album detail
+
+`VinPage` redesign + `VINAvatar` (5 states) + `VINThinking`; `HistoryPage`
+(day-grouped, thumbnails); `SettingsPage`; `AlbumDetailPage` (hero + personal +
+listening + cover + edit/remove). M9/M10 curator code unchanged.
+
+Exit: existing curator suites unchanged and green; mascot state tests;
+history grouping tests; detail not-found state.
+
+### Phase E - motion + responsive + accessibility + performance + final review
+
+Motion vocabulary (spec section 10) applied consistently; `prefers-reduced-
+motion` branches; responsive pass across all breakpoints; accessibility audit
+(landmarks, focus order, contrast re-verification, alt text, colour-only
+checks); route-level code splitting finalised + bundle budget check; one focused
+code review; page-by-page human visual inspection (desktop/tablet/mobile);
+final browser smoke of every critical flow.
+
+Exit: spec section 19 acceptance criteria all met.
+
+## 8. Testing plan
+
+- **Framework:** existing Vitest + Testing Library + jsdom. Optionally add
+  `vitest-axe` (devDependency) for automated role/label/contrast-ish assertions
+  - recommend yes; otherwise hand-assert. No other test dependency.
+- **Router/guards:** unauthed `/dashboard` -> `/auth`; authed `/auth` ->
+  `/dashboard`; `*` -> 404; `MemoryRouter` deep-link to `/collection/:id`
+  renders detail; nav `aria-current`; bottom nav under a narrow `matchMedia`
+  mock; drawer focus trap.
+- **Feature preservation:** each ported suite runs against its new page host and
+  asserts the same client calls/args. `src/curator/*` and
+  `netlify/functions/curator-functions.test.ts` suites are **unchanged**.
+- **`AlbumArtwork`:** the four-tier chain; `onError` fall-through (no loop);
+  deterministic fallback hue; `loading="lazy"`; alt text.
+- **`coverArtUrl.ts`:** builds the right `/release/{mbid}/front-{size}` and
+  `/release-group/{mbid}/front-{size}` URLs; null MBIDs skip that tier.
+- **Custom cover:** client WebP-conversion + downscale; validation reject
+  (type/size); success path updates the column via a mocked Supabase client;
+  replace; remove (+ best-effort `remove` called); precedence flips.
+- **Discover/scan:** artwork + skeleton + empty/no-match/error/owned states.
+- **Collection:** grid<->list toggle + persistence; `applyCollectionQuery`
+  parity; URL query round-trip; both empty states.
+- **VIN:** M9/M10 suites unchanged; `VINAvatar` per-state render; reduced-motion.
+- **History:** Today/Yesterday/Earlier bucketing from fixed timestamps.
+- **A11y basics:** each page has one `h1`; interactive elements have accessible
+  names; focus lands on `h1` after navigation; skeleton `aria-hidden`.
+- **DB:** `supabase test db` incl. the new `custom_cover_storage.test.sql`;
+  `supabase db lint`.
+- **No real OpenRouter / MusicBrainz / Cover Art Archive calls anywhere in the
+  automated suite.**
+
+Expected baselines after the pass: Vitest file/test counts grow substantially
+(new component + page + media suites); pgTAP grows by one file. Exact numbers
+recorded in `docs/verification.md` when the work runs.
+
+## 9. Review plan
+
+| Scope | Review |
+| --- | --- |
+| Phase 0 Storage RLS + column grant + canonical-path CHECK | **one focused security review** |
+| Phases A-E code | **one focused code review** at the end (no per-phase loops) |
+| Every phase | automated checks: `typecheck`, `lint`, `test:run`, `build`, `supabase test db`, `supabase db lint`, `npm audit --omit=dev` |
+| Phases B-E | page-by-page human visual inspection (desktop + tablet + mobile) |
+| End | final browser smoke of every critical flow incl. deep-link refresh + reduced-motion |
+
+No `/ultrareview`. No repeated security review beyond Phase 0. Deadline mode:
+fix BLOCKER + meaningful MEDIUM; record/defer LOW/NOTE.
+
+## 10. Dependency recommendation
+
+| Dependency | Kind | Verdict | Reason |
+| --- | --- | --- | --- |
+| `react-router-dom` (v7) | runtime | **add** (decision B) | 10 real routes, guards, deep links, code-splitting; no routing system exists |
+| `vitest-axe` | dev | optional, recommend add | automated a11y assertions for the redesign |
+| fonts (`@fontsource/*`) | dev | **do not add** | self-host woff2 in `public/fonts/` instead - no dep, no third-party request |
+| icon library | - | **do not add** | vendor ~20 static SVG paths (Lucide is ISC) |
+| motion library (`framer-motion` etc.) | - | **do not add** | CSS keyframes + optional native View Transitions cover the spec |
+| image/CDN library | - | **do not add** | `<img>` + CAA sizes + Supabase signed URLs |
+
+Net: **+1 runtime (`react-router-dom`)**, optionally **+1 dev (`vitest-axe`)**.
+
+## 11. Phasing / PR shape (decision K - APPROVED)
+
+**Phase 0 is its own PR** (`Visual experience Phase 0: custom cover storage`,
+base `main`), because it carries the migration + Storage RLS + focused security
+review. After it merges, **Phases A-E land on one follow-up visual branch / PR
+with coherent staged commits** - not five separate PRs.
+
+Each phase leaves the app in a working, deployable-if-needed state; no phase
+starts by destabilising an unfinished earlier one.
+
+## 12. Risks
+
+- **Scope size.** Mitigation: strict phase exits, the feature->page mapping as a
+  checklist, one review at the end.
+- **Silent feature loss during the split.** Mitigation: port every existing test
+  suite first (Phase A exit gate) before restyling.
+- **Storage RLS mistake.** Mitigation: isolated Phase 0 + pgTAP + focused
+  security review before any UI wiring.
+- **Bundle regression.** Mitigation: route-level `React.lazy` + a bundle-size
+  check in Phase E.
+- **Cover Art Archive 404 / slow image.** Mitigation: it is only ever an
+  `<img src>` the browser is about to display; `onError` advances to the next
+  tier (release-group, then branded fallback). No backend call, no add-time
+  coupling.
+- **Local/hosted bucket drift.** Mitigation: the migration `insert ... on
+  conflict (id) do update` re-enforces private + 3 MiB + webp-only on every
+  apply; `config.toml` mirrors it for local dev.
+- **Font/asset licensing.** Mitigation: OFL fonts only, bundled woff2 + a
+  `LICENSES` note; original logo/mascot/icons; no copyrighted album art
+  committed.
+
+## 13. Out of scope / deferred
+
+Orphan-cover sweep function; light theme; Discogs; shelf scanning; any M9/M10
+contract change for cosmetics; production deployment (Milestone 11 - still after
+this pass).

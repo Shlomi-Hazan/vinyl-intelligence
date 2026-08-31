@@ -2128,7 +2128,8 @@ and fixed during human runtime (`e9373bc`), and human runtime **PASS 5/5** on
 `1ad61c0c537dbed0f71f102071bda7dd5d66a444`). **Not deployed. No hosted Supabase
 migration applied / verified.** Milestone 10 (Conversational Refinement) is
 implemented and verified (human runtime PASS 4/4 on `74490282`; see "Milestone
-10 Evidence" below); its branch is ready for PR and not merged.
+10 Evidence" below) and **merged to `main` in PR #11** (merge commit
+`bfddeb5109e61eac65b184ff4ff5d58092b3984f`).
 
 ### Implemented
 
@@ -2366,8 +2367,11 @@ one independent GitHub review that found **1 MEDIUM** (a `no_match` refinement
 did not advance `latestIntent`, breaking multi-turn continuity) fixed in
 `74490282` with a regression test, and human runtime **PASS 4/4** on `74490282`.
 Final review gate: **BLOCKER 0 / MEDIUM 0.** No `/ultrareview` was used for
-Milestone 10. **Not merged. Not deployed. No hosted Supabase migration applied
-or verified.** Milestone 11 (production deployment) has not started.
+Milestone 10. **Merged to `main` in PR #11** (merge commit
+`bfddeb5109e61eac65b184ff4ff5d58092b3984f`). **Not deployed. No hosted Supabase
+migration applied or verified.** A Visual Experience & Product Identity pass
+(`docs/specs/0012-...`) is planned before Milestone 11 (production deployment),
+which has not started.
 
 ### Implemented
 
@@ -2602,3 +2606,138 @@ Production/hosted verification of Milestone 10 has **not** been performed. No
 hosted Supabase migration was applied (there is no M10 migration) and no
 production deployment is claimed. Milestone 11 (production deployment) has not
 started.
+
+## Visual Experience Pass - Phase 0 Evidence (custom cover storage)
+
+Date: 2026-08-31
+
+Branch: `claude/visual-experience-product-identity`
+
+Baseline (`main`): `bfddeb5109e61eac65b184ff4ff5d58092b3984f`
+
+Spec/plan: `docs/specs/0012-...` section 9, `docs/plans/012-...` section 6, ADR
+`docs/decisions/0005-...`.
+
+Status: implemented and verified - automated verification (below) + one focused
+security review (below): **0 BLOCKER, 0 MEDIUM, 1 LOW, 3 NOTE** (all recorded /
+deferred; one NOTE - a stale migration comment - fixed). **Not merged. Not
+deployed. No hosted Supabase change.** Phases A-E of the visual pass are not
+started; `react-router-dom` is not a dependency.
+
+### Implemented
+
+- Migration `supabase/migrations/20260903120000_add_custom_cover_storage.sql`:
+  - `public.collection_items` + `custom_cover_path text` (nullable),
+    `custom_cover_updated_at timestamptz` (nullable).
+  - CHECK `collection_items_custom_cover_path_canonical`: a non-null
+    `custom_cover_path` must equal `user_id::text || '/' || id::text ||
+    '/cover.webp'` for that same row - an arbitrary path, foreign user prefix,
+    foreign item id, wrong filename, or wrong extension is rejected (23514).
+  - Grant `update (custom_cover_path, custom_cover_updated_at)` to
+    `authenticated` only. No new RLS policy (the Milestone 7 own-row UPDATE
+    policy governs the row). No `service_role` change. **`public.releases` is
+    not touched - no `cover_url` column, no catalog-add lookup.**
+  - Private bucket `collection-covers` via `insert into storage.buckets ... on
+    conflict (id) do update` (self-healing): `public = false`,
+    `file_size_limit = 3145728` (3 MiB), `allowed_mime_types = ['image/webp']`.
+  - Four `storage.objects` RLS policies (bucket had RLS on, no prior policies):
+    INSERT (bucket + two segments + segment 1 = `auth.uid()` + filename
+    `cover.webp` + segment 2 a `collection_item` owned by `auth.uid()`);
+    SELECT / UPDATE (as INSERT + `owner_id = auth.uid()::text`; UPDATE checks
+    USING and WITH CHECK); DELETE (bucket + segment 1 = `auth.uid()` +
+    `owner_id = auth.uid()::text`, no item-ownership requirement for orphan
+    cleanup).
+- `supabase/config.toml`: `[storage] enabled = true` +
+  `[storage.buckets.collection-covers]` (public=false, 3MiB, image/webp) - keeps
+  the local `supabase start` / `db reset` bucket in sync with the migration.
+- pgTAP `supabase/tests/database/custom_cover_storage.test.sql` (+59 tests).
+
+### Automated Verification (agent-run / local; no external calls)
+
+Run on the Phase 0 tree, clean database, 2026-08-31:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm run test:run` | Passed: 30 Vitest files, 399 tests (unchanged - no product code) |
+| `npm run build` | Passed |
+| `npx supabase db reset` | Passed: 10 migrations apply in order (adds `20260903120000`) |
+| `npx supabase test db` | Passed: **9 pgTAP files, 433 tests** (was 8 / 374) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New pgTAP coverage: column shape; the canonical-path CHECK (null allowed; exact
+own-row path allowed; wrong user prefix / wrong item id / wrong extension /
+wrong filename / arbitrary path all rejected 23514); least-privilege grant
+(authenticated UPDATE is exactly `rating`, `is_favorite`, `notes`,
+`custom_cover_path`, `custom_cover_updated_at` - not id / user_id / release_id /
+added_at / created_at); `public.releases` has no `cover_url`; `collection_items`
+still has exactly 4 RLS policies; own-row behavioural (User A sets own cover
+fields; User A UPDATE targeting User B is 0 rows, no error; user_id / release_id
+change is 42501; anon 42501); bucket config (private, 3 MiB, webp-only); four
+`storage.objects` policies present with the right commands and RLS enabled;
+storage behavioural - User A can insert / select / update / delete the canonical
+object; User A cannot insert for an unowned item, a non-canonical filename, a
+deeper path, a different bucket, or a folder that is not their uid; User B
+cannot select / insert / update / delete User A's object (cross-user writes are
+0-row no-ops, the object is unchanged and survives); the own-uid + foreign-item
+tamper case is rejected; anon has no bucket access.
+
+### Focused Security Review (2026-08-31, single pass)
+
+Scope: the migration, the `config.toml` storage block, the pgTAP file.
+
+| # | Area | Verdict |
+| --- | --- | --- |
+| A | `collection_items` least-privilege grant | PASS - column-level UPDATE only; no table UPDATE; no id / user_id / release_id / added_at / created_at; `service_role` / `anon` unchanged |
+| B | canonical-path CHECK | PASS - bound to the row's own `user_id` (NOT NULL) + `id` (PK); every non-canonical form rejected; `user_id` itself is not updatable |
+| C | bucket privacy / config | PASS - private, 3 MiB, webp-only; `on conflict do update` re-enforces on every apply; `[storage.s3_protocol]` still disabled |
+| D | storage INSERT policy | PASS with **LOW** finding (below) |
+| E | storage SELECT policy | PASS - owner + folder + owner_id + item-owned; gates `createSignedUrl` |
+| F | storage UPDATE policy | PASS - ownership on USING and WITH CHECK; cannot move an object out of canonical shape or into another folder |
+| G | storage DELETE policy | PASS - owner + folder + owner_id; intentionally allows orphan cleanup; `protect_objects_delete` trigger is orthogonal (API-only raw delete) and RLS is still the boundary |
+| H | folder / user / item binding | PASS - path traversal, empty segments, wrong-case UUID all denied |
+| I | owner_id checks | PASS on SELECT / UPDATE / DELETE; absent on INSERT (finding D) |
+| J | cross-user read / write / delete | PASS - proven by pgTAP; anon fully denied |
+| K | signed-URL assumptions | PASS / NOTE - owner-only minting via the SELECT policy; treat the URL as a short-TTL bearer credential (Phase C guidance) |
+| L | no `service_role` widening | PASS - zero `service_role` grants added; `releases` untouched |
+| M | no recognition-image persistence regression | PASS - recognition path (`recognition-handlers.mts`, `src/lib/vision/*`) untouched; image stays transient base64 -> function -> OpenRouter; `collection-covers` is used only by the future custom-cover flow |
+
+Findings:
+
+- **LOW (recorded, not fixed - deadline mode; no cross-user impact):** the
+  INSERT policy does not bind `owner_id`. A client issuing a raw insert could
+  attribute an object *in its own folder* to another user id. Impact: none - the
+  object is in the attacker's own `{uid}/...` folder (no victim can see it), and
+  because SELECT / UPDATE / DELETE all require `owner_id = auth.uid()::text`, an
+  object with a spoofed `owner_id` becomes unreachable by everyone (a
+  self-inflicted orphan). The Supabase Storage API sets `owner_id` to the JWT
+  subject on every real upload, and the Phase 0 instruction's INSERT
+  requirements deliberately omit `owner_id`. Left as specified.
+- **NOTE (fixed):** the bucket-insert comment said `on conflict do nothing`
+  while the code is `on conflict do update`; comment corrected.
+- **NOTE (Phase C guidance):** the client must build object paths with
+  lowercase canonical UUID text (to match `id::text` / `owner_id`); recorded in
+  spec section 9.1.
+- **NOTE (Phase C guidance):** signed URLs are short-TTL bearer credentials -
+  never log them, never persist them; memory-cache only.
+
+**Result: 0 BLOCKER, 0 MEDIUM.** No further review loop (deadline mode). No
+`/ultrareview`.
+
+### External Provider / Hosted Actions
+
+- OpenRouter completions: **0**. MusicBrainz calls: **0**. Cover Art Archive
+  calls: **0** (Phase 0 adds no CAA integration; provider artwork is a
+  client-side display-time concern deferred to Phase C).
+- Hosted Supabase: **untouched**. All Supabase work was local
+  (`supabase start` / `db reset` / `test db` / `db lint`). No hosted migration,
+  no hosted bucket creation. The same bucket + policy definition applies to a
+  hosted project when this migration runs during Milestone 11.
+
+### Production / Hosted Status
+
+No production or hosted verification of Phase 0 has been performed. Not
+deployed. Milestone 11 has not started.

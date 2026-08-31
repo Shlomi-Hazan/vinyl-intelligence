@@ -7,8 +7,9 @@ Status: EXECUTED 2026-08-31. Implemented on
 focused self-review 0/0 (1 NOTE fixed in `cf3b0c1`); independent GitHub review
 found 1 MEDIUM (`no_match` did not advance `latestIntent`) fixed in `74490282`;
 final gate 0 BLOCKER / 0 MEDIUM; human runtime **PASS 4/4**. No migration, no
-new dependency, no `/ultrareview`. PR open, **not merged**. See
-`docs/verification.md` "Milestone 10 Evidence". (Approved 2026-09-01 with the
+new dependency, no `/ultrareview`. **Merged to `main` in PR #11** (merge commit
+`bfddeb5109e61eac65b184ff4ff5d58092b3984f`). See `docs/verification.md`
+"Milestone 10 Evidence". (Approved 2026-09-01 with the
 mandatory corrections in the spec's "Approved Corrections" block; deadline mode:
 fix BLOCKER + meaningful MEDIUM, no LOW/NOTE loop.)
 
