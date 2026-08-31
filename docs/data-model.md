@@ -227,6 +227,10 @@ Important fields:
   `cover_vision`; Milestone 9 widens the allow-list to `cover_vision`,
   `curator_intent`, `curator_selection` via a forward migration. (The earlier
   sketch name `curator_explanation` is not used - it is `curator_selection`.)
+  Milestone 10 (`POST /api/curator/refine`) adds **no** feature: a refinement's
+  intent call reuses `curator_intent` and its selection call reuses
+  `curator_selection`, so refinements count against the same request/cost
+  budget. No migration or conversation table.
 - `provider text not null`
 - `model text not null`
 - `request_kind text not null`

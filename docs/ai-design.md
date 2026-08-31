@@ -96,14 +96,32 @@ Any model-reported vision confidence is advisory/debug information only. Never t
 
 Use bounded state only.
 
-For MVP, do not permanently store full AI curator chat transcripts. A single request may be enough. If persistence becomes necessary, store or carry only bounded structured state with:
+As implemented for Milestone 10 (`docs/specs/0011-milestone-10-conversational-refinement.md`):
 
-- current interpreted intent
-- active constraints
-- previous rejected recommendation IDs
-- expiration timestamp
+- `POST /api/curator/refine` accepts a follow-up plus untrusted client-supplied
+  context `{ previousRequest, previousIntent, previousRecommendationIds (<= 3) }`.
+- LLM call #1 (recorded as `curator_intent`) returns a **complete** revised
+  `CuratorIntent` plus `excludePreviousRecommendations` - the model starts from
+  the prior intent and changes only what the follow-up asks. The server
+  validates the nested intent with the authoritative Milestone 9 rules; no
+  partial-patch merge from untrusted output.
+- The deterministic middle re-derives facts from the **fresh** RLS-owned
+  collection/history, applies the refined hard filter, then removes the
+  `previousRecommendationIds ∩ currently-owned` set when
+  `excludePreviousRecommendations` is true, then rank/cap <= 12. LLM call #2
+  (`curator_selection`) receives the **current follow-up text only** plus the
+  refined soft preferences and the fresh candidate facts.
+- Conversation state (latest intent, latest request text, <= 3 latest
+  recommendation IDs, a bounded UI transcript, a refinement count) lives **only
+  in React memory**. No database table, no `sessionStorage` / `localStorage`, no
+  server memory. Refresh / logout / "Start over" clears it. Maximum 1 initial
+  turn + 3 refinements per session; the Milestone 9 rate limit (10
+  `curator_intent` / 10 minutes) is the actual abuse/cost guard.
+- Client context is **never** an authorization boundary - a stale / deleted /
+  tampered prior id is intersected out and cannot enter the allowed set.
 
-Do not use uncontrolled long-term memory.
+Do not use uncontrolled long-term memory. Do not send prior AI reason text, the
+full transcript, or Milestone 7 notes to any model.
 
 ## Cost and Latency Guardrails
 
