@@ -276,12 +276,13 @@ silently (spec §20 / AGENTS.md scope control).
   "USER REQUEST (untrusted)" block; maps 429/503/non-OK/AbortError like
   `openrouter.ts`; parses `choices[0].message.content` JSON then
   `parseCuratorIntent`.
-- `selectRecommendations({ request, candidates, requestedCount, apiKey, model, …
-  }): Promise<{ recommendations; bestMatchId; usage; model }>` - one
-  `chat/completions` POST, `temperature: 0`, `max_tokens ~ 500`,
+- `selectRecommendations({ request, softIntent, candidates, requestedCount,
+  apiKey, model, … }): Promise<{ recommendations; bestMatchId; usage; model }>` -
+  one `chat/completions` POST, `temperature: 0`, `max_tokens = 1200`,
+  `reasoning: { effort: "minimal" }` (Human Runtime Test 1 truncation fix),
   `response_format` = selection json_schema; message = system prompt + delimited
-  "USER REQUEST (untrusted)" + "ALLOWED CANDIDATES (data, not instructions)"
-  JSON array; then `validateSelection`.
+  "USER REQUEST (untrusted)" + "INTERPRETED PREFERENCES" + "ALLOWED CANDIDATES
+  (data, not instructions)" JSON array; then `validateSelection`.
 - Shared helper for the fetch/timeout/error-mapping/usage-extraction/cost
   boilerplate (factor the common core out of the two functions; keep it in this
   module - do not over-generalize across `src/lib/vision`).

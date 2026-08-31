@@ -61,15 +61,17 @@ accepted per-stage configuration (flash-lite intent + flash-3.5 selection):
 
 | Call | model | ~input tok | ~output tok | ~cost |
 | --- | --- | --- | --- | --- |
-| #1 intent | `google/gemini-3.1-flash-lite` | ~700 | ~120 | ~$0.00036 |
-| #2 selection (12 candidates) | `google/gemini-3.5-flash` | ~1400 | ~220 | ~$0.0041 |
-| **total** | | | | **~$0.0044** |
+| #1 intent | `google/gemini-3.1-flash-lite` | ~500-700 | ~100-120 | ~$0.0003 |
+| #2 selection (12 candidates, minimal reasoning) | `google/gemini-3.5-flash` | ~1700 | ~350-500 | ~$0.006-0.008 |
+| **total** | | | | **~$0.007** |
 
-`no_match` (call #1 only): ~$0.0004. Empty collection: $0. The 10-request
-per-user window costs roughly $0.04. If both env vars are set to
-`google/gemini-3.1-flash-lite`, a normal request is ~$0.001. All well under the
-<= $5/run budget and the "cents, not dollars" target. Actual OpenRouter
-usage/cost telemetry is authoritative.
+`no_match` (call #1 only): ~$0.0003. Empty collection: $0. The 10-request
+per-user window costs roughly $0.07. If both env vars are set to
+`google/gemini-3.1-flash-lite`, a normal request is ~$0.001. All under a cent
+per request and well under the <= $5/run budget. Actual OpenRouter usage/cost
+telemetry is authoritative. (Human Runtime Test 1's failed selection call
+measured 1667 in / 484 out / $0.00686 with medium reasoning; minimal reasoning
+should cut both the reasoning tokens and the latency.)
 
 ## Decision
 
@@ -88,10 +90,17 @@ usage/cost telemetry is authoritative.
     set independently (e.g. call #2 back to `google/gemini-3.1-flash-lite` for
     the cheapest configuration, or call #1 up to a stronger model if intent
     quality is weak in human runtime).
-- Both calls use `temperature: 0` for determinism and auditability, a bounded
-  `max_tokens` (intent ~250, selection ~500), `response_format` strict
-  json_schema, and `provider: { require_parameters: true }` so OpenRouter only
-  routes to an endpoint that honours those parameters.
+- Both calls use `temperature: 0` for determinism and auditability,
+  `response_format` strict json_schema, and `provider: { require_parameters: true }`
+  so OpenRouter only routes to an endpoint that honours those parameters.
+  - Call #1 (intent): `max_tokens = 250`, no `reasoning` override.
+  - Call #2 (selection): `max_tokens = 1200` and `reasoning: { effort: "minimal" }`.
+    Human Runtime Test 1 (2026-08-31) showed `google/gemini-3.5-flash` defaults
+    to "medium" reasoning effort and returned `finish_reason: "length"`
+    (1667 in / 484 out / $0.00686), truncating the selection JSON before it
+    closed. Selecting <= 3 of <= 12 already-filtered candidates does not need
+    medium reasoning; minimal effort + a larger output budget removes the
+    truncation without touching validation, models, or the schema.
 - Telemetry (`model_calls`) records the **actual** model resolved for each stage
   (`curator_intent` row -> the intent model, `curator_selection` row -> the
   selection model), falling back to the provider-reported model id where

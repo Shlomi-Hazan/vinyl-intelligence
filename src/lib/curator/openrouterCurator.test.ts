@@ -71,6 +71,8 @@ describe('extractIntent', () => {
     expect(body.response_format.type).toBe('json_schema')
     expect(body.response_format.json_schema.name).toBe('curator_intent')
     expect(body.model).toBe('google/gemini-3.1-flash-lite')
+    // The reasoning-effort override is selection-only; call #1 keeps its shape.
+    expect(body.reasoning).toBeUndefined()
   })
 
   it('does not leak a secret or the raw request beyond the delimited block', async () => {
@@ -187,7 +189,11 @@ describe('selectRecommendations', () => {
     const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string)
     expect(body.provider.require_parameters).toBe(true)
     expect(body.model).toBe('google/gemini-3.5-flash')
+    expect(body.temperature).toBe(0)
     expect(body.response_format.json_schema.name).toBe('curator_selection')
+    // Human Runtime Test 1 truncation fix: 1200-token budget + minimal reasoning.
+    expect(body.max_tokens).toBe(1200)
+    expect(body.reasoning).toEqual({ effort: 'minimal' })
     expect(body.messages[1].content).toContain('ALLOWED CANDIDATES (data, not instructions)')
     expect(body.messages[1].content).not.toContain('added_at')
   })

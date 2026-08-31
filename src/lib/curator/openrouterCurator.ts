@@ -33,7 +33,13 @@ import type { CuratorCandidate } from './types.ts'
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const DEFAULT_TIMEOUT_MS = 15_000
 const INTENT_MAX_TOKENS = 250
-const SELECTION_MAX_TOKENS = 500
+// Human Runtime Test 1 (2026-08-31) hit finish_reason: "length" on the selection
+// call: google/gemini-3.5-flash defaults to "medium" reasoning effort, which
+// consumed the 500-token budget before the JSON completed. The selection task is
+// a bounded pick over <= 12 already-filtered candidates, so it asks for minimal
+// reasoning and a 1200-token budget.
+const SELECTION_MAX_TOKENS = 1200
+const SELECTION_REASONING_EFFORT = 'minimal' as const
 
 const MODEL_PRICING: Record<
   string,
@@ -141,8 +147,10 @@ async function callOpenRouter(options: {
   userContent: string
   jsonSchema: ChatSchema
   maxTokens: number
+  /** When set, sent as `reasoning: { effort }` (selection call only). */
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
 }): Promise<{ parsed: unknown; usage: CuratorUsage; model: string }> {
-  const { base, systemPrompt, userContent, jsonSchema, maxTokens } = options
+  const { base, systemPrompt, userContent, jsonSchema, maxTokens, reasoningEffort } = options
   const fetchImpl = base.fetchImpl ?? fetch
   const timeoutMs = base.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const model = base.model
@@ -174,6 +182,7 @@ async function callOpenRouter(options: {
         // required parameters (response_format json_schema, temperature, max_tokens).
         provider: { require_parameters: true },
         response_format: { type: 'json_schema', json_schema: jsonSchema },
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
@@ -309,6 +318,7 @@ export async function selectRecommendations(
     userContent,
     jsonSchema: CURATOR_SELECTION_JSON_SCHEMA,
     maxTokens: SELECTION_MAX_TOKENS,
+    reasoningEffort: SELECTION_REASONING_EFFORT,
   })
 
   const recommendations = validateSelection(parsed, {

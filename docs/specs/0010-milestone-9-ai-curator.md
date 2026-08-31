@@ -488,10 +488,21 @@ mood/energy fit is left to LLM call #2 over the already-safe candidate set.
 ## 14. Final Model Output Contract (LLM call #2)
 
 Request: `response_format` json_schema `curator_selection` (`strict: true`),
-`temperature: 0`, `max_tokens` ~= 500, and
+`temperature: 0`, `max_tokens = 1200`, `reasoning: { effort: "minimal" }`, and
 `provider: { require_parameters: true }` (Approved Correction 2). Call #1 sends
 the same `provider: { require_parameters: true }` with its own json_schema and
-`max_tokens` ~= 250.
+`max_tokens = 250`, and **no** `reasoning` override (its default effort is fine
+for the flat 12-field intent object).
+
+> Runtime correction (Human Runtime Test 1, 2026-08-31): the selection call
+> originally used `max_tokens = 500` with no reasoning control.
+> `google/gemini-3.5-flash` defaults to "medium" reasoning effort and returned
+> `finish_reason: "length"` (1667 input / 484 output tokens) - the JSON was
+> truncated before it closed, so `JSON.parse` of the model content failed. Fix:
+> `reasoning: { effort: "minimal" }` (the pick over <= 12 already-filtered
+> candidates does not need medium reasoning) plus a 1200-token budget. Strict
+> validation, allowed-ID checks, `response_format`, `provider.require_parameters`,
+> `temperature: 0`, and the prompt-injection framing are all unchanged.
 
 ```jsonc
 {
@@ -690,17 +701,23 @@ Separate models per stage (Approved Correction 4 / `docs/decisions/0004`):
 call #1 `google/gemini-3.1-flash-lite` ($0.25 in / $1.50 out per 1M); call #2
 `google/gemini-3.5-flash` ($1.50 in / $9.00 out per 1M).
 
+Call #2 uses `max_tokens = 1200` with `reasoning: { effort: "minimal" }` (Human
+Runtime Test 1 correction - the "medium" default truncated the JSON at 500).
+
 | Call | model | ~input tok | ~output tok | ~cost |
 | --- | --- | --- | --- | --- |
-| #1 intent | flash-lite | ~700 | ~120 | ~$0.00036 |
-| #2 selection (12 candidates) | flash 3.5 | ~1400 | ~220 | ~$0.0041 |
-| **normal success total** | | | | **~$0.0044** (well under a cent) |
-| `no_match` (call #1 only) | | | | ~$0.00036 |
+| #1 intent | flash-lite | ~500-700 | ~100-120 | ~$0.0003 |
+| #2 selection (12 candidates, minimal reasoning) | flash 3.5 | ~1700 | ~350-500 | ~$0.006-0.008 |
+| **normal success total** | | | | **~$0.007** (under a cent) |
+| `no_match` (call #1 only) | | | | ~$0.0003 |
 | empty collection | | 0 | 0 | $0 |
 
-Far below the <= $5/run course budget and meets the "cents, not dollars" target.
-10 requests (the per-user window) cost roughly $0.04. Actual OpenRouter
-usage/cost telemetry is authoritative; these are planning estimates. If human
+Under a cent per request; far below the <= $5/run course budget. 10 requests
+(the per-user window) cost roughly $0.07. Actual OpenRouter usage/cost telemetry
+is authoritative; these are planning estimates. (Test 1 measured the failed
+selection call at 1667 in / 484 out / $0.00686 with medium reasoning and
+truncation; minimal reasoning should reduce both the reasoning tokens and the
+latency.) If human
 runtime shows call #1 needs more capability, set
 `OPENROUTER_CURATOR_INTENT_MODEL`; if call #2 is over-powered for the collection
 size, set `OPENROUTER_CURATOR_SELECTION_MODEL=google/gemini-3.1-flash-lite`
@@ -811,7 +828,9 @@ No real OpenRouter calls. Injected/mocked provider + Supabase, like
 ### OpenRouter request body (both calls, `openrouterCurator` unit tests, fake fetch)
 - `provider.require_parameters === true` on the intent request
 - `provider.require_parameters === true` on the selection request
-- `temperature === 0`, bounded `max_tokens`, `response_format.type === 'json_schema'`
+- `temperature === 0`, `response_format.type === 'json_schema'`; call #1
+  `max_tokens === 250` with no `reasoning` key; call #2 `max_tokens === 1200`
+  with `reasoning === { effort: "minimal" }`
 - the resolved `OPENROUTER_CURATOR_INTENT_MODEL` is sent on call #1;
   `OPENROUTER_CURATOR_SELECTION_MODEL` on call #2; defaults are
   `google/gemini-3.1-flash-lite` and `google/gemini-3.5-flash`
