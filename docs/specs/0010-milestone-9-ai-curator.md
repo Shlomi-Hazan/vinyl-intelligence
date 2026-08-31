@@ -1,11 +1,54 @@
 # 0010 Milestone 9 AI Curator Specification
 
-Status: PLANNED - awaiting human approval. Do not begin implementation until the
-specification and implementation plan are explicitly approved.
+Status: APPROVED 2026-08-31, with mandatory corrections applied (see "Approved
+Corrections" below). Implementation may begin. `docs/plans/010-…` APPROVED.
+`docs/decisions/0004-…` ACCEPTED.
 
 Milestone: 9 - AI Curator (single-turn)
 
 Date: 2026-08-31
+
+## Approved Corrections (2026-08-31)
+
+1. **Load `added_at`.** The curator collection query selects `id, added_at,
+   rating, is_favorite, release{…}`. `added_at` is **server-only** ranking data
+   for the deterministic tie-break and MUST NOT enter either model payload.
+   (§10, §11, §13)
+2. **OpenRouter parameter routing.** Both curator calls send
+   `provider: { require_parameters: true }` alongside `response_format`
+   json_schema, `temperature: 0`, and a bounded `max_tokens`, so OpenRouter does
+   not route to an endpoint lacking the required parameters. Backend validation
+   stays authoritative. (§8, §14, §16)
+3. **Strict intent validation - reject, do not silently relax.** Schema-invalid
+   model output is rejected as `provider_bad_response` (failed `curator_intent`
+   telemetry). This includes a missing/mistyped required key, an array over
+   `maxItems`, a string over `maxLength`, an invalid decade, `minRating` outside
+   1..5, `recentDays` outside 1..365, an invalid enum, `requestedCount` outside
+   1..3, a non-boolean boolean, or any other structured-output-contract
+   violation. Only benign normalization is allowed: trim strings, lowercase
+   genres, dedupe arrays, and "exclusion dominates" when the same normalized
+   genre is in both include and exclude. A hard constraint is never converted to
+   null or silently dropped/clamped. (§8)
+4. **Separate models per stage.** Call #1 (intent) default
+   `google/gemini-3.1-flash-lite`, env `OPENROUTER_CURATOR_INTENT_MODEL`. Call #2
+   (selection + explanation) default `google/gemini-3.5-flash`, env
+   `OPENROUTER_CURATOR_SELECTION_MODEL`. No single `OPENROUTER_CURATOR_MODEL`
+   seam. Telemetry records the actual model used per stage. (§8, §14, §17, §20;
+   `docs/decisions/0004`)
+5. **`.env.example`** documents `OPENROUTER_CURATOR_INTENT_MODEL` and
+   `OPENROUTER_CURATOR_SELECTION_MODEL` (names + default examples only).
+6. **No curator `sessionStorage`.** `curatorRequestDraft.ts` is not implemented.
+   The request lives in React component state only. M10 owns bounded
+   conversational state. (§21)
+7. **UI placement.** `CuratorPanel` renders in `AuthenticatedShell` **after
+   `ProfilePanel`, before `CatalogPanel`, before `CollectionPanel`** - the
+   curator is the core M9 experience and must be visible without scrolling.
+   Current panel conventions only; no visual-polish work. (§21)
+8. **Sequencing.** implementation -> full automated verification -> ONE
+   `/ultrareview` -> fix BLOCKER / meaningful MEDIUM -> 0/0 -> commit + push ->
+   **STOP** for independent inspection -> later runtime prep -> human runtime one
+   test at a time -> evidence gate -> PR -> human merge. **No PR in the
+   implementation turn.** (§24, §26)
 
 Branch: `claude/milestone-9-ai-curator`
 
@@ -247,28 +290,47 @@ Requested via `response_format: { type: "json_schema", json_schema: { name:
 Manual validation in the style of `src/lib/vision/openrouter.ts`
 (`assertRecognitionContract`). Do **not** trust the schema alone.
 
-- Parsed value must be an object with every required key present and correctly
-  typed. A missing or wrong-typed required key -> `provider_bad_response`
-  (`curator_intent` failed row, `error_category = provider_bad_response`).
-- `includeGenres` / `excludeGenres`: each entry trimmed + lowercased; empty
-  entries dropped; deduped; array capped at 6.
-- `decades`: keep only integers that are a multiple of 10 in `[1900, 2020]`
-  (2020 = the decade containing the current year); dedupe; cap at 6. A decade is
-  the four-digit decade start (`1990` = the 1990s). Non-conforming entries are
-  dropped.
-- `minRating`: integer 1..5, else `null`.
-- `recentDays`: integer 1..365, else `null`.
-- `favoritesOnly` / `neverPlayedOnly` / `avoidRecentlyPlayed`: must be boolean
-  (rejected if not).
-- `preference`: must be in the enum, else `"none"`.
-- `energy`: must be in the enum, else `"any"`.
-- `mood`: string trimmed to <= 120 chars, else `null`.
-- `requestedCount`: integer clamped to `[1, 3]`; missing/invalid -> `3`.
+**Rule (Approved Correction 3): schema-invalid model output is REJECTED as
+`provider_bad_response` (failed `curator_intent` telemetry row,
+`error_category = provider_bad_response`). Hard constraints are never converted
+to null, dropped, or clamped because the model returned an invalid value.**
+
+Rejected (each -> `provider_bad_response`):
+
+- parsed value is not an object; any required key missing; any required key of
+  the wrong JSON type
+- `includeGenres` / `excludeGenres`: not an array; > 6 entries; any entry not a
+  string; any entry longer than 40 chars **after trim**
+- `decades`: not an array; > 6 entries; any entry not an integer; any entry not
+  a multiple of 10 in `[1900, 2020]` (2020 = the decade containing the current
+  year; `1990` means the 1990s)
+- `minRating`: present and not (`null` or an integer in 1..5)
+- `recentDays`: present and not (`null` or an integer in 1..365)
+- `favoritesOnly` / `neverPlayedOnly` / `avoidRecentlyPlayed`: not a boolean
+- `preference`: not one of the enum values
+- `energy`: not one of the enum values
+- `mood`: not (`null` or a string); string longer than 120 chars **after trim**
+- `requestedCount`: not an integer in 1..3
+
+Benign normalization that IS applied to an otherwise-valid intent:
+
+- trim every genre string, lowercase it, drop entries that are empty after trim,
+  dedupe (result still <= 6 by construction)
+- trim `mood`; an empty-after-trim `mood` becomes `null`
 - **Conflict rule:** any genre appearing (case-insensitively) in both
   `includeGenres` and `excludeGenres` is removed from `includeGenres`.
   Exclusion always dominates. `includeGenres` may legitimately become empty.
 
-`interpretedIntent` in the response is exactly this normalized object.
+The intent system prompt instructs the model to: encode a HARD constraint only
+when the user explicitly asks for it or it is semantically unambiguous; put
+subjective desires in `mood` / `energy` / `preference` rather than inventing
+hard filters; and **output `requestedCount = 3` whenever the user does not state
+a number**. (The model still must return a value in 1..3; the server does not
+substitute a default - an out-of-range or missing `requestedCount` is a
+rejected response.)
+
+`interpretedIntent` in the response is exactly this normalized (and fully
+valid) object.
 
 ### Hard vs soft constraints
 
@@ -308,8 +370,9 @@ grouping is explicitly not attempted in Milestone 9.
 - Default window when `avoidRecentlyPlayed` is true and `recentDays` is null:
   **30 days**.
 - If the user states a period the model may set `recentDays` to a bounded
-  integer day count. Accepted range **1..365**; anything else normalizes to
-  `null` and falls back to 30.
+  integer day count. Accepted values: `null` or an integer in **1..365**;
+  anything else is a **rejected** intent response (Approved Correction 3). A
+  valid `null` falls back to the 30-day default.
 - "not played in months" / "forgotten" guidance in the intent prompt: set
   `avoidRecentlyPlayed = true` and `preference = "rediscovery"` (and optionally
   `recentDays ~ 90`). The deterministic filter only reads `avoidRecentlyPlayed`
@@ -330,8 +393,11 @@ grouping is explicitly not attempted in Milestone 9.
   pattern as `countRecentRecognitionAttemptsWithUserToken`. RLS scopes every
   read to `auth.uid()`.
 - Reads, via that client:
-  - `collection_items`: `id, rating, is_favorite, release:releases!inner(id,
-    artist, title, release_year, genres)`. **`notes` is not selected.**
+  - `collection_items`: `id, added_at, rating, is_favorite,
+    release:releases!inner(id, artist, title, release_year, genres)`.
+    **`notes` is not selected.** `added_at` is **server-only** ranking data for
+    the deterministic tie-break (§13) and MUST NOT enter either model payload
+    (§11, §12).
   - `listening_events`: `collection_item_id, listened_at`.
 - **No `service_role` read** of `collection_items`, `listening_events`, or
   `profiles`. `service_role` stays INSERT-only on `model_calls`.
@@ -375,7 +441,10 @@ minimize precision leakage and tokens.
 - `created_by`, `user_id`, the authenticated user id.
 - `release_id`, `provider`, `provider_release_id`, `provider_release_group_id`.
 - `label`, `catalog_number`, `country`, `format` (not needed for the objective).
-- Raw `listening_events` rows / full listening history / exact ISO timestamps.
+- **`added_at`** - read server-side for the deterministic tie-break only; never
+  serialized into a model payload.
+- Raw `listening_events` rows / full listening history / exact ISO timestamps
+  (`lastListenedDaysAgo` is an integer day count, not a timestamp).
 - Any environment value, API key, or secret.
 - Raw database rows - only the projected fact object above is sent.
 
@@ -413,8 +482,11 @@ mood/energy fit is left to LLM call #2 over the already-safe candidate set.
 
 ## 14. Final Model Output Contract (LLM call #2)
 
-`response_format` json_schema `curator_selection`, `strict: true`,
-`temperature: 0`, `max_tokens` ~= 500.
+Request: `response_format` json_schema `curator_selection` (`strict: true`),
+`temperature: 0`, `max_tokens` ~= 500, and
+`provider: { require_parameters: true }` (Approved Correction 2). Call #1 sends
+the same `provider: { require_parameters: true }` with its own json_schema and
+`max_tokens` ~= 250.
 
 ```jsonc
 {
@@ -510,6 +582,10 @@ metadata, genres.
     facts.
 - Structural validation (§8, §15) is authoritative even if the prompt fails.
 - `temperature: 0` on both calls for determinism and auditability.
+- `provider: { require_parameters: true }` on both calls so OpenRouter only
+  routes to an endpoint that honours `response_format` json_schema +
+  `temperature` + `max_tokens` (Approved Correction 2). This is a routing guard,
+  not a substitute for the backend validators.
 
 ## 17. `model_calls` Telemetry
 
@@ -535,6 +611,10 @@ INSERT-only; `authenticated` remains own-row SELECT only; `anon` none.
   `completion_tokens`, `estimated_cost_usd`, `error_category`, `created_at`.
 - Normal success: one `curator_intent` (success) + one `curator_selection`
   (success). `no_match`: one `curator_intent` (success) only.
+- `model` records the **actual** model used for that stage - the resolved
+  `OPENROUTER_CURATOR_INTENT_MODEL` for a `curator_intent` row, the resolved
+  `OPENROUTER_CURATOR_SELECTION_MODEL` for a `curator_selection` row (falling
+  back to the provider-reported model id where available, as in Milestone 5).
 - Never stored: the user request text, prompts, candidate payload, raw model
   output, recommendation text, notes, secrets.
 
@@ -597,33 +677,39 @@ Milestone 9 - a final AI failure shows a controlled retryable error.
 
 ## 20. Token / Cost Economics (estimates, not guarantees)
 
-Model: `google/gemini-3.1-flash-lite` for both calls (see
-`docs/decisions/0004`), input $0.25 / 1M, output $1.50 / 1M.
+Separate models per stage (Approved Correction 4 / `docs/decisions/0004`):
+call #1 `google/gemini-3.1-flash-lite` ($0.25 in / $1.50 out per 1M); call #2
+`google/gemini-3.5-flash` ($1.50 in / $9.00 out per 1M).
 
-| Call | ~input tok | ~output tok | ~cost |
-| --- | --- | --- | --- |
-| #1 intent | ~700 | ~120 | ~$0.00036 |
-| #2 selection (12 candidates) | ~1400 | ~220 | ~$0.00068 |
-| **normal success total** | | | **~$0.001** (about one tenth of one cent) |
-| `no_match` (call #1 only) | | | ~$0.00036 |
-| empty collection | 0 | 0 | $0 |
+| Call | model | ~input tok | ~output tok | ~cost |
+| --- | --- | --- | --- | --- |
+| #1 intent | flash-lite | ~700 | ~120 | ~$0.00036 |
+| #2 selection (12 candidates) | flash 3.5 | ~1400 | ~220 | ~$0.0041 |
+| **normal success total** | | | | **~$0.0044** (well under a cent) |
+| `no_match` (call #1 only) | | | | ~$0.00036 |
+| empty collection | | 0 | 0 | $0 |
 
-With the documented manual alternative `google/gemini-3.5-flash` for call #2
-only: normal success ~$0.0045. Both are far below the <= $5/run course budget
-and meet the "cents, not dollars" target. 10 requests (the per-user window) with
-the default model cost roughly $0.01.
+Far below the <= $5/run course budget and meets the "cents, not dollars" target.
+10 requests (the per-user window) cost roughly $0.04. Actual OpenRouter
+usage/cost telemetry is authoritative; these are planning estimates. If human
+runtime shows call #1 needs more capability, set
+`OPENROUTER_CURATOR_INTENT_MODEL`; if call #2 is over-powered for the collection
+size, set `OPENROUTER_CURATOR_SELECTION_MODEL=google/gemini-3.1-flash-lite`
+(~$0.001 total).
 
 ## 21. UI
 
-New `CuratorPanel` rendered as a sibling of `CatalogPanel` / `CollectionPanel`
-in `AuthenticatedShell`, `key={`curator-${user.id}`}`.
+New `CuratorPanel` rendered in `AuthenticatedShell` **after `ProfilePanel`,
+before `CatalogPanel`, before `CollectionPanel`** (Approved Correction 7 - the
+curator is the core M9 experience and must be visible without scrolling),
+`key={`curator-${user.id}`}`.
 
 - Heading "AI Curator" + one line: "Recommends only from records you own."
 - `<textarea>` `maxLength={800}` with a live character count; "Recommend" button
   disabled while a request is pending or the trimmed value is empty.
-- Optional (consistency with Milestone 5/6): per-user `sessionStorage` draft of
-  the request text (`vinyl-intelligence:curator-request:v1:<userId>`), restore is
-  UI-only, never auto-submits. Recommended for parity; small.
+- **No `sessionStorage` / persisted draft** (Approved Correction 6). The request
+  string lives in React component state only; Milestone 9 is deliberately
+  single-turn and Milestone 10 owns bounded conversational state.
 - States:
   - **loading**: "Reading your request and your collection..." (single
     indicator; the two-call internals are not surfaced).
@@ -665,17 +751,26 @@ No real OpenRouter calls. Injected/mocked provider + Supabase, like
 - `collection_items` load error -> `collection_unavailable`, 0 provider calls
 - `listening_events` load error -> `collection_unavailable`, 0 provider calls
 
-### Intent (`src/lib/curator/intentSchema` + function)
-- valid structured intent parses + normalizes
-- missing required key -> rejected
-- wrong-typed key -> rejected
-- genre trim/lowercase/dedupe/cap-6
-- decade filter: non-multiple-of-10, out-of-range, string -> dropped; `1990` kept
-- `minRating` / `recentDays` out of range -> null
-- `preference` / `energy` invalid -> default
-- `requestedCount` clamp + default 3
-- conflict rule: genre in include + exclude -> removed from include
-- intent provider timeout / 429 / non-OK / malformed -> mapped error + one failed `curator_intent` telemetry row, no selection call
+### Intent (`src/lib/curator/intentSchema` + function) - Approved Correction 3
+- valid structured intent parses + applies only benign normalization
+- missing required key -> **rejected** (`provider_bad_response`)
+- wrong-typed required key -> rejected
+- genre benign normalization: trim, lowercase, drop-empty, dedupe (valid input)
+- genre entry > 40 chars after trim -> rejected
+- `includeGenres` / `excludeGenres` array > 6 entries -> rejected
+- `decades`: non-multiple-of-10 / out-of-range / non-integer entry -> **rejected**
+  (not dropped); a valid `1990` is kept
+- `minRating` outside 1..5 -> **rejected** (not nulled)
+- `recentDays` outside 1..365 -> **rejected** (a valid `null` falls back to 30)
+- `preference` / `energy` not in enum -> **rejected** (not defaulted)
+- `mood` > 120 chars after trim -> rejected; empty-after-trim `mood` -> `null`
+- `requestedCount` outside 1..3 or missing -> **rejected** (not clamped/defaulted)
+- non-boolean `favoritesOnly` / `neverPlayedOnly` / `avoidRecentlyPlayed` -> rejected
+- conflict rule: same normalized genre in include + exclude -> removed from include
+- intent system prompt instructs "emit `requestedCount = 3` when the user does
+  not state a number" (assert the prompt text contains this instruction)
+- intent provider timeout / 429 / non-OK / malformed / schema-invalid -> mapped
+  error + one failed `curator_intent` telemetry row, no selection call
 
 ### Candidate engine (`src/lib/curator/candidates`, pure)
 - only owned items considered (input is already the owned set)
@@ -688,18 +783,30 @@ No real OpenRouter calls. Injected/mocked provider + Supabase, like
 - `avoidRecentlyPlayed` with default 30 and explicit `recentDays`; boundary case counts as recent
 - `preference` scoring: favorites / highly_rated / rediscovery / surprise / none each produce the documented ordering
 - `surprise` is deterministic (same input -> same order) - no `Math.random`
-- tie-break: equal score -> `added_at` desc then id asc
+- **tie-break: equal score -> `added_at` desc then id asc; a test constructs two
+  survivors with equal score and different `added_at` and asserts the loaded
+  `added_at` decides the order**
 - `MAX_CANDIDATES = 12` cap; fewer -> fewer
 - 0 survivors -> empty candidate list
 - fact derivation: `playCount`, `lastListenedAt` (max), `neverPlayed`, `decade` from raw events
 
 ### Privacy (function + payload builder)
 - the call-#2 payload contains no `notes`, no `user_id` / auth id, no
-  `release_id` / provider ids, no ISO timestamp, no env value
+  `release_id` / provider ids, no **`added_at`**, no ISO timestamp, no env value
+- `notes` is never selected by the curator collection query
 - candidate facts serialized as a JSON array (data), not concatenated into the
   instruction string
 - error/`console` output contains no request text, prompt, candidate payload, or
   secret
+
+### OpenRouter request body (both calls, `openrouterCurator` unit tests, fake fetch)
+- `provider.require_parameters === true` on the intent request
+- `provider.require_parameters === true` on the selection request
+- `temperature === 0`, bounded `max_tokens`, `response_format.type === 'json_schema'`
+- the resolved `OPENROUTER_CURATOR_INTENT_MODEL` is sent on call #1;
+  `OPENROUTER_CURATOR_SELECTION_MODEL` on call #2; defaults are
+  `google/gemini-3.1-flash-lite` and `google/gemini-3.5-flash`
+- the request body contains no `added_at`, no `notes`, no auth id, no secret
 
 ### Selection (`src/lib/curator/selectionSchema` + function)
 - normal valid result -> cards built from server facts + model reason
@@ -715,9 +822,13 @@ No real OpenRouter calls. Injected/mocked provider + Supabase, like
 - selection provider timeout / 429 / non-OK -> mapped error + success intent row + failed selection row
 
 ### Telemetry
-- normal success -> exactly one `curator_intent` + one `curator_selection`, both `success = true`, with `model` / token / cost / latency fields
+- normal success -> exactly one `curator_intent` + one `curator_selection`, both `success = true`, with token / cost / latency fields
+- the `curator_intent` row's `model` = the resolved intent model
+  (`google/gemini-3.1-flash-lite` by default); the `curator_selection` row's
+  `model` = the resolved selection model (`google/gemini-3.5-flash` by default);
+  a non-default env value flows through to the row
 - intent failure -> exactly one failed `curator_intent`, no `curator_selection`
-- selection failure -> success `curator_intent` + failed `curator_selection`
+- selection failure (provider error OR validation reject) -> success `curator_intent` + failed `curator_selection`
 - telemetry insert throwing does not change the user-facing response or its `status`
 
 ### UI (`CuratorPanel`, RTL)
@@ -729,7 +840,7 @@ No real OpenRouter calls. Injected/mocked provider + Supabase, like
 - retryable model error renders and leaves Recommend enabled
 - no conversation UI, no transcript, no follow-up input
 - a recommendation for an id not in the response never renders (list maps the response only)
-- (if the draft is included) sessionStorage draft persists + restores, never auto-submits
+- no `sessionStorage` key is written by the curator panel (grep-style assertion / no draft module exists)
 
 ### Database (pgTAP, `model_calls_rls.test.sql` updated + focused additions)
 - `cover_vision` still allowed
@@ -797,8 +908,9 @@ meaningful MEDIUM; defer LOW/NOTE under deadline mode; stop at 0 BLOCKER /
    `curator_intent` + one `curator_selection` telemetry row.
 8. Rate limit: the 11th request in 10 minutes is rejected with 0 provider calls;
    a failed rate-check fails closed.
-9. Personal notes, auth user id, provider ids, and secrets never appear in a
-   model payload or a log line (automated privacy tests).
+9. Personal notes, auth user id, provider ids, `added_at`, and secrets never
+   appear in a model payload or a log line (automated privacy tests).
+   `provider.require_parameters === true` on both OpenRouter calls.
 10. `service_role` is not used to read `collection_items` / `listening_events` /
     `profiles`; its only `model_calls` privilege is INSERT.
 11. `npm run typecheck`, `npm run lint`, `npm run test:run`, `npm run build`,
@@ -816,24 +928,23 @@ meaningful MEDIUM; defer LOW/NOTE under deadline mode; stop at 0 BLOCKER /
 - Evidence recorded in `docs/verification.md` distinguishing agent-run
   automated / agent-observed local / human-observed browser / repository-static.
 
-## 27. Open Questions For Human
+## 27. Open Questions - RESOLVED 2026-08-31
 
-1. **Call #2 model default.** Recommendation: `google/gemini-3.1-flash-lite`
-   for **both** calls (cheapest, structured output, proven in Milestone 5),
-   with `OPENROUTER_CURATOR_MODEL` as a manual override to
-   `google/gemini-3.5-flash` if human runtime shows weak explanations. Approve
-   same-model default, or set Flash 3.5 as the call-#2 default now?
-2. **ADR 0004** (`docs/decisions/0004-openrouter-curator-text-models.md`, drafted
-   with this milestone, status "proposed") needs approval alongside this spec.
-3. **Request-text `sessionStorage` draft** in the curator UI - include for
-   parity with Milestone 5/6 (recommended), or omit to keep scope minimal?
-4. **Fixture + human prompts** (§23) - acceptable as written?
+1. **Models per stage** - RESOLVED: separate models. Call #1
+   `google/gemini-3.1-flash-lite` (env `OPENROUTER_CURATOR_INTENT_MODEL`); call
+   #2 `google/gemini-3.5-flash` (env `OPENROUTER_CURATOR_SELECTION_MODEL`). No
+   single `OPENROUTER_CURATOR_MODEL`. (Approved Correction 4.)
+2. **ADR 0004** - ACCEPTED.
+3. **Request-text `sessionStorage` draft** - RESOLVED: **not implemented**.
+   Milestone 9 is single-turn; the request lives in component state only.
+   (Approved Correction 6.)
+4. **Fixture + human prompts** (§23) - APPROVED as written. Not seeded / not run
+   this turn.
 
-All other design points in this spec are concrete recommendations, not open
-questions.
+No open questions remain.
 
 ---
 
-> This specification is PLANNED. Do not begin Milestone 9 implementation until it
-> and `docs/plans/010-milestone-9-ai-curator.md` are explicitly approved by the
-> human.
+> This specification is APPROVED (2026-08-31) with the corrections above.
+> Implementation follows `docs/plans/010-milestone-9-ai-curator.md`. No PR is
+> opened until after independent inspection and human runtime.

@@ -1,8 +1,29 @@
 # 010 Milestone 9 AI Curator Implementation Plan
 
-Status: PLANNED - awaiting human approval. No implementation, migration, test,
-provider call, or PR until this plan and `docs/specs/0010-milestone-9-ai-curator.md`
-are explicitly approved.
+Status: APPROVED 2026-08-31 with mandatory corrections (see the spec's "Approved
+Corrections" block). Implementation may begin. **No PR until after independent
+inspection and human runtime.** Deadline mode: fix BLOCKER + meaningful MEDIUM,
+do not loop on LOW/NOTE.
+
+Applied corrections vs the draft plan:
+
+- **Separate models per stage**: call #1 `google/gemini-3.1-flash-lite` env
+  `OPENROUTER_CURATOR_INTENT_MODEL`; call #2 `google/gemini-3.5-flash` env
+  `OPENROUTER_CURATOR_SELECTION_MODEL`. No single `OPENROUTER_CURATOR_MODEL`.
+- **`.env.example`** documents both new env-var names + default examples.
+- **`added_at`** is selected by the curator collection query (server-only
+  tie-break data), never sent to a model.
+- **`provider: { require_parameters: true }`** on both OpenRouter calls.
+- **Strict intent validation**: schema-invalid model output is rejected as
+  `provider_bad_response`, never normalized to null/default/clamp (benign
+  normalization = trim / lowercase genres / dedupe / exclusion-dominates only).
+- **No `curatorRequestDraft.ts`** - removed from the change set. Request stays in
+  React component state.
+- **`CuratorPanel` placement**: after `ProfilePanel`, before `CatalogPanel`,
+  before `CollectionPanel`.
+- **Sequencing**: implementation -> automated verification -> ONE `/ultrareview`
+  -> fix BLOCKER/MEDIUM -> 0/0 -> commit + push -> STOP for independent
+  inspection. No PR in the implementation turn.
 
 Milestone: 9 - AI Curator (single-turn)
 
@@ -155,23 +176,27 @@ Checked:
   not a universal guarantee -> the backend validators in §8/§15 of the spec are
   the real contract.
 
-### Model recommendation
+### Model configuration (Approved Correction 4 - separate models per stage)
 
-| Use | Model | Why |
+| Use | Default model | Env var |
 | --- | --- | --- |
-| Call #1 - intent extraction | `google/gemini-3.1-flash-lite` | cheapest GA model with `response_format` json_schema; deterministic at `temperature: 0`; narrow classification task; already integrated |
-| Call #2 - selection + explanation | `google/gemini-3.1-flash-lite` (default) | task is "pick <=3 of <=12 supplied ids and write one short grounded sentence each" - well within Flash-Lite; keeps cost ~$0.001/request. Manual override `OPENROUTER_CURATOR_MODEL=google/gemini-3.5-flash` documented if human runtime shows weak explanations (identical request/response contract, ~$0.0045/request). |
+| Call #1 - intent extraction | `google/gemini-3.1-flash-lite` | `OPENROUTER_CURATOR_INTENT_MODEL` |
+| Call #2 - selection + explanation | `google/gemini-3.5-flash` | `OPENROUTER_CURATOR_SELECTION_MODEL` |
 
-Same model for both is the recommended simplicity/cost trade-off. One env seam
-(`OPENROUTER_CURATOR_MODEL`, default `google/gemini-3.1-flash-lite`).
+Call #1 is cheap structured classification; call #2 is the core user-facing
+cognitive task and gets the stronger model - the extra demo cost is negligible.
+There is **no** single `OPENROUTER_CURATOR_MODEL` seam. `model_calls` records the
+actual model resolved for each stage. Both calls also send
+`provider: { require_parameters: true }`.
 
-Estimated cost of one normal successful curator request: **~$0.001**
-(one-tenth of one cent) with the default model; ~$0.0045 with the Flash-3.5
-override on call #2. `no_match`: ~$0.0004. Empty collection: $0. Well under the
-<= $5/run budget and the "cents per request" target.
+Estimated cost of one normal successful curator request: **~$0.0044**
+(flash-lite intent + flash-3.5 selection); ~$0.001 if both are set to flash-lite;
+~$0.0045 with the Flash-3.5
+`no_match`: ~$0.0004. Empty collection: $0. Well under the <= $5/run budget and
+the "cents per request" target. ~$0.04 for the 10-request per-user window.
 
 This is captured as `docs/decisions/0004-openrouter-curator-text-models.md`
-(status: proposed).
+(status: ACCEPTED 2026-08-31).
 
 ## 3. Database Change
 
@@ -342,17 +367,15 @@ mode) - decide during implementation, note it in the PR.
   `year · decade`, genres, `reason`, factual line (rating stars, "★ Favorite",
   "Never played" / "Last listened N days ago" / "Played N×"), "Best match"
   badge when `isBestMatch`.
-- `src/curator/curatorRequestDraft.ts` (+ `.test.ts`) - **if approved**
-  (spec §27 Q3). Same shape as `catalogSearchDraft.ts`; key
-  `vinyl-intelligence:curator-request:v1:<userId>`; `readDraft` / `writeDraft` /
-  `clearDraft`; restore is UI-only, never auto-submits; cleared on a successful
-  `ok` response (keep on error / no_match so the user can edit).
+- **No `curatorRequestDraft.ts`** (Approved Correction 6). The request string is
+  React component state only; no `sessionStorage`, no persisted draft. M10 owns
+  bounded conversational state.
 - `src/App.tsx` - add
-  `<CuratorPanel key={`curator-${user.id}`} client={client} userId={user.id} />`
-  in `AuthenticatedShell` after `CollectionPanel` (or before - human's call;
-  default: after Catalog, before Collection, since "what should I play" is a
-  primary action). Default: **after `CollectionPanel`** to avoid pushing the
-  collection down; revisit in the visual-polish milestone.
+  `<CuratorPanel key={`curator-${user.id}`} client={client} />` in
+  `AuthenticatedShell` **after `ProfilePanel`, before `CatalogPanel`, before
+  `CollectionPanel`** (Approved Correction 7 - the curator is the core M9
+  experience and must be visible without scrolling). `userId` prop is not needed
+  (no per-user draft).
 - `src/styles.css` - `.curator-panel`, `.curator-recommendation`,
   `.curator-best-match`, small rules; theme-aware tokens consistent with
   existing panels.
@@ -373,7 +396,6 @@ New test files:
 - `netlify/functions/curator-functions.test.ts` (`@vitest-environment node`;
   injected deps; the full auth/input/zero-cost/telemetry/failure matrix)
 - `src/curator/CuratorPanel.test.tsx` (RTL)
-- `src/curator/curatorRequestDraft.test.ts` (if approved)
 
 Updated test files:
 
@@ -392,14 +414,17 @@ No real OpenRouter or MusicBrainz call in any automated test.
 
 Create:
 
-- `docs/specs/0010-milestone-9-ai-curator.md` (done - this planning turn).
+- `docs/specs/0010-milestone-9-ai-curator.md` (done).
 - `docs/plans/010-milestone-9-ai-curator.md` (this file).
-- `docs/decisions/0004-openrouter-curator-text-models.md` - status **proposed**;
-  records the §2 research, the model choice, pricing, the `OPENROUTER_CURATOR_MODEL`
-  seam, the ~$0.001/request estimate, and alternatives considered. Needs human
-  approval with this milestone.
+- `docs/decisions/0004-openrouter-curator-text-models.md` - ACCEPTED; records the
+  §2 research, the per-stage model choice, the two env vars, pricing, the
+  ~$0.0044/request estimate, and alternatives.
 
 Update (light, current-status / decision-resolution only):
+
+- `.env.example` - add `OPENROUTER_CURATOR_INTENT_MODEL=google/gemini-3.1-flash-lite`
+  and `OPENROUTER_CURATOR_SELECTION_MODEL=google/gemini-3.5-flash` (names +
+  default examples only; `OPENROUTER_API_KEY` already documented).
 
 - `README.md` - Project Status: Milestone 9 in planning on
   `claude/milestone-9-ai-curator`; add a one-line "Planned" entry. No feature is
@@ -446,20 +471,25 @@ src/lib/curator/client.test.ts
 src/curator/CuratorPanel.tsx
 src/curator/CuratorPanel.test.tsx
 src/curator/CuratorRecommendationCard.tsx
-docs/decisions/0004-openrouter-curator-text-models.md
-(+ src/curator/curatorRequestDraft.ts (+ .test.ts) if approved)
+docs/decisions/0004-openrouter-curator-text-models.md   (edit: status ACCEPTED, separate models)
 ```
 
-MODIFIED (~9):
+(No `curatorRequestDraft.ts` - Approved Correction 6.)
+
+MODIFIED (~11):
 
 ```
 src/App.tsx
 src/styles.css
+.env.example                                         (two new curator model env names)
 netlify/functions/_shared/recognition-handlers.mts   (generalize the two shared helpers)
 supabase/tests/database/model_calls_rls.test.sql
 README.md
 docs/specs/README.md
+docs/specs/0010-milestone-9-ai-curator.md            (status APPROVED)
+docs/plans/010-milestone-9-ai-curator.md            (status APPROVED)
 docs/decisions/README.md
+docs/decisions/0004-openrouter-curator-text-models.md (status ACCEPTED)
 docs/ai-design.md
 docs/security.md
 docs/data-model.md
@@ -488,46 +518,53 @@ raised in the PR with justification - not added by reflex.
   Milestone 10.
 - **`model_calls` retention**: unchanged / still open; not touched here.
 
-## 11. Sequenced Implementation Steps (after approval)
+## 11. Sequenced Implementation Steps
 
-1. Migration + `model_calls_rls.test.sql` update; `supabase db reset` +
+1. Approval/docs commit (spec + plan + ADR status flips; `.env.example`;
+   README / index docs).
+2. Migration + `model_calls_rls.test.sql` update; `supabase db reset` +
    `supabase test db` green.
-2. `src/lib/curator/types.ts` + `intentSchema.ts` + tests.
-3. `src/lib/curator/candidates.ts` + tests (pure; heaviest logic).
-4. `src/lib/curator/selectionSchema.ts` + tests.
-5. `src/lib/curator/openrouterCurator.ts` + tests (fake fetch).
-6. Generalize the Milestone 5 shared helpers; keep recognition tests green.
-7. `netlify/functions/_shared/curator-handlers.mts` + `curator-recommend.mts` +
+3. `src/lib/curator/types.ts` + `intentSchema.ts` + tests (strict reject rules).
+4. `src/lib/curator/candidates.ts` + tests (pure; heaviest logic; `added_at`
+   tie-break test).
+5. `src/lib/curator/selectionSchema.ts` + tests.
+6. `src/lib/curator/openrouterCurator.ts` + tests (fake fetch;
+   `provider.require_parameters`, per-stage model, no `added_at`/`notes`/secret
+   in body).
+7. Generalize the Milestone 5 shared helpers (`countRecentModelCallsWithUserToken`,
+   the `feature`/`model`-parameterized recorder); keep recognition tests green.
+8. `netlify/functions/_shared/curator-handlers.mts` + `curator-recommend.mts` +
    `curator-functions.test.ts` (full matrix).
-8. `src/lib/curator/client.ts` + tests.
-9. `src/curator/CuratorPanel.tsx` + `CuratorRecommendationCard.tsx`
-   (+ `curatorRequestDraft.ts` if approved) + tests; wire into `src/App.tsx`;
-   `src/styles.css`.
-10. Doc updates (§7); ADR 0004.
-11. Full local verification: `git diff --check`, `npm run typecheck`,
+9. `src/lib/curator/client.ts` + tests.
+10. `src/curator/CuratorPanel.tsx` + `CuratorRecommendationCard.tsx` + tests;
+    wire into `src/App.tsx` (after `ProfilePanel`, before `CatalogPanel`);
+    `src/styles.css`.
+11. Remaining doc updates (§7): `docs/ai-design.md`, `docs/security.md`,
+    `docs/data-model.md` alignment.
+12. Full local verification: `git diff --check`, `npm run typecheck`,
     `npm run lint`, `npm run test:run`, `npm run build`, `npx supabase db reset`,
     `npx supabase test db`, `npx supabase db lint`, `npm audit --omit=dev`.
-12. One `/ultrareview` (spec §24). Fix BLOCKER + meaningful MEDIUM only. Stop at
-    0/0.
-13. Commit(s); push; open PR. **Stop before human runtime.**
-14. Human runtime prep (fixture §23) and the 5 human tests - separate turns,
-    on explicit instruction, one prompt at a time, with real OpenRouter calls.
+13. One `/ultrareview` (spec §24). Fix BLOCKER + meaningful MEDIUM only. Stop at
+    0 BLOCKER / 0 MEDIUM.
+14. Small coherent implementation commits; push `claude/milestone-9-ai-curator`.
+    **STOP. No PR.** Wait for independent inspection.
+15. (later, separate turns) Human runtime prep (fixture §23) and the 5 human
+    tests, one prompt at a time, with real OpenRouter calls; evidence gate; PR;
+    human merge.
 
-## 12. Human Decisions Required
+## 12. Human Decisions - RESOLVED 2026-08-31
 
-1. Call #2 model default (spec §27 Q1) - recommendation: same model
-   (`google/gemini-3.1-flash-lite`) for both, `OPENROUTER_CURATOR_MODEL`
-   override to Flash 3.5 available.
-2. Approve `docs/decisions/0004-openrouter-curator-text-models.md` (proposed).
-3. Curator request `sessionStorage` draft - include (recommended) or omit.
-4. Panel placement in `AuthenticatedShell` - recommendation: after
-   `CollectionPanel`.
-5. Fixture + 5 human prompts (spec §23) - acceptable as written?
-
-No other blocking ambiguity. Everything else in the spec is a concrete
-recommendation ready to implement on approval.
+1. Models per stage: **separate** - call #1 `google/gemini-3.1-flash-lite`
+   (`OPENROUTER_CURATOR_INTENT_MODEL`), call #2 `google/gemini-3.5-flash`
+   (`OPENROUTER_CURATOR_SELECTION_MODEL`).
+2. `docs/decisions/0004-openrouter-curator-text-models.md`: **ACCEPTED**.
+3. Curator `sessionStorage` draft: **not implemented**.
+4. Panel placement: **after `ProfilePanel`, before `CatalogPanel`, before
+   `CollectionPanel`**.
+5. Fixture + 5 human prompts (spec §23): **APPROVED** as written.
 
 ---
 
-> This plan is PLANNED. Do not begin Milestone 9 implementation until it and the
-> specification are explicitly approved by the human.
+> This plan is APPROVED (2026-08-31) with the corrections in the spec's
+> "Approved Corrections" block. Implementation follows the sequence above; no PR
+> until after independent inspection and human runtime.

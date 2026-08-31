@@ -40,10 +40,11 @@ derived listening count / last-listened, and a reverse-chronological history) is
 verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
 verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
 merged to `main`. Milestone 9 (AI Curator - single-turn natural-language
-recommendations drawn only from owned records) is in **planning**: its
-specification (`docs/specs/0010-milestone-9-ai-curator.md`) and implementation
-plan (`docs/plans/010-milestone-9-ai-curator.md`) are drafted and awaiting human
-approval on `claude/milestone-9-ai-curator`; no Milestone 9 code exists.
+recommendations drawn only from owned records) is **approved and in
+implementation** on `claude/milestone-9-ai-curator`
+(`docs/specs/0010-milestone-9-ai-curator.md`,
+`docs/plans/010-milestone-9-ai-curator.md`, ADR
+`docs/decisions/0004-openrouter-curator-text-models.md`); it is not merged.
 Hosted/production verification and production deployment have not occurred and
 remain later milestones; no hosted Supabase migration has been applied.
 
@@ -113,8 +114,8 @@ Implemented:
 
 Planned:
 
-- AI curator / recommendation workflow (Milestone 9, specification + plan drafted,
-  awaiting human approval)
+- AI curator / recommendation workflow (Milestone 9, approved; implementation in
+  progress on `claude/milestone-9-ai-curator`)
 - Conversational refinement (Milestone 10)
 - Production deployment (Milestone 11)
 

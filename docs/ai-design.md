@@ -120,10 +120,13 @@ Do not use uncontrolled long-term memory.
 - Cover-image clue extraction (Milestone 5): `google/gemini-3.1-flash-lite` via
   OpenRouter, with `google/gemini-3.5-flash` as a documented manual alternative
   (`docs/decisions/0003-openrouter-vision-provider.md`).
-- Curator intent extraction and selection/explanation (Milestone 9): both calls
-  default to `google/gemini-3.1-flash-lite` via OpenRouter (`temperature: 0`,
-  strict `response_format` json_schema), with `google/gemini-3.5-flash`
-  available as a manual override for call 2
-  (`docs/decisions/0004-openrouter-curator-text-models.md`). Exactly two provider
-  calls per successful curator request; one for a no-match; zero for an empty
-  collection. Estimated ~$0.001 per successful request.
+- Curator intent extraction (Milestone 9, call 1): `google/gemini-3.1-flash-lite`
+  via OpenRouter, env `OPENROUTER_CURATOR_INTENT_MODEL`.
+- Curator selection + explanation (Milestone 9, call 2): `google/gemini-3.5-flash`
+  via OpenRouter, env `OPENROUTER_CURATOR_SELECTION_MODEL`
+  (`docs/decisions/0004-openrouter-curator-text-models.md`).
+- Both curator calls: `temperature: 0`, strict `response_format` json_schema,
+  bounded `max_tokens`, `provider: { require_parameters: true }`. Exactly two
+  provider calls per successful curator request; one for a no-match; zero for an
+  empty collection. Estimated ~$0.0044 per successful request. `model_calls`
+  records the actual model per stage.
