@@ -44,15 +44,81 @@ select {
 .profile-panel,
 .status-panel,
 .catalog-panel,
-.collection-panel {
+.collection-panel,
+.curator-panel {
   display: grid;
   gap: 1rem;
   max-width: 34rem;
 }
 
 .catalog-panel,
-.collection-panel {
+.collection-panel,
+.curator-panel {
   max-width: 58rem;
+}
+
+.curator-request {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.curator-request textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.curator-state {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+}
+
+.curator-constraints {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.9rem;
+}
+
+.curator-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.curator-recommendation {
+  display: grid;
+  gap: 0.3rem;
+  padding: 1rem;
+  border: 1px solid #e4ddd2;
+  border-radius: 0.5rem;
+}
+
+.curator-recommendation h3 {
+  margin: 0;
+}
+
+.curator-best-match {
+  margin: 0;
+  align-self: start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #2f6f4f;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.curator-reason {
+  margin: 0.3rem 0 0;
+}
+
+.curator-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
 }
 
 .eyebrow {

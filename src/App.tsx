@@ -4,6 +4,7 @@ import { AuthForm } from './auth/AuthForm.tsx'
 import { useAuth } from './auth/useAuth.ts'
 import { CatalogPanel } from './catalog/CatalogPanel.tsx'
 import { CollectionPanel } from './collection/CollectionPanel.tsx'
+import { CuratorPanel } from './curator/CuratorPanel.tsx'
 import type { BrowserSupabaseClient } from './lib/supabase/client.ts'
 import { ProfilePanel } from './profile/ProfilePanel.tsx'
 
@@ -110,6 +111,7 @@ function AuthenticatedShell() {
         />
         {client && user ? (
           <>
+            <CuratorPanel key={`curator-${user.id}`} client={client} />
             <CatalogPanel
               key={`catalog-${user.id}`}
               client={client}

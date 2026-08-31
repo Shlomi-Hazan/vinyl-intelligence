@@ -223,7 +223,10 @@ Important fields:
 
 - `id uuid primary key`
 - `user_id uuid references profiles(id)`
-- `feature text not null` values such as `curator_intent`, `curator_explanation`, `cover_vision`
+- `feature text not null`. As implemented: Milestone 5 allowed only
+  `cover_vision`; Milestone 9 widens the allow-list to `cover_vision`,
+  `curator_intent`, `curator_selection` via a forward migration. (The earlier
+  sketch name `curator_explanation` is not used - it is `curator_selection`.)
 - `provider text not null`
 - `model text not null`
 - `request_kind text not null`

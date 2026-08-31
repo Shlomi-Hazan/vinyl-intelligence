@@ -134,13 +134,23 @@ OpenRouter current documentation findings:
 - Image inputs are sent through chat completions to vision-capable models using an `image_url` content part.
 - Images can be provided as public URLs or base64 data URLs; supported formats include PNG, JPEG, WebP, and GIF.
 
-Open questions:
+Resolved (as implemented):
 
-- Which exact model should handle intent extraction?
-- Which exact model should handle recommendation explanation?
-- Which exact model should handle cover-image analysis?
-- Whether one provider/model can satisfy both structured output and vision requirements reliably.
-- Current pricing and latency under demo conditions.
+- Cover-image analysis: `google/gemini-3.1-flash-lite`
+  (`docs/decisions/0003-openrouter-vision-provider.md`, Milestone 5).
+- Curator intent extraction: `google/gemini-3.1-flash-lite`; curator
+  selection + explanation: `google/gemini-3.5-flash` with
+  `reasoning: { effort: "minimal" }` and `max_tokens = 1200`
+  (`docs/decisions/0004-openrouter-curator-text-models.md`, Milestone 9). Both
+  curator calls: `temperature: 0`, strict `response_format` json_schema,
+  `provider: { require_parameters: true }`. Measured demo cost ~$0.006-0.007 per
+  successful curator request (Milestone 9 human runtime; see
+  `docs/verification.md`).
+
+Still open:
+
+- Whether one provider/model can satisfy both structured output and vision
+  requirements reliably (not needed - separate models per use).
 
 Sources:
 
