@@ -1,9 +1,16 @@
 # 011 Milestone 10 Conversational Refinement Implementation Plan
 
-Status: APPROVED 2026-09-01 with mandatory corrections (see the spec's "Approved
-Corrections" block). Implementation may begin. **No PR until after the focused
-review, independent inspection, and human runtime.** Deadline mode: fix BLOCKER
-+ meaningful MEDIUM, no LOW/NOTE loop.
+Status: EXECUTED 2026-08-31. Implemented on
+`74490282b504d445753308434380747c23d7a72c` (planning HEAD
+`19dd75c7951d84231454d9dedd64d0723025da81`, approval
+`bb93bb7b7559c5c1170392647b3c95b87c06e53f`). Automated verification passed;
+focused self-review 0/0 (1 NOTE fixed in `cf3b0c1`); independent GitHub review
+found 1 MEDIUM (`no_match` did not advance `latestIntent`) fixed in `74490282`;
+final gate 0 BLOCKER / 0 MEDIUM; human runtime **PASS 4/4**. No migration, no
+new dependency, no `/ultrareview`. PR open, **not merged**. See
+`docs/verification.md` "Milestone 10 Evidence". (Approved 2026-09-01 with the
+mandatory corrections in the spec's "Approved Corrections" block; deadline mode:
+fix BLOCKER + meaningful MEDIUM, no LOW/NOTE loop.)
 
 Applied corrections vs the draft plan:
 

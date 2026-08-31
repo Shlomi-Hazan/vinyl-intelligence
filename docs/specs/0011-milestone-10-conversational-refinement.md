@@ -1,7 +1,16 @@
 # 0011 Milestone 10 Conversational Refinement Specification
 
-Status: APPROVED 2026-09-01, with mandatory corrections applied (see "Approved
-Corrections" below). Implementation may begin. `docs/plans/011-…` APPROVED.
+Status: IMPLEMENTED AND VERIFIED 2026-08-31 on
+`74490282b504d445753308434380747c23d7a72c` (approved 2026-09-01 with the
+mandatory corrections below). Local automated verification passed (30 Vitest
+files / 399 tests, 8 pgTAP files / 374 tests, typecheck, lint, build, db
+lint, `npm audit`). Focused self-review 0 BLOCKER / 0 MEDIUM (1 NOTE fixed);
+independent GitHub review found 1 MEDIUM (a `no_match` refinement did not
+advance `latestIntent`), fixed in `74490282` with a regression test; final gate
+0 BLOCKER / 0 MEDIUM. Human runtime **PASS 4/4** (`docs/verification.md`
+"Milestone 10 Evidence"). No migration. No `/ultrareview`. PR open, **not
+merged**; not deployed; no hosted Supabase verification. `docs/plans/011-…`
+APPROVED.
 
 Milestone: 10 - Conversational Refinement (bounded follow-up over the Milestone 9
 curator)

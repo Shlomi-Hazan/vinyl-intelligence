@@ -28,7 +28,7 @@ Existing specs/spikes:
 - [0008 Milestone 7 Ratings / Favorites / Notes](0008-milestone-7-ratings-favorites-notes.md) - implemented and verified (merged)
 - [0009 Milestone 8 Listening History](0009-milestone-8-listening-history.md) - implemented and verified (merged in PR #8)
 - [0010 Milestone 9 AI Curator](0010-milestone-9-ai-curator.md) - implemented and verified (human runtime PASS 5/5); merged in PR #10
-- [0011 Milestone 10 Conversational Refinement](0011-milestone-10-conversational-refinement.md) - planned, awaiting human approval
+- [0011 Milestone 10 Conversational Refinement](0011-milestone-10-conversational-refinement.md) - implemented and verified (human runtime PASS 4/4 on `74490282`); PR open, not merged
 
 Likely milestone specs:
 
