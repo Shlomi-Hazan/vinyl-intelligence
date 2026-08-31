@@ -4,6 +4,7 @@ import {
   recordModelCallWithServiceRole,
 } from './model-calls.mts'
 import {
+  applyPreviousExclusion,
   buildAllowedCandidateSet,
   deriveCandidateFacts,
   applyHardFilters,
@@ -11,21 +12,28 @@ import {
 } from '../../../src/lib/curator/candidates.ts'
 import {
   extractIntent as extractIntentImpl,
+  extractRefinement as extractRefinementImpl,
   selectRecommendations as selectRecommendationsImpl,
 } from '../../../src/lib/curator/openrouterCurator.ts'
+import { normalizeCuratorIntent } from '../../../src/lib/curator/intentSchema.ts'
 import {
   CURATOR_INTENT_FEATURE,
   CURATOR_SELECTION_FEATURE,
   CuratorError,
   DEFAULT_CURATOR_INTENT_MODEL,
   DEFAULT_CURATOR_SELECTION_MODEL,
+  MAX_PREVIOUS_RECOMMENDATION_IDS,
+  MAX_RECOMMENDATION_ID_LENGTH,
   MAX_REQUEST_LENGTH,
   OPENROUTER_PROVIDER,
   RATE_LIMIT_MAX,
   RATE_LIMIT_WINDOW_MINUTES,
   type CuratorCollectionItem,
   type CuratorErrorCode,
+  type CuratorIntent,
   type CuratorListeningEvent,
+  type CuratorRefineResult,
+  type CuratorRefinementContext,
   type CuratorResult,
   type CuratorUsage,
 } from '../../../src/lib/curator/types.ts'
@@ -48,6 +56,7 @@ type TelemetryRecord = {
 export type CuratorFunctionDependencies = {
   createClient: SupabaseFactory
   extractIntent: typeof extractIntentImpl
+  extractRefinement: typeof extractRefinementImpl
   selectRecommendations: typeof selectRecommendationsImpl
   recordModelCall: (env: Environment, record: TelemetryRecord) => Promise<void>
   countRecentIntentCalls: (
@@ -57,7 +66,10 @@ export type CuratorFunctionDependencies = {
   now: () => number
 }
 
-type CuratorResponsePayload = CuratorResult | { code: CuratorErrorCode; message: string }
+type CuratorResponsePayload =
+  | CuratorResult
+  | CuratorRefineResult
+  | { code: CuratorErrorCode; message: string }
 
 function jsonResponse(payload: CuratorResponsePayload, status = 200): Response {
   return Response.json(payload, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -143,6 +155,112 @@ async function parseCuratorRequestBody(request: Request): Promise<string> {
     throw new CuratorError('request_too_long', `Keep the request under ${MAX_REQUEST_LENGTH} characters.`)
   }
   return text
+}
+
+function boundedText(value: unknown, field: string): string {
+  if (typeof value !== 'string') {
+    throw new CuratorError('invalid_request', `${field} must be a string.`)
+  }
+  const text = value.trim()
+  if (text.length === 0) {
+    throw new CuratorError('invalid_request', `${field} must not be empty.`)
+  }
+  if (text.length > MAX_REQUEST_LENGTH) {
+    throw new CuratorError('request_too_long', `${field} must be under ${MAX_REQUEST_LENGTH} characters.`)
+  }
+  return text
+}
+
+/**
+ * Strict validation of the untrusted refine request body (spec section 5). All
+ * of `context` is client-supplied and untrusted; `previousIntent` is validated
+ * with the **authoritative** Milestone 9 rules but a failure here is
+ * `invalid_request` (client input, not model output).
+ */
+async function parseCuratorRefineBody(
+  request: Request,
+): Promise<{ request: string; context: CuratorRefinementContext }> {
+  let payload: unknown
+  try {
+    payload = await request.json()
+  } catch {
+    throw new CuratorError('invalid_request', 'Send the refinement as JSON.')
+  }
+
+  if (
+    typeof payload !== 'object'
+    || payload === null
+    || Array.isArray(payload)
+  ) {
+    throw new CuratorError('invalid_request', 'The refinement must be a JSON object.')
+  }
+  const obj = payload as Record<string, unknown>
+  const keys = Object.keys(obj).sort()
+  if (keys.length !== 2 || keys[0] !== 'context' || keys[1] !== 'request') {
+    throw new CuratorError('invalid_request', 'The refinement must contain only "request" and "context".')
+  }
+
+  const followUp = boundedText(obj.request, 'The refinement')
+
+  if (
+    typeof obj.context !== 'object'
+    || obj.context === null
+    || Array.isArray(obj.context)
+  ) {
+    throw new CuratorError('invalid_request', 'The refinement "context" must be an object.')
+  }
+  const ctx = obj.context as Record<string, unknown>
+  const ctxKeys = Object.keys(ctx).sort()
+  if (
+    ctxKeys.length !== 3
+    || ctxKeys[0] !== 'previousIntent'
+    || ctxKeys[1] !== 'previousRecommendationIds'
+    || ctxKeys[2] !== 'previousRequest'
+  ) {
+    throw new CuratorError(
+      'invalid_request',
+      'The refinement "context" must contain only "previousRequest", "previousIntent", and "previousRecommendationIds".',
+    )
+  }
+
+  const previousRequest = boundedText(ctx.previousRequest, 'The previous request')
+
+  const previousIntent: CuratorIntent = normalizeCuratorIntent(
+    ctx.previousIntent,
+    (detail) => {
+      throw new CuratorError('invalid_request', `The previous intent is invalid (${detail}).`)
+    },
+  )
+
+  if (!Array.isArray(ctx.previousRecommendationIds)) {
+    throw new CuratorError('invalid_request', '"previousRecommendationIds" must be an array.')
+  }
+  if (ctx.previousRecommendationIds.length > MAX_PREVIOUS_RECOMMENDATION_IDS) {
+    throw new CuratorError(
+      'invalid_request',
+      `"previousRecommendationIds" may contain at most ${MAX_PREVIOUS_RECOMMENDATION_IDS} entries.`,
+    )
+  }
+  const seen = new Set<string>()
+  const previousRecommendationIds: string[] = []
+  for (const entry of ctx.previousRecommendationIds) {
+    if (typeof entry !== 'string') {
+      throw new CuratorError('invalid_request', '"previousRecommendationIds" must contain only strings.')
+    }
+    const id = entry.trim()
+    if (id.length === 0 || id.length > MAX_RECOMMENDATION_ID_LENGTH) {
+      throw new CuratorError('invalid_request', 'A previous recommendation id is out of bounds.')
+    }
+    if (!seen.has(id)) {
+      seen.add(id)
+      previousRecommendationIds.push(id)
+    }
+  }
+
+  return {
+    request: followUp,
+    context: { previousRequest, previousIntent, previousRecommendationIds },
+  }
 }
 
 async function enforceRateLimit(
@@ -286,6 +404,7 @@ function defaultDependencies(): CuratorFunctionDependencies {
   return {
     createClient,
     extractIntent: extractIntentImpl,
+    extractRefinement: extractRefinementImpl,
     selectRecommendations: selectRecommendationsImpl,
     recordModelCall: defaultRecordModelCall,
     countRecentIntentCalls: (env, { token, userId, windowStartIso }) =>
@@ -312,6 +431,99 @@ function mapThrownError(error: unknown): Response {
   return errorResponse('unknown', 'The curator failed. Please try again.')
 }
 
+type CuratorProviderConfig = {
+  apiKey: string
+  intentModel: string
+  selectionModel: string
+  appUrl?: string
+  appTitle?: string
+}
+
+function providerConfig(env: Environment): CuratorProviderConfig {
+  return {
+    apiKey: requiredEnv(env, 'OPENROUTER_API_KEY'),
+    intentModel: env.OPENROUTER_CURATOR_INTENT_MODEL?.trim() || DEFAULT_CURATOR_INTENT_MODEL,
+    selectionModel:
+      env.OPENROUTER_CURATOR_SELECTION_MODEL?.trim() || DEFAULT_CURATOR_SELECTION_MODEL,
+    appUrl: env.OPENROUTER_APP_URL,
+    appTitle: env.OPENROUTER_APP_TITLE,
+  }
+}
+
+/**
+ * The shared deterministic-middle + selection + validation + telemetry stage,
+ * used by both `handleCuratorRecommend` and `handleCuratorRefine`. Returns a
+ * plain `CuratorResult` (`ok` | `no_match`); the caller shapes the HTTP
+ * response. `userRequest` is the untrusted text passed to LLM call #2 - for a
+ * refinement that is the CURRENT follow-up text only (Decision B).
+ */
+async function runSelectionPipeline(args: {
+  deps: CuratorFunctionDependencies
+  env: Environment
+  userId: string
+  provider: CuratorProviderConfig
+  intent: CuratorIntent
+  userRequest: string
+  items: CuratorCollectionItem[]
+  events: CuratorListeningEvent[]
+  excludeSet: ReadonlySet<string>
+}): Promise<CuratorResult> {
+  const { deps, env, userId, provider, intent, userRequest, items, events, excludeSet } = args
+
+  const now = deps.now()
+  const withFacts = deriveCandidateFacts(items, events)
+  const filtered = applyPreviousExclusion(applyHardFilters(withFacts, intent, now), excludeSet)
+  if (filtered.length === 0) {
+    return { status: 'no_match', interpretedIntent: intent }
+  }
+  const ranked = rankAndCap(filtered, intent, now)
+  const { facts, ids, byId } = buildAllowedCandidateSet(ranked, now)
+
+  const selectionStartedAt = deps.now()
+  let selectionResult: Awaited<ReturnType<typeof selectRecommendationsImpl>>
+  try {
+    selectionResult = await deps.selectRecommendations({
+      request: userRequest,
+      softIntent: { mood: intent.mood, energy: intent.energy, preference: intent.preference },
+      candidateFacts: facts,
+      allowedIds: ids,
+      candidatesById: byId,
+      requestedCount: intent.requestedCount,
+      apiKey: provider.apiKey,
+      model: provider.selectionModel,
+      appUrl: provider.appUrl,
+      appTitle: provider.appTitle,
+    })
+  } catch (error) {
+    await safeRecordModelCall(deps, env, {
+      userId,
+      feature: CURATOR_SELECTION_FEATURE,
+      model: provider.selectionModel,
+      success: false,
+      latencyMs: deps.now() - selectionStartedAt,
+      usage: null,
+      errorCategory: categoryFor(error),
+    })
+    throw error
+  }
+  await safeRecordModelCall(deps, env, {
+    userId,
+    feature: CURATOR_SELECTION_FEATURE,
+    model: selectionResult.model,
+    success: true,
+    latencyMs: deps.now() - selectionStartedAt,
+    usage: selectionResult.usage,
+    errorCategory: null,
+  })
+
+  return {
+    status: 'ok',
+    interpretedIntent: intent,
+    candidateCount: filtered.length,
+    recommendations: selectionResult.recommendations,
+  }
+}
+
 export async function handleCuratorRecommend(
   request: Request,
   env: Environment = process.env,
@@ -327,12 +539,7 @@ export async function handleCuratorRecommend(
       return jsonResponse({ status: 'empty_collection' })
     }
 
-    const apiKey = requiredEnv(env, 'OPENROUTER_API_KEY')
-    const intentModel = env.OPENROUTER_CURATOR_INTENT_MODEL?.trim() || DEFAULT_CURATOR_INTENT_MODEL
-    const selectionModel =
-      env.OPENROUTER_CURATOR_SELECTION_MODEL?.trim() || DEFAULT_CURATOR_SELECTION_MODEL
-    const appUrl = env.OPENROUTER_APP_URL
-    const appTitle = env.OPENROUTER_APP_TITLE
+    const provider = providerConfig(env)
 
     // ---- LLM call #1: intent ------------------------------------------------
     const intentStartedAt = deps.now()
@@ -340,16 +547,16 @@ export async function handleCuratorRecommend(
     try {
       intentResult = await deps.extractIntent({
         request: userRequest,
-        apiKey,
-        model: intentModel,
-        appUrl,
-        appTitle,
+        apiKey: provider.apiKey,
+        model: provider.intentModel,
+        appUrl: provider.appUrl,
+        appTitle: provider.appTitle,
       })
     } catch (error) {
       await safeRecordModelCall(deps, env, {
         userId: context.userId,
         feature: CURATOR_INTENT_FEATURE,
-        model: intentModel,
+        model: provider.intentModel,
         success: false,
         latencyMs: deps.now() - intentStartedAt,
         usage: null,
@@ -367,41 +574,60 @@ export async function handleCuratorRecommend(
       errorCategory: null,
     })
 
-    const intent = intentResult.intent
+    const result = await runSelectionPipeline({
+      deps,
+      env,
+      userId: context.userId,
+      provider,
+      intent: intentResult.intent,
+      userRequest,
+      items,
+      events,
+      excludeSet: new Set(),
+    })
+    return jsonResponse(result)
+  } catch (error) {
+    return mapThrownError(error)
+  }
+}
 
-    // ---- deterministic middle --------------------------------------------
-    const now = deps.now()
-    const withFacts = deriveCandidateFacts(items, events)
-    const filtered = applyHardFilters(withFacts, intent, now)
-    if (filtered.length === 0) {
-      return jsonResponse({ status: 'no_match', interpretedIntent: intent })
+export async function handleCuratorRefine(
+  request: Request,
+  env: Environment = process.env,
+  deps: CuratorFunctionDependencies = defaultDependencies(),
+): Promise<Response> {
+  try {
+    const context = await authenticateRequest(request, env, deps.createClient)
+    const { request: followUp, context: refinementContext } = await parseCuratorRefineBody(request)
+    await enforceRateLimit(deps, env, context)
+
+    const { items, events } = await loadOwnedCollection(env, deps.createClient, context)
+    if (items.length === 0) {
+      return jsonResponse({ status: 'empty_collection' })
     }
-    const ranked = rankAndCap(filtered, intent, now)
-    const { facts, ids, byId } = buildAllowedCandidateSet(ranked, now)
 
-    // ---- LLM call #2: selection -----------------------------------------
-    const selectionStartedAt = deps.now()
-    let selectionResult: Awaited<ReturnType<typeof selectRecommendationsImpl>>
+    const provider = providerConfig(env)
+
+    // ---- LLM call #1: refinement (recorded as curator_intent) --------------
+    const refineStartedAt = deps.now()
+    let refinementResult: Awaited<ReturnType<typeof extractRefinementImpl>>
     try {
-      selectionResult = await deps.selectRecommendations({
-        request: userRequest,
-        softIntent: { mood: intent.mood, energy: intent.energy, preference: intent.preference },
-        candidateFacts: facts,
-        allowedIds: ids,
-        candidatesById: byId,
-        requestedCount: intent.requestedCount,
-        apiKey,
-        model: selectionModel,
-        appUrl,
-        appTitle,
+      refinementResult = await deps.extractRefinement({
+        previousIntent: refinementContext.previousIntent,
+        previousRequest: refinementContext.previousRequest,
+        request: followUp,
+        apiKey: provider.apiKey,
+        model: provider.intentModel,
+        appUrl: provider.appUrl,
+        appTitle: provider.appTitle,
       })
     } catch (error) {
       await safeRecordModelCall(deps, env, {
         userId: context.userId,
-        feature: CURATOR_SELECTION_FEATURE,
-        model: selectionModel,
+        feature: CURATOR_INTENT_FEATURE,
+        model: provider.intentModel,
         success: false,
-        latencyMs: deps.now() - selectionStartedAt,
+        latencyMs: deps.now() - refineStartedAt,
         usage: null,
         errorCategory: categoryFor(error),
       })
@@ -409,20 +635,43 @@ export async function handleCuratorRecommend(
     }
     await safeRecordModelCall(deps, env, {
       userId: context.userId,
-      feature: CURATOR_SELECTION_FEATURE,
-      model: selectionResult.model,
+      feature: CURATOR_INTENT_FEATURE,
+      model: refinementResult.model,
       success: true,
-      latencyMs: deps.now() - selectionStartedAt,
-      usage: selectionResult.usage,
+      latencyMs: deps.now() - refineStartedAt,
+      usage: refinementResult.usage,
       errorCategory: null,
     })
 
-    return jsonResponse({
-      status: 'ok',
-      interpretedIntent: intent,
-      candidateCount: filtered.length,
-      recommendations: selectionResult.recommendations,
+    const { intent: refinedIntent, excludePreviousRecommendations } = refinementResult.refinement
+
+    // Reconcile client-supplied prior IDs against the CURRENT owned set. A
+    // non-owned / stale / tampered id simply never makes the intersection.
+    const ownedIds = new Set(items.map((item) => item.id))
+    const excludeSet: ReadonlySet<string> = excludePreviousRecommendations
+      ? new Set(refinementContext.previousRecommendationIds.filter((id) => ownedIds.has(id)))
+      : new Set()
+
+    const result = await runSelectionPipeline({
+      deps,
+      env,
+      userId: context.userId,
+      provider,
+      intent: refinedIntent,
+      userRequest: followUp, // Decision B: current follow-up only; previousRequest is NOT passed here
+      items,
+      events,
+      excludeSet,
     })
+
+    if (result.status === 'ok') {
+      const refineResult: CuratorRefineResult = {
+        ...result,
+        excludedPreviousRecommendations: excludeSet.size,
+      }
+      return jsonResponse(refineResult)
+    }
+    return jsonResponse(result)
   } catch (error) {
     return mapThrownError(error)
   }
