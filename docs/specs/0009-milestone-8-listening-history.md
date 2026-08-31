@@ -1,6 +1,8 @@
 # 0009 Milestone 8 Listening History Specification
 
-Status: approved and in implementation
+Status: implemented and verified locally (automated verification + focused
+implementation review [0 BLOCKER, 0 MEDIUM] + human runtime PASS); ready for a
+milestone pull request. Not merged. Not deployed; hosted Supabase not verified.
 
 Milestone: 8 - Listening History
 

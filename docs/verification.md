@@ -1931,10 +1931,11 @@ Baseline (Milestone 7 merge on `main`):
 
 Planning commit: `6458ed8` (`docs: plan milestone 8 listening history`).
 
-Status: implemented and verified locally - automated verification (below) and a
-focused implementation review (below). Human runtime verification is **pending**
-(not yet performed). Not merged. Hosted Supabase migration / production
-deployment NOT performed.
+Status: implemented and verified locally - automated verification (below), a
+focused implementation review (0 BLOCKER, 0 MEDIUM after one correction, below),
+and human runtime verification (PASS, 4 focused tests, below). Ready for a
+milestone pull request. **Not merged. Not deployed.** Hosted Supabase migration /
+production deployment NOT performed.
 
 ### Implemented
 
@@ -2048,9 +2049,61 @@ risk, secret hygiene, and no AI / external calls.
 
 ### Human Runtime Evidence
 
-Pending - not yet performed.
+**HUMAN-OBSERVED LOCAL RUNTIME.** The human performed the browser actions
+against the local app (`http://127.0.0.1:5173`) and local Supabase on
+implementation revision `0948c208e3ec10556ac33d6463eead587bc830f4` and reported
+each result. The coding agent prepared the local stack and two deterministic
+owned records for the runtime account and did **not** observe or perform the
+browser actions. Nothing hosted was touched; no OpenRouter or MusicBrainz call
+was made.
+
+Prepared owned records (local, RLS-authoritative path; no MusicBrainz call):
+
+- Record A - **manual** release: Pink Floyd - The Dark Side of the Moon (1973,
+  genre `progressive rock`), `source = manual`, `created_by` = runtime user.
+- Record B - **provider-backed local fixture**: Miles Davis - Kind of Blue
+  (1959, genre `jazz`), `source = catalog`, `provider = musicbrainz`,
+  `provider_release_id = m8-fixture-kind-of-blue-0001` (deterministic fake),
+  `created_by = NULL`. Seeded locally without a real MusicBrainz call.
+- Both started with 0 listening events -> both derived `count = 0`,
+  `lastListenedAt = null` ("Never played").
+
+| # | Human test | Human-observed result |
+| --- | --- | --- |
+| 1 | First-play persistence: confirm Pink Floyd shows "Never played", click "Mark played" once, then refresh | After the click: "Played 1 time" with a "Last listened" value. After refresh: still "Played 1 time", "Last listened" still shown, Miles Davis still "Never played". PASS |
+| 2 | Second play + history ordering: click "Mark played" on Pink Floyd again, open "Listening history", refresh, reopen | After the click: "Played 2 times", "Last listened" updated. History showed exactly two Pink Floyd events, newest above older. After refresh + reopen: still "Played 2 times", both events persisted, newest-first order persisted. PASS |
+| 3 | Provider-backed record: confirm Miles Davis shows "Never played", click "Mark played" once, confirm Pink Floyd unchanged, refresh | After the click: Miles Davis "Played 1 time" with a "Last listened" value; Pink Floyd still "Played 2 times". After refresh: Miles Davis still "Played 1 time", Pink Floyd still "Played 2 times". PASS - the listening-history path works for a provider-backed owned record, and per-item counts are independent. No real MusicBrainz call. |
+| 4 | Final history stability: open "Listening history", refresh, reopen | Exactly 3 events total (2 Pink Floyd, 1 Miles Davis); newest event was Miles Davis, then the two Pink Floyd events newest-first. After refresh + reopen: still exactly 3 events, ordering still newest-first, Miles Davis "Played 1 time", Pink Floyd "Played 2 times", no runtime error. PASS |
+
+**Milestone 8 human runtime: PASS.** All 4 focused tests passed. Human-visible
+behaviour verified: the first listening event persists through refresh; the
+per-item count is derived correctly; last-listened persists; repeated legitimate
+plays create separate events; the history list is newest-first and stays
+correctly ordered through a refresh; both a manual and a provider-backed owned
+record support "Mark played"; per-item counts remain independent; the final
+3-event history is stable.
+
+Cross-user RLS isolation was **not** browser-tested in this human run; it is
+covered by the pgTAP / RLS evidence above (own-row SELECT only; own-item INSERT
+`WITH CHECK`; cross-user insert `42501`; `UPDATE`/`DELETE` `42501`; `anon` no
+access) and by the RLS-authoritative prep check (the secondary user
+`m8-other@example.test` saw zero collection items and zero listening events).
+This human run is not exhaustive concurrency or production verification.
+
+Local disposable runtime fixtures (the two runtime users and their two
+collection items) were removed with a local `npx supabase db reset` after this
+evidence was recorded. Nothing hosted was touched; the cleanup does not
+invalidate the recorded evidence.
+
+### Provider / Hosted Accounting
+
+- M8 implementation: 0 OpenRouter, 0 MusicBrainz, 0 `model_calls`, 0 new
+  external APIs, 0 new dependencies, 0 Netlify Functions.
+- Human-runtime preparation: 0 OpenRouter, 0 MusicBrainz. The provider-backed
+  Miles Davis record was a deterministic local fixture only.
+- Human browser runtime: 0 OpenRouter, 0 MusicBrainz.
 
 ### Production / Hosted Status
 
 Production/hosted verification of Milestone 8 has **not** been performed. No
-production deployment is claimed.
+hosted Supabase migration was applied and no production deployment is claimed.
