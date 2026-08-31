@@ -1,4 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
+import {
+  countRecentModelCallsWithUserToken,
+  recordModelCallWithServiceRole as recordModelCallShared,
+} from './model-calls.mts'
 import { recognizeCoverWithOpenRouter } from '../../../src/lib/vision/openrouter.ts'
 import {
   DEFAULT_VISION_MODEL,
@@ -163,25 +167,14 @@ export async function countRecentRecognitionAttemptsWithUserToken(
   createClientImpl: SupabaseFactory,
   { token, userId, windowStartIso }: RecentRecognitionQuery,
 ): Promise<number> {
-  const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
-  const publishableKey = requiredEnv(env, 'VITE_SUPABASE_PUBLISHABLE_KEY')
-  const userClient = createClientImpl(supabaseUrl, publishableKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
+  return countRecentModelCallsWithUserToken(createClientImpl, {
+    supabaseUrl: requiredEnv(env, 'VITE_SUPABASE_URL'),
+    publishableKey: requiredEnv(env, 'VITE_SUPABASE_PUBLISHABLE_KEY'),
+    token,
+    userId,
+    feature: RECOGNITION_FEATURE,
+    windowStartIso,
   })
-
-  const { count, error } = await userClient
-    .from('model_calls')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .eq('feature', RECOGNITION_FEATURE)
-    .gte('created_at', windowStartIso)
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return count ?? 0
 }
 
 function magicNumberMimeType(bytes: Uint8Array): SupportedImageMimeType | null {
@@ -275,28 +268,25 @@ async function recordModelCallWithServiceRole(
   createClientImpl: SupabaseFactory,
   record: ModelCallRecord,
 ): Promise<void> {
-  const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
-  const serviceRoleKey = requiredEnv(env, 'SUPABASE_SERVICE_ROLE_KEY')
-  const serviceClient = createClientImpl(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-
-  const { error } = await serviceClient.from('model_calls').insert({
-    user_id: record.userId,
-    feature: RECOGNITION_FEATURE,
-    provider: OPENROUTER_PROVIDER,
-    model: record.model,
-    success: record.success,
-    latency_ms: record.latencyMs,
-    prompt_tokens: record.promptTokens,
-    completion_tokens: record.completionTokens,
-    estimated_cost_usd: record.estimatedCostUsd,
-    error_category: record.errorCategory,
-  })
-
-  if (error) {
-    throw new Error(error.message)
-  }
+  await recordModelCallShared(
+    createClientImpl,
+    {
+      supabaseUrl: requiredEnv(env, 'VITE_SUPABASE_URL'),
+      serviceRoleKey: requiredEnv(env, 'SUPABASE_SERVICE_ROLE_KEY'),
+    },
+    {
+      userId: record.userId,
+      feature: RECOGNITION_FEATURE,
+      provider: OPENROUTER_PROVIDER,
+      model: record.model,
+      success: record.success,
+      latencyMs: record.latencyMs,
+      promptTokens: record.promptTokens,
+      completionTokens: record.completionTokens,
+      estimatedCostUsd: record.estimatedCostUsd,
+      errorCategory: record.errorCategory,
+    },
+  )
 }
 
 async function safeRecordModelCall(
