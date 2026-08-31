@@ -121,6 +121,47 @@ select {
   gap: 0.15rem 0.75rem;
 }
 
+.curator-refine {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e4ddd2;
+}
+
+.curator-refine h3 {
+  margin: 0;
+}
+
+.curator-transcript {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+}
+
+.curator-turn-role {
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+
+.curator-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.curator-chip {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.curator-start-over {
+  margin-left: auto;
+}
+
 .eyebrow {
   margin: 0;
   color: #8b3a2f;

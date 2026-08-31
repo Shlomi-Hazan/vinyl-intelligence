@@ -174,16 +174,22 @@ describe('CuratorPanel', () => {
     expect(screen.getByRole('button', { name: 'Recommend' })).toBeEnabled()
   })
 
-  it('has no conversation thread or follow-up input and writes no sessionStorage', async () => {
+  it('shows no follow-up input before a result and writes no browser storage', async () => {
     const user = userEvent.setup()
     mockedRequest.mockResolvedValue(okResult())
 
     render(<CuratorPanel client={client} />)
+    // before submitting there is only the initial request textarea
+    expect(screen.getByLabelText('Your request')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Your follow-up')).not.toBeInTheDocument()
+
     await user.type(screen.getByLabelText('Your request'), '90s rock')
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
     await screen.findAllByRole('article')
 
-    expect(screen.queryByRole('textbox', { name: /follow.?up/i })).not.toBeInTheDocument()
+    // Milestone 10: the refine follow-up input appears only after an ok result
+    expect(screen.getByLabelText('Your follow-up')).toBeInTheDocument()
     expect(sessionStorage.length).toBe(0)
+    expect(localStorage.length).toBe(0)
   })
 })
