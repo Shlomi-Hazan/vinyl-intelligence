@@ -107,12 +107,8 @@ export const INTENT_SYSTEM_PROMPT = [
   'energy: one of low, medium, high, any.',
 ].join('\n')
 
-const reject = (detail: string): never => {
-  throw new CuratorError(
-    'provider_bad_response',
-    `The curator returned an intent in an unexpected shape (${detail}).`,
-  )
-}
+/** Called with a short detail string when the intent violates the contract. */
+export type IntentInvalidHandler = (detail: string) => never
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -122,7 +118,11 @@ function isInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value)
 }
 
-function normalizeGenreList(value: unknown, field: string): string[] {
+function normalizeGenreList(
+  value: unknown,
+  field: string,
+  reject: IntentInvalidHandler,
+): string[] {
   if (!Array.isArray(value)) {
     reject(`${field} is not an array`)
   }
@@ -160,7 +160,7 @@ function normalizeGenreList(value: unknown, field: string): string[] {
   return out
 }
 
-function normalizeDecades(value: unknown): number[] {
+function normalizeDecades(value: unknown, reject: IntentInvalidHandler): number[] {
   if (!Array.isArray(value)) {
     reject('decades is not an array')
   }
@@ -194,7 +194,11 @@ function normalizeDecades(value: unknown): number[] {
   return out
 }
 
-function requireBoolean(value: unknown, field: string): boolean {
+function requireBoolean(
+  value: unknown,
+  field: string,
+  reject: IntentInvalidHandler,
+): boolean {
   if (typeof value !== 'boolean') {
     reject(`${field} is not a boolean`)
   }
@@ -203,11 +207,19 @@ function requireBoolean(value: unknown, field: string): boolean {
 }
 
 /**
- * Strict validation + benign normalization of the untrusted intent model
- * output. Throws `CuratorError('provider_bad_response', …)` on any
- * structured-output-contract violation.
+ * Strict validation + benign normalization of an untrusted `CuratorIntent`.
+ * `onInvalid` is called (and must throw) on any contract violation - so the
+ * same authoritative rules serve both untrusted model output
+ * (`provider_bad_response`) and untrusted client input (`invalid_request`).
+ * Benign normalization only: trim, lowercase genres, drop empties, dedupe, and
+ * "exclusion dominates" for a genre in both include + exclude.
  */
-export function parseCuratorIntent(raw: unknown): CuratorIntent {
+export function normalizeCuratorIntent(
+  raw: unknown,
+  onInvalid: IntentInvalidHandler,
+): CuratorIntent {
+  const reject = onInvalid
+
   if (!isPlainObject(raw)) {
     reject('not an object')
   }
@@ -220,9 +232,9 @@ export function parseCuratorIntent(raw: unknown): CuratorIntent {
     }
   }
 
-  const includeGenresRaw = normalizeGenreList(obj.includeGenres, 'includeGenres')
-  const excludeGenres = normalizeGenreList(obj.excludeGenres, 'excludeGenres')
-  const decades = normalizeDecades(obj.decades)
+  const includeGenresRaw = normalizeGenreList(obj.includeGenres, 'includeGenres', reject)
+  const excludeGenres = normalizeGenreList(obj.excludeGenres, 'excludeGenres', reject)
+  const decades = normalizeDecades(obj.decades, reject)
 
   // minRating
   let minRating: number | null = null
@@ -233,11 +245,12 @@ export function parseCuratorIntent(raw: unknown): CuratorIntent {
     minRating = obj.minRating as number
   }
 
-  const favoritesOnly = requireBoolean(obj.favoritesOnly, 'favoritesOnly')
-  const neverPlayedOnly = requireBoolean(obj.neverPlayedOnly, 'neverPlayedOnly')
+  const favoritesOnly = requireBoolean(obj.favoritesOnly, 'favoritesOnly', reject)
+  const neverPlayedOnly = requireBoolean(obj.neverPlayedOnly, 'neverPlayedOnly', reject)
   const avoidRecentlyPlayed = requireBoolean(
     obj.avoidRecentlyPlayed,
     'avoidRecentlyPlayed',
+    reject,
   )
 
   // recentDays
@@ -305,4 +318,17 @@ export function parseCuratorIntent(raw: unknown): CuratorIntent {
     mood,
     requestedCount,
   }
+}
+
+/**
+ * Strict validation of untrusted structured **model output** for a curator
+ * intent. A contract violation is `CuratorError('provider_bad_response', …)`.
+ */
+export function parseCuratorIntent(raw: unknown): CuratorIntent {
+  return normalizeCuratorIntent(raw, (detail) => {
+    throw new CuratorError(
+      'provider_bad_response',
+      `The curator returned an intent in an unexpected shape (${detail}).`,
+    )
+  })
 }

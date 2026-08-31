@@ -139,6 +139,21 @@ export function applyHardFilters(
   return candidates.filter((candidate) => passesHardFilters(candidate, intent, now))
 }
 
+/**
+ * Milestone 10 "something else": remove candidates whose id is in `excludeSet`
+ * (already intersected with the currently-owned collection by the caller).
+ * Order-preserving; a no-op when the set is empty.
+ */
+export function applyPreviousExclusion(
+  candidates: CuratorCandidate[],
+  excludeSet: ReadonlySet<string>,
+): CuratorCandidate[] {
+  if (excludeSet.size === 0) {
+    return candidates
+  }
+  return candidates.filter((candidate) => !excludeSet.has(candidate.id))
+}
+
 /** Deterministic string hash mapped to [0, 1). Not `Math.random`. */
 export function stableHash01(id: string): number {
   let hash = 2166136261

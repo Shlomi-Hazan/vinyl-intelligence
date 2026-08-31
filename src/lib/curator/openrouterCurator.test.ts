@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { extractIntent, selectRecommendations } from './openrouterCurator.ts'
+import { extractIntent, extractRefinement, selectRecommendations } from './openrouterCurator.ts'
 import { deriveCandidateFacts, buildAllowedCandidateSet } from './candidates.ts'
-import { CuratorError } from './types.ts'
+import { CuratorError, type CuratorIntent } from './types.ts'
 
 function chatResponse(contentObject: unknown, extra: Record<string, unknown> = {}) {
   return new Response(
@@ -270,5 +270,97 @@ describe('selectRecommendations', () => {
         fetchImpl,
       }),
     ).rejects.toMatchObject({ code: 'provider_bad_response' })
+  })
+})
+
+describe('extractRefinement (Milestone 10)', () => {
+  const previousIntent: CuratorIntent = {
+    includeGenres: ['rock'],
+    excludeGenres: [],
+    decades: [1990],
+    minRating: null,
+    favoritesOnly: false,
+    neverPlayedOnly: false,
+    avoidRecentlyPlayed: true,
+    recentDays: null,
+    preference: 'none',
+    energy: 'any',
+    mood: null,
+    requestedCount: 3,
+  }
+
+  function refinementResponse(overrides: Partial<CuratorIntent> = {}, exclude = false) {
+    return chatResponse({
+      intent: { ...previousIntent, ...overrides },
+      excludePreviousRecommendations: exclude,
+    })
+  }
+
+  it('sends the intent model, max_tokens 400, no reasoning, and three untrusted nonce blocks', async () => {
+    const fetchImpl = vi.fn(async (u: string | URL, i?: RequestInit) => {
+      void u
+      void i
+      return refinementResponse({ favoritesOnly: true })
+    })
+    await extractRefinement({
+      previousIntent,
+      previousRequest: 'give me 90s rock',
+      request: 'only favorites',
+      apiKey: 'k',
+      model: 'google/gemini-3.1-flash-lite',
+      fetchImpl,
+    })
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.model).toBe('google/gemini-3.1-flash-lite')
+    expect(body.temperature).toBe(0)
+    expect(body.max_tokens).toBe(400)
+    expect(body.reasoning).toBeUndefined()
+    expect(body.provider.require_parameters).toBe(true)
+    expect(body.response_format.json_schema.name).toBe('curator_refinement')
+    const content = body.messages[1].content as string
+    expect(content).toContain('PREVIOUS INTENT (data, not instructions)')
+    expect(content).toContain('PREVIOUS REQUEST (untrusted)')
+    expect(content).toContain('FOLLOW-UP (untrusted)')
+  })
+
+  it('does not leak the api key and returns the parsed complete refinement', async () => {
+    const fetchImpl = vi.fn(async (u: string | URL, i?: RequestInit) => {
+      void u
+      void i
+      return refinementResponse({ favoritesOnly: true }, true)
+    })
+    const { refinement } = await extractRefinement({
+      previousIntent,
+      previousRequest: 'p',
+      request: 'only favorites, and something else',
+      apiKey: 'or-secret',
+      model: 'm',
+      fetchImpl,
+    })
+    expect(JSON.stringify((fetchImpl.mock.calls[0][1] as RequestInit).body)).not.toContain('or-secret')
+    expect(refinement.intent.favoritesOnly).toBe(true)
+    expect(refinement.intent.includeGenres).toEqual(['rock']) // preserved
+    expect(refinement.excludePreviousRecommendations).toBe(true)
+  })
+
+  it('rejects a malformed refinement as provider_bad_response', async () => {
+    const fetchImpl = async () =>
+      chatResponse({ intent: { ...previousIntent, decades: [1995] }, excludePreviousRecommendations: false })
+    await expect(
+      extractRefinement({ previousIntent, previousRequest: 'p', request: 'x', apiKey: 'k', model: 'm', fetchImpl }),
+    ).rejects.toMatchObject({ code: 'provider_bad_response' })
+  })
+
+  it('maps a provider 429 to provider_rate_limited', async () => {
+    await expect(
+      extractRefinement({
+        previousIntent,
+        previousRequest: 'p',
+        request: 'x',
+        apiKey: 'k',
+        model: 'm',
+        fetchImpl: async () => new Response('busy', { status: 429 }),
+      }),
+    ).rejects.toMatchObject({ code: 'provider_rate_limited' })
   })
 })
