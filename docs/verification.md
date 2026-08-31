@@ -2128,7 +2128,8 @@ and fixed during human runtime (`e9373bc`), and human runtime **PASS 5/5** on
 `1ad61c0c537dbed0f71f102071bda7dd5d66a444`). **Not deployed. No hosted Supabase
 migration applied / verified.** Milestone 10 (Conversational Refinement) is
 implemented and verified (human runtime PASS 4/4 on `74490282`; see "Milestone
-10 Evidence" below); its branch is ready for PR and not merged.
+10 Evidence" below) and **merged to `main` in PR #11** (merge commit
+`bfddeb5109e61eac65b184ff4ff5d58092b3984f`).
 
 ### Implemented
 
@@ -2366,8 +2367,11 @@ one independent GitHub review that found **1 MEDIUM** (a `no_match` refinement
 did not advance `latestIntent`, breaking multi-turn continuity) fixed in
 `74490282` with a regression test, and human runtime **PASS 4/4** on `74490282`.
 Final review gate: **BLOCKER 0 / MEDIUM 0.** No `/ultrareview` was used for
-Milestone 10. **Not merged. Not deployed. No hosted Supabase migration applied
-or verified.** Milestone 11 (production deployment) has not started.
+Milestone 10. **Merged to `main` in PR #11** (merge commit
+`bfddeb5109e61eac65b184ff4ff5d58092b3984f`). **Not deployed. No hosted Supabase
+migration applied or verified.** A Visual Experience & Product Identity pass
+(`docs/specs/0012-...`) is planned before Milestone 11 (production deployment),
+which has not started.
 
 ### Implemented
 

@@ -8,9 +8,9 @@ lint, `npm audit`). Focused self-review 0 BLOCKER / 0 MEDIUM (1 NOTE fixed);
 independent GitHub review found 1 MEDIUM (a `no_match` refinement did not
 advance `latestIntent`), fixed in `74490282` with a regression test; final gate
 0 BLOCKER / 0 MEDIUM. Human runtime **PASS 4/4** (`docs/verification.md`
-"Milestone 10 Evidence"). No migration. No `/ultrareview`. PR open, **not
-merged**; not deployed; no hosted Supabase verification. `docs/plans/011-…`
-APPROVED.
+"Milestone 10 Evidence"). No migration. No `/ultrareview`. **Merged to `main`
+in PR #11** (merge commit `bfddeb5109e61eac65b184ff4ff5d58092b3984f`); not
+deployed; no hosted Supabase verification. `docs/plans/011-…` APPROVED.
 
 Milestone: 10 - Conversational Refinement (bounded follow-up over the Milestone 9
 curator)

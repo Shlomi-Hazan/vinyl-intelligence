@@ -57,10 +57,21 @@ focused self-review plus an independent GitHub review whose one MEDIUM was fixed
 (final gate 0 BLOCKER / 0 MEDIUM), and human runtime **PASS 4/4**
 (`docs/specs/0011-milestone-10-conversational-refinement.md`,
 `docs/plans/011-milestone-10-conversational-refinement.md`,
-`docs/verification.md` "Milestone 10 Evidence"). Its pull request is open and
-**not merged**. Hosted/production verification and production deployment have
-not occurred and remain later milestones; no hosted Supabase migration has been
-applied.
+`docs/verification.md` "Milestone 10 Evidence"). **Merged to `main`** in PR #11
+(merge commit `bfddeb5109e61eac65b184ff4ff5d58092b3984f`). Hosted/production
+verification and production deployment have not occurred and remain later
+milestones; no hosted Supabase migration has been applied.
+
+Before Milestone 11 (Production Deployment), a **Visual Experience & Product
+Identity pass** is being planned on `claude/visual-experience-product-identity`
+(`docs/specs/0012-visual-experience-product-identity.md`,
+`docs/plans/012-visual-experience-product-identity.md`, ADR
+`docs/decisions/0005-visual-experience-and-artwork-architecture.md`). It is in
+**design/architecture planning only** and awaits human approval. It adds real
+multi-page navigation, a brand system (VIN curator identity, logo, dark warm
+hi-fi visual system), first-class album artwork (Cover Art Archive + optional
+user custom covers + a branded fallback), and a motion/responsive/accessibility
+pass. No product code, migration, dependency, or asset has been created yet.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -138,8 +149,8 @@ Implemented:
   revised `CuratorIntent` from the model, fresh RLS-owned reads every turn,
   structural "something else" exclusion of prior picks, React-memory-only
   conversation state (no table, no `sessionStorage` / `localStorage`), the
-  shared `curator_intent` rate budget, no migration (Milestone 10; branch ready
-  for PR, not merged)
+  shared `curator_intent` rate budget, no migration (Milestone 10; merged in
+  PR #11)
 
 Planned:
 
