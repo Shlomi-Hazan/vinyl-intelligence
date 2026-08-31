@@ -171,6 +171,56 @@ h3 {
   border-top: 1px solid #e4ddd2;
 }
 
+.collection-card-listening {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e4ddd2;
+}
+
+.collection-card-listening .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.listening-history {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e4ddd2;
+}
+
+.listening-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.listening-history-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.listening-history-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  align-items: baseline;
+}
+
+.listening-history-record {
+  font-size: 0.9rem;
+}
+
 .collection-personal-row {
   display: flex;
   flex-wrap: wrap;

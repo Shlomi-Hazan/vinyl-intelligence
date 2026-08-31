@@ -1,7 +1,7 @@
 # 008 Milestone 7 Ratings / Favorites / Notes Implementation Plan
 
 Status: implemented and verified locally (automated + focused review + human
-runtime PASS); ready for milestone pull request. Not merged, not deployed.
+runtime PASS); merged to `main` in PR #7. Not deployed.
 
 Milestone: 7 - Ratings / Favorites / Notes
 

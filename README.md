@@ -33,14 +33,14 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 6 (Browse / Search / Filter, plus `releases.genres`
-metadata) is merged to `main`. Milestone 7 (Ratings / Favorites / Notes -
-personal preference signals on owned collection items) is implemented and
-verified locally on branch `claude/milestone-7-ratings-favorites-notes` -
-automated verification, a focused implementation review (0 BLOCKER, 0 MEDIUM),
-and human runtime verification (PASS, 6 focused tests) - and is ready for its
-pull request (not yet open, not merged). Hosted/production verification and
-production deployment have not occurred and remain later milestones.
+Current status: Milestone 7 (Ratings / Favorites / Notes - personal preference
+signals on owned collection items) is merged to `main`. Milestone 8 (Listening
+History - immutable `listening_events`, derived listening count / last-listened,
+and a reverse-chronological history) is implemented and verified locally
+(automated verification, focused review with 0 BLOCKER / 0 MEDIUM, and human
+runtime PASS) on branch `claude/milestone-8-listening-history` and is ready for
+its milestone pull request; it is not merged. Hosted/production verification
+and production deployment have not occurred and remain later milestones.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -95,12 +95,15 @@ Implemented:
 - `releases.genres` metadata: catalog-sourced community-curated MusicBrainz
   genre tags (best-effort paced release-group lookup on catalog Add, never
   overwriting existing genres) plus an optional manual Genre field (Milestone 6)
+- Per owned collection item: a 1..5 rating (or unrated), a favorite flag, and a
+  plain-text personal note (<= 1000 chars); partial-patch saves on the browser
+  Supabase client with an own-row `UPDATE` policy scoped to the three signal
+  columns (Milestone 7)
 
 Planned:
 
-- Ratings, favorites, and personal notes on owned records (Milestone 7,
-  verified locally, PR pending)
-- Listening history
+- Listening history (Milestone 8, implemented and verified locally on
+  `claude/milestone-8-listening-history`; not yet merged)
 - AI recommendation workflow
 - Production deployment
 

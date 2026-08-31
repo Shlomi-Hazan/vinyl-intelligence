@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CollectionForm } from './CollectionForm.tsx'
 import { CollectionItemCard } from './CollectionItemCard.tsx'
 import { CollectionLibraryControls } from './CollectionLibraryControls.tsx'
+import { ListeningHistory } from './ListeningHistory.tsx'
+import { summarizeListeningForItem } from './listeningSummary.ts'
 import {
   DEFAULT_SORT,
   EMPTY_FILTERS,
@@ -21,6 +23,12 @@ import {
   type CollectionItemWithRelease,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
+import {
+  addListeningEvent,
+  compareListeningEventsNewestFirst,
+  loadListeningEvents,
+  type ListeningEventRecord,
+} from '../lib/supabase/listeningEvents.ts'
 
 type CollectionPanelProps = {
   client: BrowserSupabaseClient
@@ -70,6 +78,13 @@ export function CollectionPanel({
   )
   const [filters, setFilters] = useState<CollectionFilters>(EMPTY_FILTERS)
   const [sort, setSort] = useState<CollectionSort>(DEFAULT_SORT)
+  // Milestone 8: the immutable listening_events rows. Listening count and
+  // last-listened time are derived from these in the browser - no denormalized
+  // column, no trigger. An events-load failure is surfaced on its own without
+  // hiding the collection.
+  const [events, setEvents] = useState<ListeningEventRecord[]>([])
+  const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsError, setEventsError] = useState<string | null>(null)
 
   const fetchCollection = useCallback(async () => {
     setIsLoading(true)
@@ -84,9 +99,24 @@ export function CollectionPanel({
     }
   }, [client])
 
+  const fetchListeningEvents = useCallback(async () => {
+    setEventsLoading(true)
+    setEventsError(null)
+
+    try {
+      setEvents(await loadListeningEvents(client))
+    } catch (error) {
+      setEventsError(getErrorMessage(error))
+    } finally {
+      setEventsLoading(false)
+    }
+  }, [client])
+
   useEffect(() => {
     let isActive = true
 
+    // The collection and the listening events load in parallel. A failure of
+    // one never blocks or hides the other.
     loadCollection(client)
       .then((nextItems) => {
         if (!isActive) {
@@ -109,6 +139,30 @@ export function CollectionPanel({
         }
 
         setIsLoading(false)
+      })
+
+    loadListeningEvents(client)
+      .then((nextEvents) => {
+        if (!isActive) {
+          return
+        }
+
+        setEvents(nextEvents)
+        setEventsError(null)
+      })
+      .catch((error: unknown) => {
+        if (!isActive) {
+          return
+        }
+
+        setEventsError(getErrorMessage(error))
+      })
+      .finally(() => {
+        if (!isActive) {
+          return
+        }
+
+        setEventsLoading(false)
       })
 
     return () => {
@@ -187,6 +241,18 @@ export function CollectionPanel({
     )
   }
 
+  const handleMarkPlayed = useCallback(
+    async (itemId: string) => {
+      // The DB sets user_id / listened_at; we send only collection_item_id.
+      const saved = await addListeningEvent(client, itemId)
+      // Keep local order identical to the load query: listened_at DESC, id DESC.
+      setEvents((current) =>
+        [saved, ...current].sort(compareListeningEventsNewestFirst),
+      )
+    },
+    [client],
+  )
+
   async function handleRemove(item: CollectionItemWithRelease) {
     const confirmed = window.confirm(
       `Remove "${item.release.title}" from your collection?`,
@@ -203,6 +269,11 @@ export function CollectionPanel({
       await deleteCollectionItem(client, item.id)
       setItems((current) =>
         current.filter((currentItem) => currentItem.id !== item.id),
+      )
+      // The DB cascades listening_events on the collection-item delete; mirror
+      // that in local state so derived counts and the history list stay honest.
+      setEvents((current) =>
+        current.filter((event) => event.collection_item_id !== item.id),
       )
       setNotice('Record removed.')
     } catch (error) {
@@ -268,7 +339,9 @@ export function CollectionPanel({
                   <CollectionItemCard
                     client={client}
                     item={item}
+                    listeningSummary={summarizeListeningForItem(events, item.id)}
                     onEdit={setEditingItem}
+                    onMarkPlayed={handleMarkPlayed}
                     onRemove={handleRemove}
                     onSignalsSaved={handleSignalsSaved}
                   />
@@ -287,6 +360,16 @@ export function CollectionPanel({
           )}
         </>
       )}
+
+      {!isLoading && !loadError && sortedItems.length > 0 ? (
+        <ListeningHistory
+          error={eventsError}
+          events={events}
+          isLoading={eventsLoading}
+          items={items}
+          onRetry={() => void fetchListeningEvents()}
+        />
+      ) : null}
     </section>
   )
 }

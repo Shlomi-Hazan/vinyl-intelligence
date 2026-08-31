@@ -37,6 +37,14 @@ export type CollectionItem = {
   notes: string | null
 }
 
+export type ListeningEvent = {
+  id: string
+  user_id: string
+  collection_item_id: string
+  listened_at: string
+  created_at: string
+}
+
 type Database = {
   public: {
     Tables: {
@@ -67,6 +75,29 @@ type Database = {
             columns: ['user_id']
             isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      listening_events: {
+        Row: ListeningEvent
+        Insert: {
+          collection_item_id: string
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: 'listening_events_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'listening_events_collection_item_id_fkey'
+            columns: ['collection_item_id']
+            isOneToOne: false
+            referencedRelation: 'collection_items'
             referencedColumns: ['id']
           },
         ]
