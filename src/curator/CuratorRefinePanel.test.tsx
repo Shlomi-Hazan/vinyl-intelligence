@@ -164,6 +164,42 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
     expect(screen.getByText('OK Computer')).toBeInTheDocument()
   })
 
+  it('advances latestIntent after a no_match so the next refinement sends the new intent + prior successful IDs', async () => {
+    const user = userEvent.setup()
+    render(<CuratorPanel client={client} />)
+    await doInitial(user) // initial ok -> latestIntent = intent(), latestRecommendationIds = ['a','b']
+
+    // 1st refinement -> no_match with a DISTINCT changed intent
+    const noMatchIntent = intent({ minRating: 5, favoritesOnly: true })
+    mockedRefine.mockResolvedValueOnce({ status: 'no_match', interpretedIntent: noMatchIntent })
+    await user.type(screen.getByLabelText('Your follow-up'), 'five stars, favorites only')
+    await user.click(screen.getByRole('button', { name: 'Refine' }))
+    await waitFor(() =>
+      expect(screen.getByText('No owned records match that refinement.')).toBeInTheDocument(),
+    )
+    // previous cards remain visible; the no_match turn is in the transcript (turn consumed)
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+    const transcript = screen.getByRole('list', { name: 'Conversation so far' })
+    expect(within(transcript).getByText(/five stars, favorites only/)).toBeInTheDocument()
+    expect(within(transcript).getByText(/no records matched/i)).toBeInTheDocument()
+
+    // 2nd refinement -> assert the context it is given
+    mockedRefine.mockResolvedValueOnce(refineOk(['Rumours', 'The Bends']))
+    await user.type(screen.getByLabelText('Your follow-up'), 'actually any rating')
+    await user.click(screen.getByRole('button', { name: 'Refine' }))
+    await waitFor(() => expect(screen.getByText('Rumours')).toBeInTheDocument())
+
+    expect(mockedRefine).toHaveBeenLastCalledWith(client, 'actually any rating', {
+      previousRequest: 'five stars, favorites only', // the FIRST refinement text
+      previousIntent: noMatchIntent, // EXACTLY the no_match interpretedIntent
+      previousRecommendationIds: ['a', 'b'], // from the last SUCCESSFUL result
+    })
+
+    // no browser storage introduced
+    expect(sessionStorage.length).toBe(0)
+    expect(localStorage.length).toBe(0)
+  })
+
   it('a refine error keeps the previous cards, shows a retryable error, and consumes no turn', async () => {
     const user = userEvent.setup()
     render(<CuratorPanel client={client} />)

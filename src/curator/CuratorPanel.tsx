@@ -176,6 +176,12 @@ export function CuratorPanel({ client }: CuratorPanelProps) {
               constraints: describeConstraints(result.interpretedIntent),
             } as const,
           ],
+          // Advance the semantic state: a no_match is still a successfully
+          // interpreted conversational change, so the next refinement must
+          // start from this newly interpreted intent. The previous successful
+          // recommendation IDs/cards deliberately stay for a later
+          // "something else".
+          latestIntent: result.interpretedIntent,
           latestRequestText: followUpText,
           refinementCount: current.refinementCount + 1,
         }
