@@ -1,12 +1,12 @@
 # 010 Milestone 9 AI Curator Implementation Plan
 
-Status: implemented and verified (2026-08-31). Cloud `/ultrareview`
+Status: implemented and verified; **merged to `main` in PR #10** (merge commit
+`1ad61c0c537dbed0f71f102071bda7dd5d66a444`). Cloud `/ultrareview`
 0 BLOCKER / 0 MEDIUM (5 nits, all addressed); runtime-discovered
 selection-truncation defect fixed in `e9373bc`; human runtime **PASS 5/5** on
-`e9373bca0c7bc5ad175b7687de66faf472533bd0`. Ready for a milestone pull request;
-not merged, not deployed. Evidence in `docs/verification.md`. The original
-approval note and "mandatory corrections" below are retained as historical
-planning evidence.
+`e9373bca0c7bc5ad175b7687de66faf472533bd0`. Not deployed. Evidence in
+`docs/verification.md`. The original approval note and "mandatory corrections"
+below are retained as historical planning evidence.
 
 Applied corrections vs the draft plan:
 

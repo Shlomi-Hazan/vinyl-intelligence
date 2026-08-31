@@ -40,19 +40,19 @@ derived listening count / last-listened, and a reverse-chronological history) is
 verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
 verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
 merged to `main`. Milestone 9 (AI Curator - single-turn natural-language
-recommendations drawn only from owned records) is **implemented and verified**
-on `claude/milestone-9-ai-curator` at revision
-`e9373bca0c7bc5ad175b7687de66faf472533bd0` - automated verification, a focused
-cloud `/ultrareview` (0 BLOCKER / 0 MEDIUM), a runtime-discovered
-selection-truncation defect found and fixed during human runtime, and human
-runtime **PASS 5/5** - and is **ready for its milestone pull request; it is not
-merged**
+recommendations drawn only from owned records) is **merged to `main`** in PR #10
+(merge commit `1ad61c0c537dbed0f71f102071bda7dd5d66a444`), following automated
+verification, a focused cloud `/ultrareview` (0 BLOCKER / 0 MEDIUM), a
+runtime-discovered selection-truncation defect found and fixed during human
+runtime, and human runtime **PASS 5/5**
 (`docs/specs/0010-milestone-9-ai-curator.md`,
 `docs/plans/010-milestone-9-ai-curator.md`, ADR
 `docs/decisions/0004-openrouter-curator-text-models.md`,
-`docs/verification.md`). Milestone 10 has not started.
-Hosted/production verification and production deployment have not occurred and
-remain later milestones; no hosted Supabase migration has been applied.
+`docs/verification.md`). Milestone 10 (Conversational Refinement - bounded
+follow-up over the M9 curator) is in **planning** on
+`claude/milestone-10-conversational-refinement`. Hosted/production verification
+and production deployment have not occurred and remain later milestones; no
+hosted Supabase migration has been applied.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -117,12 +117,18 @@ Implemented:
   collapsible reverse-chronological history; authenticated `SELECT` + `INSERT
   (collection_item_id)` only, no `UPDATE`/`DELETE`, own-item `INSERT` RLS, both
   foreign keys `ON DELETE CASCADE` (Milestone 8)
+- AI Curator: `POST /api/curator/recommend` - a single-turn natural-language
+  request produces a small set of recommendations drawn only from owned records.
+  Two-stage OpenRouter pipeline (intent extraction -> deterministic hard filter
+  + rank over the RLS-owned collection/history -> <= 12 allowed candidates ->
+  selection/explanation), strict allowed-ID validation, per-user rate limit,
+  `model_calls` telemetry; no `service_role` collection read, no new table
+  beyond a `model_calls` feature-allow-list widening (Milestone 9)
 
 Planned:
 
-- AI curator / recommendation workflow (Milestone 9, implemented and verified on
-  `claude/milestone-9-ai-curator`; ready for PR, not merged)
-- Conversational refinement (Milestone 10)
+- Conversational refinement of curator recommendations (Milestone 10, in
+  planning on `claude/milestone-10-conversational-refinement`)
 - Production deployment (Milestone 11)
 
 ## Local Setup

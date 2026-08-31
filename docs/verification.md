@@ -2124,8 +2124,10 @@ cloud `/ultrareview` (5 nits, 0 BLOCKER, 0 MEDIUM - all 5 addressed in
 `43439e4`), one independent-review micro-fix (`4a7fd18`, strict
 `evidenceKeys` contract), a runtime-discovered selection-truncation defect found
 and fixed during human runtime (`e9373bc`), and human runtime **PASS 5/5** on
-`e9373bc`. Ready for a milestone pull request. **Not merged. Not deployed. No
-hosted Supabase migration.** Milestone 10 not started.
+`e9373bc`. **Merged to `main` in PR #10** (merge commit
+`1ad61c0c537dbed0f71f102071bda7dd5d66a444`). **Not deployed. No hosted Supabase
+migration applied / verified.** Milestone 10 (Conversational Refinement) is in
+planning.
 
 ### Implemented
 
