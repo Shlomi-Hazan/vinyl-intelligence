@@ -236,13 +236,30 @@ reset role;
 
 -- Check constraints --------------------------------------------------------
 
+-- Milestone 9 widened the feature allow-list to add the two curator features.
+select lives_ok(
+  $$ insert into public.model_calls (user_id, feature, provider, model, success)
+     values ('00000000-0000-4000-8000-00000000c501',
+             'curator_intent', 'openrouter', 'google/gemini-3.1-flash-lite', true) $$,
+  'curator_intent is an allowed feature (Milestone 9)'
+);
+
+select lives_ok(
+  $$ insert into public.model_calls
+       (user_id, feature, provider, model, success, error_category)
+     values ('00000000-0000-4000-8000-00000000c501',
+             'curator_selection', 'openrouter', 'google/gemini-3.5-flash', false,
+             'provider_bad_response') $$,
+  'curator_selection is an allowed feature (Milestone 9)'
+);
+
 select throws_ok(
   $$ insert into public.model_calls (user_id, feature, provider, model, success)
      values ('00000000-0000-4000-8000-00000000c501',
-             'curator_intent', 'openrouter', 'x', true) $$,
+             'curator_explanation', 'openrouter', 'x', true) $$,
   '23514',
   null,
-  'feature is constrained to the Milestone 5 allow-list'
+  'an unknown feature value is still rejected by the allow-list CHECK'
 );
 
 select throws_ok(
