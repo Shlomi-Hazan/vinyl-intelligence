@@ -40,27 +40,35 @@ Use normal backend/database logic for:
 
 ## Recommendation Contract
 
-The model may receive:
+As implemented for Milestone 9 (`docs/specs/0010-milestone-9-ai-curator.md`),
+single-turn:
 
-- User request and bounded conversation context
-- Allowed candidate IDs
-- Artist, title, year, decade, genre/style, rating/favorite, listening count, last-listened facts for candidates
-- Explicit instructions not to invent facts
+- **Call 1 - intent extraction.** Input: the untrusted free-text request only.
+  Output (strict json_schema `curator_intent`): hard constraints
+  (`includeGenres`, `excludeGenres`, `decades`, `minRating`, `favoritesOnly`,
+  `neverPlayedOnly`, `avoidRecentlyPlayed` + `recentDays`) and soft preferences
+  (`preference`, `energy`, `mood`, `requestedCount`). Server strict-validates and
+  normalizes; the normalized object is returned to the UI as `interpretedIntent`.
+- **Deterministic middle.** Derive play count / last-listened from
+  `listening_events`; apply hard constraints (never silently relaxed); rank by a
+  small explainable heuristic; cap at 12 allowed candidates.
+- **Call 2 - selection + explanation.** Input: the untrusted request plus, for
+  each of the <= 12 allowed candidates, an opaque `id` and a small fact object
+  (artist, title, year, decade, genres, rating, favorite, playCount,
+  lastListenedDaysAgo, neverPlayed). Output (strict json_schema
+  `curator_selection`): `recommendations[]` of `{ collectionItemId, reason,
+  evidenceKeys }` and `bestMatchId`.
 
-The model must return structured data containing:
+The backend rejects, and never displays: an id outside the allowed candidate
+set (rejects the whole response), malformed JSON, a missing/mistyped required
+field, more recommendations than `requestedCount`, a duplicate id, a
+`bestMatchId` not among the returned recommendations, or an empty `reason`.
+Extra unknown fields are ignored, not rejected. Displayed card facts come from
+the backend candidate data, never from model output.
 
-- `recommendations`: array of candidate collection item IDs
-- `best_match_id`: one ID from the same array
-- `reasons`: concise grounded explanation per ID
-- `interpreted_intent`: the validated interpretation used
-- `missing_or_uncertain_constraints`: optional list
-
-The backend must reject:
-
-- IDs outside the allowed candidate set
-- malformed JSON
-- unsupported fields
-- claims about ownership/history/metadata not present in supplied facts
+**Personal notes (Milestone 7) are never sent to any curator model.** Rating,
+favorite, and listening history already provide the personal signal, and
+user-authored free text would enlarge the prompt-injection and privacy surface.
 
 ## Architecture Boundaries
 
@@ -107,10 +115,15 @@ Do not use uncontrolled long-term memory.
 - Keep `model_calls` lightweight. It is audit/telemetry for project reasoning, not a large observability subsystem.
 - Show user-visible failure when model/API calls fail.
 
-## Initial Model Strategy
+## Model Strategy
 
-Use a cheaper structured-output-capable text model for intent extraction if quality is sufficient.
-
-Use a stronger text or multimodal model for final explanation and cover-image clue extraction when needed.
-
-Do not pick exact models until provider documentation, pricing, latency, and course constraints are verified.
+- Cover-image clue extraction (Milestone 5): `google/gemini-3.1-flash-lite` via
+  OpenRouter, with `google/gemini-3.5-flash` as a documented manual alternative
+  (`docs/decisions/0003-openrouter-vision-provider.md`).
+- Curator intent extraction and selection/explanation (Milestone 9): both calls
+  default to `google/gemini-3.1-flash-lite` via OpenRouter (`temperature: 0`,
+  strict `response_format` json_schema), with `google/gemini-3.5-flash`
+  available as a manual override for call 2
+  (`docs/decisions/0004-openrouter-curator-text-models.md`). Exactly two provider
+  calls per successful curator request; one for a no-match; zero for an empty
+  collection. Estimated ~$0.001 per successful request.

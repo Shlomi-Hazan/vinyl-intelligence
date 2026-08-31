@@ -20,11 +20,11 @@ Proposed decisions (pending human approval):
 
 - [0003 OpenRouter Vision Provider](0003-openrouter-vision-provider.md) - vision
   model for Milestone 5 cover recognition
+- [0004 OpenRouter Curator Text Models](0004-openrouter-curator-text-models.md) -
+  intent-extraction and selection/explanation text models for Milestone 9
 
 Initial decisions still pending:
 
-- AI text models for the curator milestone (the vision model is addressed by
-  proposed decision 0003)
 - Exact duplicate-copy representation
 - Whether bounded structured conversation state is persisted or kept ephemeral for MVP implementation
 - How long lightweight `model_calls` audit records are retained

@@ -39,9 +39,13 @@ derived listening count / last-listened, and a reverse-chronological history) is
 `9af8beec701cb108b3ed6de7bdf3962fbf938ee3`), following local automated
 verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
 verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
-merged to `main`. Milestone 9 (AI Curator) has not started. Hosted/production
-verification and production deployment have not occurred and remain later
-milestones; no hosted Supabase migration has been applied.
+merged to `main`. Milestone 9 (AI Curator - single-turn natural-language
+recommendations drawn only from owned records) is in **planning**: its
+specification (`docs/specs/0010-milestone-9-ai-curator.md`) and implementation
+plan (`docs/plans/010-milestone-9-ai-curator.md`) are drafted and awaiting human
+approval on `claude/milestone-9-ai-curator`; no Milestone 9 code exists.
+Hosted/production verification and production deployment have not occurred and
+remain later milestones; no hosted Supabase migration has been applied.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -109,7 +113,8 @@ Implemented:
 
 Planned:
 
-- AI curator / recommendation workflow (Milestone 9, not started)
+- AI curator / recommendation workflow (Milestone 9, specification + plan drafted,
+  awaiting human approval)
 - Conversational refinement (Milestone 10)
 - Production deployment (Milestone 11)
 

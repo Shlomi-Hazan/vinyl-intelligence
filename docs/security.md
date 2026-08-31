@@ -105,5 +105,21 @@ Costly Netlify Function endpoints should have:
 ## Open Privacy Decisions
 
 - How long are model-call audit records retained?
-- Are user notes included in recommendation context by default?
 - Whether bounded structured conversation state is persisted or kept ephemeral for the MVP implementation
+
+## Resolved Privacy Decisions
+
+- **Are user notes included in recommendation context by default?** No. As of
+  Milestone 9 (`docs/specs/0010-milestone-9-ai-curator.md`), Milestone 7 personal
+  notes are never sent to any curator model. Rating, favorite, and listening
+  history provide the personal signal; user-authored free text would enlarge the
+  prompt-injection and privacy surface. The curator also never receives the
+  authenticated user id, `created_by`, release/provider ids, exact timestamps, or
+  any secret - only a projected fact object per allowed candidate.
+- **Milestone 9 conversation state:** none is persisted; the curator is
+  single-turn. Whether Milestone 10 persists bounded refinement state is still
+  open (above).
+- **Milestone 9 curator data access:** the recommendation candidate set is read
+  through the authenticated user's token and RLS. `service_role` is not used to
+  read `collection_items`, `listening_events`, or `profiles`; its only
+  `model_calls` privilege remains INSERT.
