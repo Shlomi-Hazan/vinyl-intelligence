@@ -15,9 +15,6 @@ Accepted decisions:
 
 - [0001 Approved Initial Architecture](0001-approved-initial-architecture.md)
 - [0002 Catalog Provider Boundary](0002-proposed-catalog-provider-boundary.md)
-
-Accepted (continued):
-
 - [0004 OpenRouter Curator Text Models](0004-openrouter-curator-text-models.md) -
   Milestone 9: `google/gemini-3.1-flash-lite` for intent extraction,
   `google/gemini-3.5-flash` for selection/explanation (accepted 2026-08-31)

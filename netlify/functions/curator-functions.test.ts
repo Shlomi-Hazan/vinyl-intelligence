@@ -61,6 +61,33 @@ type Options = {
 }
 
 function createDependencies(options: Options = {}) {
+  function tableResult(table: string) {
+    if (table === 'collection_items') {
+      return options.collectionError
+        ? { data: null, error: options.collectionError }
+        : { data: options.collectionRows ?? [collectionRow('a'), collectionRow('b')], error: null }
+    }
+    if (table === 'listening_events') {
+      return options.eventsError
+        ? { data: null, error: options.eventsError }
+        : { data: options.events ?? [], error: null }
+    }
+    return { data: [], error: null }
+  }
+
+  // A chainable stub: .select().order().limit() all return the same thenable,
+  // which resolves to the table's { data, error }.
+  function chainable(table: string) {
+    const result = tableResult(table)
+    const stub: Record<string, unknown> = {
+      order: () => stub,
+      limit: () => stub,
+      then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject),
+    }
+    return stub
+  }
+
   const supabase = {
     auth: {
       getUser: vi.fn(async () => ({
@@ -69,19 +96,7 @@ function createDependencies(options: Options = {}) {
       })),
     },
     from: vi.fn((table: string) => ({
-      select: vi.fn(async () => {
-        if (table === 'collection_items') {
-          return options.collectionError
-            ? { data: null, error: options.collectionError }
-            : { data: options.collectionRows ?? [collectionRow('a'), collectionRow('b')], error: null }
-        }
-        if (table === 'listening_events') {
-          return options.eventsError
-            ? { data: null, error: options.eventsError }
-            : { data: options.events ?? [], error: null }
-        }
-        return { data: [], error: null }
-      }),
+      select: vi.fn(() => chainable(table)),
     })),
   }
 

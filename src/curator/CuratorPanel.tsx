@@ -1,7 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
-import { CuratorError, MAX_REQUEST_LENGTH, type CuratorIntent, type CuratorResult } from '../lib/curator/types.ts'
+import {
+  CuratorError,
+  DEFAULT_RECENT_DAYS,
+  MAX_REQUEST_LENGTH,
+  type CuratorIntent,
+  type CuratorResult,
+} from '../lib/curator/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 type CuratorPanelProps = {
@@ -31,7 +37,7 @@ function describeConstraints(intent: CuratorIntent): string[] {
     lines.push('Never played only')
   }
   if (intent.avoidRecentlyPlayed) {
-    lines.push(`Not played in the last ${intent.recentDays ?? 30} days`)
+    lines.push(`Not played in the last ${intent.recentDays ?? DEFAULT_RECENT_DAYS} days`)
   }
   return lines
 }

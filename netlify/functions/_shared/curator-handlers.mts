@@ -210,11 +210,18 @@ async function loadOwnedCollection(
   })
 
   // `notes` is deliberately NOT selected - it is never curator model context.
+  // Both selects are explicitly ordered + capped: PostgREST silently truncates
+  // at `api.max_rows` (1000), so ordering makes truncation drop the least
+  // relevant rows (oldest events, oldest-added items) rather than an arbitrary
+  // set - the derived play facts stay honest at demo scale and degrade
+  // gracefully beyond it.
   const itemsResult = await userClient
     .from('collection_items')
     .select(
       'id, added_at, rating, is_favorite, release:releases!inner(artist, title, release_year, genres)',
     )
+    .order('added_at', { ascending: false })
+    .limit(1000)
   if (itemsResult.error) {
     throw new CuratorError('collection_unavailable', 'Could not load your collection. Please try again.')
   }
@@ -222,6 +229,8 @@ async function loadOwnedCollection(
   const eventsResult = await userClient
     .from('listening_events')
     .select('collection_item_id, listened_at')
+    .order('listened_at', { ascending: false })
+    .limit(1000)
   if (eventsResult.error) {
     throw new CuratorError('collection_unavailable', 'Could not load your listening history. Please try again.')
   }
@@ -376,6 +385,7 @@ export async function handleCuratorRecommend(
     try {
       selectionResult = await deps.selectRecommendations({
         request: userRequest,
+        softIntent: { mood: intent.mood, energy: intent.energy, preference: intent.preference },
         candidateFacts: facts,
         allowedIds: ids,
         candidatesById: byId,
