@@ -40,11 +40,17 @@ derived listening count / last-listened, and a reverse-chronological history) is
 verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
 verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
 merged to `main`. Milestone 9 (AI Curator - single-turn natural-language
-recommendations drawn only from owned records) is **approved and in
-implementation** on `claude/milestone-9-ai-curator`
+recommendations drawn only from owned records) is **implemented and verified**
+on `claude/milestone-9-ai-curator` at revision
+`e9373bca0c7bc5ad175b7687de66faf472533bd0` - automated verification, a focused
+cloud `/ultrareview` (0 BLOCKER / 0 MEDIUM), a runtime-discovered
+selection-truncation defect found and fixed during human runtime, and human
+runtime **PASS 5/5** - and is **ready for its milestone pull request; it is not
+merged**
 (`docs/specs/0010-milestone-9-ai-curator.md`,
 `docs/plans/010-milestone-9-ai-curator.md`, ADR
-`docs/decisions/0004-openrouter-curator-text-models.md`); it is not merged.
+`docs/decisions/0004-openrouter-curator-text-models.md`,
+`docs/verification.md`). Milestone 10 has not started.
 Hosted/production verification and production deployment have not occurred and
 remain later milestones; no hosted Supabase migration has been applied.
 
@@ -114,8 +120,8 @@ Implemented:
 
 Planned:
 
-- AI curator / recommendation workflow (Milestone 9, approved; implementation in
-  progress on `claude/milestone-9-ai-curator`)
+- AI curator / recommendation workflow (Milestone 9, implemented and verified on
+  `claude/milestone-9-ai-curator`; ready for PR, not merged)
 - Conversational refinement (Milestone 10)
 - Production deployment (Milestone 11)
 

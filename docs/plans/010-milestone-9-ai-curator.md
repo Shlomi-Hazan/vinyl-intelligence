@@ -1,9 +1,12 @@
 # 010 Milestone 9 AI Curator Implementation Plan
 
-Status: APPROVED 2026-08-31 with mandatory corrections (see the spec's "Approved
-Corrections" block). Implementation may begin. **No PR until after independent
-inspection and human runtime.** Deadline mode: fix BLOCKER + meaningful MEDIUM,
-do not loop on LOW/NOTE.
+Status: implemented and verified (2026-08-31). Cloud `/ultrareview`
+0 BLOCKER / 0 MEDIUM (5 nits, all addressed); runtime-discovered
+selection-truncation defect fixed in `e9373bc`; human runtime **PASS 5/5** on
+`e9373bca0c7bc5ad175b7687de66faf472533bd0`. Ready for a milestone pull request;
+not merged, not deployed. Evidence in `docs/verification.md`. The original
+approval note and "mandatory corrections" below are retained as historical
+planning evidence.
 
 Applied corrections vs the draft plan:
 

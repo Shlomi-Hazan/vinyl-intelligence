@@ -27,7 +27,7 @@ Existing specs/spikes:
 - [0007 Milestone 6 Browse / Search / Filter](0007-milestone-6-browse-search-filter.md) - implemented and verified (merged)
 - [0008 Milestone 7 Ratings / Favorites / Notes](0008-milestone-7-ratings-favorites-notes.md) - implemented and verified (merged)
 - [0009 Milestone 8 Listening History](0009-milestone-8-listening-history.md) - implemented and verified (merged in PR #8)
-- [0010 Milestone 9 AI Curator](0010-milestone-9-ai-curator.md) - approved (2026-08-31), in implementation
+- [0010 Milestone 9 AI Curator](0010-milestone-9-ai-curator.md) - implemented and verified (human runtime PASS 5/5); ready for milestone PR, not merged
 
 Likely milestone specs:
 

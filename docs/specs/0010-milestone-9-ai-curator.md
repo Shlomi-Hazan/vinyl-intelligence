@@ -1,8 +1,14 @@
 # 0010 Milestone 9 AI Curator Specification
 
-Status: APPROVED 2026-08-31, with mandatory corrections applied (see "Approved
-Corrections" below). Implementation may begin. `docs/plans/010-…` APPROVED.
-`docs/decisions/0004-…` ACCEPTED.
+Status: implemented and verified (2026-08-31). Automated verification + one
+focused cloud `/ultrareview` (5 nits, 0 BLOCKER, 0 MEDIUM, all addressed) + a
+runtime-discovered selection-truncation defect found and fixed during human
+runtime (`e9373bc`) + human runtime **PASS 5/5** on
+`e9373bca0c7bc5ad175b7687de66faf472533bd0`. Ready for a milestone pull request.
+**Not merged. Not deployed. No hosted Supabase migration.** See
+`docs/verification.md` "Milestone 9 Evidence". `docs/plans/010-…` APPROVED;
+`docs/decisions/0004-…` ACCEPTED. The "Approved Corrections" block below is
+retained as historical planning evidence.
 
 Milestone: 9 - AI Curator (single-turn)
 
@@ -58,8 +64,9 @@ merges on `main`)
 Related: `docs/ai-design.md`, `docs/security.md`, `docs/architecture.md`,
 `docs/data-model.md`, `docs/api-integrations.md`,
 `docs/decisions/0003-openrouter-vision-provider.md`,
-`docs/decisions/0004-openrouter-curator-text-models.md` (new, proposed with this
-milestone), `intent.txt` sections 6.8-6.11, 9, 16, 17, 20, 21, 29, 35.
+`docs/decisions/0004-openrouter-curator-text-models.md` (accepted 2026-08-31),
+`docs/verification.md` "Milestone 9 Evidence", `intent.txt` sections 6.8-6.11,
+9, 16, 17, 20, 21, 29, 35.
 
 ---
 
@@ -903,7 +910,7 @@ rated + unrated; favorite + not; never-played (3, 5, 8); recently played (2, 6);
 old / forgotten (4, 7). Seeded locally at prep time (auth admin API +
 direct-SQL, the Milestone 8 approach), not via MusicBrainz.
 
-### Proposed human tests (executed one at a time; real OpenRouter text calls)
+### Human tests (executed 2026-08-31 on `e9373bc`, one at a time, real OpenRouter text calls; PASS 5/5 - see `docs/verification.md` "Milestone 9 Evidence")
 
 | # | Prompt | Expected hard constraints | Owned-ID invariant | Rec count | Model calls | Factual explanation checks |
 | --- | --- | --- | --- | --- | --- | --- |
