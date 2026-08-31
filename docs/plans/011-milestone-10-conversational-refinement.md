@@ -1,9 +1,25 @@
 # 011 Milestone 10 Conversational Refinement Implementation Plan
 
-Status: PLANNED - awaiting human approval. No implementation, migration, test,
-provider call, or PR until this plan and
-`docs/specs/0011-milestone-10-conversational-refinement.md` are explicitly
-approved.
+Status: APPROVED 2026-09-01 with mandatory corrections (see the spec's "Approved
+Corrections" block). Implementation may begin. **No PR until after the focused
+review, independent inspection, and human runtime.** Deadline mode: fix BLOCKER
++ meaningful MEDIUM, no LOW/NOTE loop.
+
+Applied corrections vs the draft plan:
+
+- **Decision A:** `excludedPreviousRecommendations: number` lives on a
+  **refine-specific** `CuratorRefineResult` type (its `ok` variant). The M9
+  `CuratorResult` and `POST /api/curator/recommend` are byte-unchanged.
+  `runSelectionPipeline` returns a plain result object; the refine handler adds
+  the field, the recommend handler does not.
+- **Decision B:** the refinement selection call (#2) `request` = the **current
+  follow-up text only**. `previousRequest` reaches **only** refinement call #1.
+  No combined string. A test asserts `previousRequest` is absent from the
+  call-#2 body.
+- **Decision C:** suggestion chips included (fill-only).
+- **Decision D:** human Test 3 follow-up = "Actually, no jazz and make it 70s."
+  (`decades -> [1970]`); acceptance is Rumours under 1970s + rock + not-recent +
+  favourite.
 
 Milestone: 10 - Conversational Refinement
 
@@ -162,9 +178,10 @@ does **not** re-implement the pipeline.
 9. **New `src/curator/CuratorRefinePanel.tsx`** (+ transcript, folded in or a
    small `CuratorTranscript.tsx`).
 10. **`types.ts`** gains `CuratorRefinementContext`, `CuratorRefinement`,
-    `CuratorConversation`, `CuratorTurn`, `REFINEMENT_MAX_TOKENS`, and (§26 Q1)
-    an optional `excludedPreviousRecommendations?: number` on the `ok` variant of
-    `CuratorResult`.
+    `CuratorRefineResult` (the refine-specific result; its `ok` variant adds the
+    **required** `excludedPreviousRecommendations: number`),
+    `CuratorConversation`, `CuratorTurn`, `REFINEMENT_MAX_TOKENS`. `CuratorResult`
+    is unchanged.
 
 ## 3. Database Change
 
@@ -215,24 +232,34 @@ does **not** re-implement the pipeline.
 
 ### `netlify/functions/_shared/curator-handlers.mts` (refactor + add)
 - Extract `runSelectionPipeline(args: { deps; env; context; intent:
-  CuratorIntent; effectiveRequest: string; items; events; excludeSet?:
-  ReadonlySet<string>; apiKey; selectionModel; appUrl; appTitle }):
-  Promise<Response>` from the current `handleCuratorRecommend` body (the
-  deterministic middle + `applyPreviousExclusion` when `excludeSet` -> `no_match`
-  short-circuit -> call #2 + `safeRecordModelCall` -> `{status:'ok',
-  interpretedIntent: intent, candidateCount, recommendations,
-  ...(excludeSet ? { excludedPreviousRecommendations: excludeSet.size } : {}) }`).
+  CuratorIntent; userRequest: string; items; events; excludeSet: ReadonlySet<string>;
+  apiKey; selectionModel; appUrl; appTitle }): Promise<CuratorPipelineResult>`
+  from the current `handleCuratorRecommend` body: `deriveCandidateFacts` ->
+  `applyHardFilters` -> `applyPreviousExclusion(_, excludeSet)` (a no-op when
+  `excludeSet.size === 0`) -> 0 survivors -> `{ status: 'no_match',
+  interpretedIntent: intent }` -> `rankAndCap` -> `buildAllowedCandidateSet` ->
+  call #2 (`selectRecommendations({ request: userRequest, softIntent: { mood,
+  energy, preference } of the (possibly refined) intent, candidateFacts, … })`)
+  + `safeRecordModelCall` -> `{ status: 'ok', interpretedIntent: intent,
+  candidateCount, recommendations }`. It returns a **plain result object**, not
+  a `Response`, and knows nothing about `excludedPreviousRecommendations`.
 - `handleCuratorRecommend` = auth -> `parseCuratorRequestBody` -> rate limit ->
   `loadOwnedCollection` (empty -> `empty_collection`) -> `extractIntent` +
-  telemetry -> `runSelectionPipeline({ …, effectiveRequest: userRequest })`.
+  telemetry -> `runSelectionPipeline({ …, userRequest, excludeSet: new Set() })`
+  -> `jsonResponse(result)` (the `CuratorResult` shape - unchanged).
 - `handleCuratorRefine` = auth -> `parseCuratorRefineBody` (spec §5) -> rate
   limit -> `loadOwnedCollection` (empty -> `empty_collection`) ->
   `extractRefinement` + `curator_intent` telemetry (success or failed) ->
-  compute `excludeSet` = `new Set(previousRecommendationIds.filter(id =>
-  ownedIdSet.has(id)))` when `refinement.excludePreviousRecommendations`, else
-  `new Set()` -> `runSelectionPipeline({ …, intent: refinement.intent,
-  effectiveRequest: \`${previousRequest}\n(refinement) ${request}\`.slice(0, 2 *
-  MAX_REQUEST_LENGTH), excludeSet })`.
+  `ownedIdSet = new Set(items.map(i => i.id))`;
+  `excludeSet = refinement.excludePreviousRecommendations ? new
+  Set(previousRecommendationIds.filter(id => ownedIdSet.has(id))) : new Set()`
+  -> `runSelectionPipeline({ …, intent: refinement.intent, userRequest:
+  request /* the CURRENT follow-up only - Decision B; previousRequest is NOT
+  passed here */, excludeSet })` -> if `status === 'ok'`, attach
+  `excludedPreviousRecommendations: excludeSet.size` (the count of
+  currently-owned prior IDs actually excluded) -> `jsonResponse` (the
+  `CuratorRefineResult` shape). `no_match` / `empty_collection` are returned
+  as-is.
 - `parseCuratorRefineBody(request): { request: string; previousRequest: string;
   previousIntent: CuratorIntent; previousRecommendationIds: string[] }` - spec
   §5 validation; `normalizeCuratorIntent(_, invalid_request)` for
@@ -426,19 +453,17 @@ schema library. Conversation state is plain React `useState`.
     tests, one at a time, with real OpenRouter calls; evidence gate; PR; human
     merge.
 
-## 12. Human Decisions Required
+## 12. Human Decisions - RESOLVED 2026-09-01
 
-1. Optional `excludedPreviousRecommendations` on the refine `ok` response
-   (spec §26 Q1) - recommendation: add it.
-2. Selection call `request` string for a refinement (spec §26 Q2) -
-   recommendation: bounded combined `previousRequest` + follow-up.
-3. Suggestion chips (spec §26 Q3) - recommendation: include.
-4. Fixture + 4 human tests (spec §22) - acceptable?
-
-No other blocking ambiguity. Everything else is a concrete recommendation ready
-to implement on approval.
+1. `excludedPreviousRecommendations` on the refine `ok` response - **included**,
+   on a refine-specific `CuratorRefineResult` type; `/recommend` unchanged.
+2. Selection call `request` for a refinement - **current follow-up text only**;
+   `previousRequest` never reaches call #2.
+3. Suggestion chips - **included** (fill-only).
+4. Fixture + 4 human tests - **approved**; Test 3 -> "Actually, no jazz and make
+   it 70s."
 
 ---
 
-> This plan is PLANNED. Do not begin Milestone 10 implementation until it and
-> the specification are explicitly approved by the human.
+> This plan is APPROVED. Implementation follows the sequence in §11; no PR until
+> after the focused review, independent inspection, and human runtime.
