@@ -1931,11 +1931,11 @@ Baseline (Milestone 7 merge on `main`):
 
 Planning commit: `6458ed8` (`docs: plan milestone 8 listening history`).
 
-Status: implemented and verified locally - automated verification (below), a
-focused implementation review (0 BLOCKER, 0 MEDIUM after one correction, below),
-and human runtime verification (PASS, 4 focused tests, below). Ready for a
-milestone pull request. **Not merged. Not deployed.** Hosted Supabase migration /
-production deployment NOT performed.
+Status: implemented and verified - automated verification (below), a focused
+implementation review (0 BLOCKER, 0 MEDIUM after one correction, below), and
+human runtime verification (PASS, 4 focused tests, below). Merged to `main` in
+PR #8 (merge commit `9af8beec701cb108b3ed6de7bdf3962fbf938ee3`). **Not
+deployed.** Hosted Supabase migration / production deployment NOT performed.
 
 ### Implemented
 

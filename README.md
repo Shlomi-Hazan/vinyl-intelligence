@@ -33,14 +33,15 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 7 (Ratings / Favorites / Notes - personal preference
-signals on owned collection items) is merged to `main`. Milestone 8 (Listening
-History - immutable `listening_events`, derived listening count / last-listened,
-and a reverse-chronological history) is implemented and verified locally
-(automated verification, focused review with 0 BLOCKER / 0 MEDIUM, and human
-runtime PASS) on branch `claude/milestone-8-listening-history` and is ready for
-its milestone pull request; it is not merged. Hosted/production verification
-and production deployment have not occurred and remain later milestones.
+Current status: Milestone 8 (Listening History - immutable `listening_events`,
+derived listening count / last-listened, and a reverse-chronological history) is
+**merged to `main`** in PR #8 (merge commit
+`9af8beec701cb108b3ed6de7bdf3962fbf938ee3`), following local automated
+verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
+verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
+merged to `main`. Milestone 9 (AI Curator) has not started. Hosted/production
+verification and production deployment have not occurred and remain later
+milestones; no hosted Supabase migration has been applied.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -99,13 +100,18 @@ Implemented:
   plain-text personal note (<= 1000 chars); partial-patch saves on the browser
   Supabase client with an own-row `UPDATE` policy scoped to the three signal
   columns (Milestone 7)
+- Listening history: immutable append-only `listening_events` as the source of
+  truth, "Mark played" on every owned record, browser-derived play count and
+  last-listened time (no denormalized columns, no triggers), and a compact
+  collapsible reverse-chronological history; authenticated `SELECT` + `INSERT
+  (collection_item_id)` only, no `UPDATE`/`DELETE`, own-item `INSERT` RLS, both
+  foreign keys `ON DELETE CASCADE` (Milestone 8)
 
 Planned:
 
-- Listening history (Milestone 8, implemented and verified locally on
-  `claude/milestone-8-listening-history`; not yet merged)
-- AI recommendation workflow
-- Production deployment
+- AI curator / recommendation workflow (Milestone 9, not started)
+- Conversational refinement (Milestone 10)
+- Production deployment (Milestone 11)
 
 ## Local Setup
 
@@ -182,6 +188,13 @@ Never commit `.env` or local credentials. This repository includes a safe `.env.
 ## Documentation
 
 - [Product Intent](intent.txt)
+- Original project roadmap: [Complete Project Roadmap - 2026-08-18 historical
+  snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) - this is the
+  original planning document, preserved unchanged and intentionally historical.
+  Every milestone status inside it reflects what was known or planned on
+  2026-08-18, **not** current state. Current implementation status is tracked by
+  this README, the feature specs, the verification evidence, the pull requests,
+  and Git history - not by that file.
 - [Architecture](docs/architecture.md)
 - [Data Model](docs/data-model.md)
 - [AI Design](docs/ai-design.md)
