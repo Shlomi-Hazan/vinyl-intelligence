@@ -398,6 +398,20 @@ Phase D** (they change the Milestone 8 append/read-only listening-events
 contract). 51 files / **553 tests**. Full detail: `docs/verification.md`
 "Phase C - final correction + human-acceptance patch".
 
+**Phase C final global shell micro-correction (2026-09-02, on-branch, not
+merged).** One shared-shell blocker: the AppShell top bar shrank vertically
+(measured 64 -> 37px) on any route whose content overflowed the viewport,
+because `.vi-topbar` had `flex-shrink: 1` inside the fixed-height `.vi-main`
+scroll column. Fixed in `shell.css` only: `.vi-topbar { flex: 0 0
+var(--topbar-h); min-height: var(--topbar-h) }` + `.vi-main > main { flex: 1 0
+auto }` + `.vi-main { min-height: 0 }`. Puppeteer-measured `.vi-topbar` height
+= **64 in all 7 authenticated routes x 4 viewports x {short, tall,
+scrolled}**; all top-bar children vertically centred; no horizontal overflow;
+mobile unchanged. Plus 3 new `DashboardPage` regression tests locking the
+canonical artwork inputs (MBIDs + custom-cover path) in the dashboard rails.
+51 files / **556 tests**. Full detail: `docs/verification.md` "Phase C - final
+global shell micro-correction".
+
 ### Phase D - VIN + history + settings + album detail
 
 `VinPage` redesign + `VINAvatar` (5 states) + `VINThinking`; `HistoryPage`

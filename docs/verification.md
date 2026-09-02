@@ -3842,3 +3842,135 @@ mocked provider were verified by the unit suites.
   only the listening truthfulness + cover/edit management are wired.
 - History redesign + listening-event edit/delete: **Phase D** (see above).
 - Human pixel-level design acceptance for Phase C still pending.
+
+## Phase C - final global shell micro-correction (2026-09-02)
+
+Starting HEAD `19edbfd`; `origin/main` unchanged at `945ed3d`. **No migration,
+no schema / RLS / grant change**, no hosted action, no deployment, no
+`supabase db reset`.
+
+### The topbar-compression bug
+
+**Human evidence:** the shared AppShell top bar visibly shrank vertically on
+multiple independent authenticated routes (Dashboard populated, Discover
+results, Ask VIN, Scan candidates) whenever route content grew taller than the
+viewport - a **shared shell** defect, not a per-page one.
+
+**Root cause (measured with Puppeteer before editing):** `.vi-main` is a
+fixed-height column flex container (`grid-template-rows: 100vh` on `.vi-app`)
+that owns route scrolling (`overflow-y: auto`). `.vi-topbar` set `height: 64px`
+but kept the default `flex-shrink: 1`, so a tall page's negative free space was
+distributed across the flex children and the bar was shrunk toward its
+min-content. Measured `getBoundingClientRect().height` on a **populated
+Dashboard: 37px** (Collection: 37, Ask VIN: 61.1, Settings - content fits: 64).
+
+**Fix (shared shell CSS only - no per-page padding/margin):**
+
+| Selector | Change |
+| --- | --- |
+| `.vi-topbar` | `flex: 0 0 var(--topbar-h); min-height: var(--topbar-h)` (rigid band, never grows/shrinks; `height` kept as a belt-and-braces value) |
+| `.vi-main > main` | `flex: 1 0 auto` (fills a short viewport, grows with tall content, does not shrink) |
+| `.vi-main` | `min-height: 0` (defensive) |
+
+`.vi-main` remains the single scroll container - no nested competing scrollers -
+and the sticky top bar pins correctly. `--topbar-h` stays **64px**.
+
+### Geometry verification (measured, not "looks right")
+
+`.vi-topbar` `getBoundingClientRect().height`, for every authenticated route x
+every viewport, **at content-short, content-tall, and scrolled-4000px-down**:
+
+| routes | 1440x900 | 1280x800 | 1024x768 | 390x844 |
+| --- | --- | --- | --- | --- |
+| `/dashboard /collection /discover /vin /scan /history /settings` | **64 / 64** | **64 / 64** | **64 / 64** | **64 / 64** |
+
+(before-scroll / after-scroll; invariant in all 28 cells). `scrollHeight >
+clientHeight` on `.vi-main` confirmed for the tall states (route content
+scrolls). Every top-bar child - breadcrumb, spacer, "Add a record", user
+avatar - has its vertical mid-point at **31.5px** (= (64 - 1px border) / 2) in
+every case. No horizontal overflow anywhere. Mobile (390) correctly shows only
+spacer + button + avatar (breadcrumb hidden by the existing responsive rule).
+The measured 64 matches `--topbar-h` exactly (border-box `flex-basis`).
+
+No route-specific topbar workaround was added; the only files touched for this
+fix are `src/styles/shell.css`.
+
+### Dashboard artwork - verified, not redesigned
+
+The previous correction's `DashboardPage` `AlbumMini` wiring is kept: it
+forwards `provider_release_id` / `provider_release_group_id`, the canonical
+`customCoverPath(userId, item.id)` (when `custom_cover_path` is set), the
+`client`, and `custom_cover_updated_at` to the one `AlbumArtwork` component -
+so the Dashboard "Recently added / Recently played / Rediscover" rails use the
+**same four-tier precedence** as Collection (custom signed cover -> CAA release
+-> CAA release-group -> branded fallback). No artwork architecture change.
+
+**New regression coverage** (`DashboardPage.test.tsx`, +3; no real CAA call):
+- "Recently added" rail: a provider-backed item renders an `<img.vi-art__img>`
+  whose `src` is `caaReleaseFrontUrl(mbid, 250)` - proves the tier-2/3 identity
+  is forwarded, not just the fallback.
+- "Recently played" uses the same `AlbumMini` artwork path.
+- a `custom_cover_path` record triggers `createSignedUrl(<canonical path>,
+  3600)` on the dashboard - proves the tier-1 input is forwarded.
+
+**Visual:** the tall-Dashboard screenshot shows real Cover Art Archive covers
+(Nevermind, The Dark Side of the Moon, OK Computer) in the rails, matching
+Collection; branded fallbacks only for the manual records that have no MBID.
+
+### Previous Phase C correction fixes - regression re-verified
+
+After the shell change: album-card overlay actions still measure exactly
+**30x30** with centred glyphs (`offL=offR=offT=offB` = 7 / 7.5); the set
+favourite still renders a **filled** heart (`svg fill="currentColor"`,
+`data-on="true"`, `.vi-albumcard__act--fav`); the collapsed sidebar user
+control is still `data-rail="true"`, contained in the sidebar, avatar centred
+in its button and within the rail. The 553 pre-existing tests (listening
+truthfulness, quick-action toast feedback, Scan drag-and-drop + provider-only
+retry, Discover reset, manual-add panel, bronze V.I, canonical Vinny) are all
+green.
+
+### Automated gate (2026-09-02; `supabase db reset` NOT run)
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed (0 / 0) |
+| `npm run test:run` | Passed: **51 files, 556 tests** (was 51 / 553) |
+| `npm run build` | Passed - entry JS 459.60 kB (133.0 kB gz), unchanged; no chunk advisory |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests |
+| `npx supabase db lint` | Passed |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+**Local DB note:** `supabase test db` again failed two pgTAP subtests at the
+start (`catalog_releases_rls` #22, `listening_events` #51) from data the human
+added during their Phase C-correction browser review (a "The Beatles - Abbey
+Road" catalog record + 1 listening event for the `m10-runtime` user). That row
++ event were removed (targeted cleanup, **not** `db reset`), along with this
+pass's own seeded QA-fixture records; local `releases` / `collection_items` /
+`listening_events` are back to empty. Phase C makes no schema/RLS/migration
+change.
+
+### Real provider calls
+
+- **Automated tests:** 0 OpenRouter, 0 MusicBrainz, 0 Cover Art Archive.
+- **Browser QA:** 0 OpenRouter, 0 MusicBrainz, 0 backend CAA (this pass drove
+  only navigation + scroll measurement + seeded-fixture screenshots). Grid
+  `<img>` tiles hotlink `coverartarchive.org` from the browser by design when a
+  record has MBIDs (the display-time architecture).
+
+### History - Phase D deferral preserved
+
+Unchanged from the previous record: human Phase C review requested richer
+History + listening-event edit/delete; **deferred to Phase D** because it
+changes the Milestone 8 append/read-only listening-events mutation contract.
+No `listening_events` UPDATE/DELETE grant or RLS change in this correction.
+
+### Remaining LOW / NOTE
+
+- `RatingControl` still renders `*` glyphs (Phase A primitive; Phase E polish).
+- `CollectionPanel` / `CatalogPanel` / `CatalogPhotoPanel` retained + tested but
+  unmounted.
+- `AlbumDetailPage` keeps its Phase-A structural layout (Phase D redesign).
+- History redesign + listening-event edit/delete: Phase D.
+- Human pixel-level design acceptance for Phase C still pending.
