@@ -2,10 +2,16 @@
  * An empty record crate - decorative CSS/SVG for empty collection / library
  * states. Original geometry, no external asset, no album artwork.
  */
-export function EmptyCrate({ size = 200, className }: { size?: number; className?: string }) {
+export function EmptyCrate({
+  size = 200,
+  className,
+}: {
+  size?: number
+  className?: string
+}) {
   return (
     <svg
-      className={className}
+      className={['vi-crate', className].filter(Boolean).join(' ')}
       viewBox="0 0 240 180"
       width={size}
       height={(size * 180) / 240}

@@ -22,6 +22,8 @@ export type IconName =
   | 'alert'
   | 'chevron-left'
   | 'chevron-right'
+  | 'chevron-down'
+  | 'arrow-down'
   | 'grid'
   | 'list'
   | 'panel-left'
@@ -49,6 +51,8 @@ const PATHS: Record<IconName, string> = {
   alert: 'M12 3l10 18H2L12 3Zm0 6v6m0 3h.01',
   'chevron-left': 'M15 6l-6 6 6 6',
   'chevron-right': 'M9 6l6 6-6 6',
+  'chevron-down': 'M6 9l6 6 6-6',
+  'arrow-down': 'M12 5v14M6 13l6 6 6-6',
   grid: 'M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   'panel-left': 'M4 5h16v14H4V5Zm6 0v14',
