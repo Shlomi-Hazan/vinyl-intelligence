@@ -16,6 +16,13 @@ import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 type CuratorPanelProps = {
   client: BrowserSupabaseClient
+  /**
+   * Optional client-only seed for the request textarea (e.g. the dashboard
+   * "Quick VIN" prefill). It only pre-fills the field - nothing is submitted
+   * and no model call is made until the user explicitly asks. The M9/M10
+   * request/response contracts are unchanged.
+   */
+  initialRequest?: string
 }
 
 type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
@@ -80,8 +87,8 @@ function OkCards({ result }: { result: OkResult }) {
   )
 }
 
-export function CuratorPanel({ client }: CuratorPanelProps) {
-  const [request, setRequest] = useState('')
+export function CuratorPanel({ client, initialRequest }: CuratorPanelProps) {
+  const [request, setRequest] = useState(() => initialRequest ?? '')
   const [status, setStatus] = useState<PanelStatus>('idle')
   const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
   const [error, setError] = useState<{ code: string; message: string } | null>(null)
