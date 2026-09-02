@@ -28,7 +28,42 @@
 }
 
 .vi-btn:not(:disabled):active {
-  transform: translateY(1px) scale(0.99);
+  transform: scale(0.98);
+}
+
+/* Ensure the compact controls ease their press/release (they set their own
+   colour/background transitions elsewhere; add transform without dropping those). */
+.vi-dialog .vi-iconbtn,
+.vi-chip .vi-chip__x,
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act,
+.vi-rating__star,
+.vi-favbtn,
+.vi-star {
+  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+/* Shared tactile compression for compact icon/glyph controls. Never on a
+   disabled control; focus-visible ring is unaffected (outline, not transform). */
+.vi-dialog .vi-iconbtn:active,
+.vi-chip .vi-chip__x:active,
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act:not(:disabled):active,
+.vi-rating__star:not([disabled]):active,
+.vi-favbtn:active,
+.vi-star:active {
+  transform: scale(0.92);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vi-dialog .vi-iconbtn:active,
+  .vi-chip .vi-chip__x:active,
+  :is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act:not(:disabled):active,
+  .vi-rating__star:not([disabled]):active,
+  .vi-favbtn:active,
+  .vi-star:active,
+  .vi-btn:not(:disabled):active {
+    transform: none;
+  }
 }
 
 .vi-btn--sm {
@@ -266,16 +301,22 @@ button.vi-chip:hover {
   gap: 2px;
 }
 .vi-rating__star {
+  display: inline-flex;
   background: none;
   border: 0;
   padding: 0;
   cursor: pointer;
   color: var(--text-faint);
-  font-size: 1rem;
-  line-height: 1;
+  line-height: 0;
+}
+.vi-rating__star svg {
+  display: block;
 }
 .vi-rating__star[data-on='true'] {
   color: var(--gold);
+}
+span.vi-rating__star {
+  cursor: default;
 }
 
 /* --- card --- */

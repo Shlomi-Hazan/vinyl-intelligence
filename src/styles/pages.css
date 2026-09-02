@@ -929,7 +929,16 @@
   padding: 0.5rem 0;
   font: inherit;
 }
+.vi-filterbar__search:focus-within {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 3px rgba(205, 122, 66, 0.22);
+  color: var(--text);
+}
+/* the visible focus indicator lives on the wrapper (:focus-within above) */
 .vi-filterbar__search input:focus {
+  outline: none;
+}
+.vi-filterbar__search input:focus-visible {
   outline: none;
 }
 .vi-filterbar .vi-select {

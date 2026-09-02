@@ -343,7 +343,7 @@
 @keyframes vi-route-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -486,24 +486,40 @@
     background: var(--surface);
     border-top: 1px solid var(--border);
   }
-  .vi-bottomnav__item {
+  /* two classes (0,2,0) so a <button class="vi-bottomnav__item"> ("More")
+     is not framed by `.legacy-host button` from the app-shell root */
+  .vi-bottomnav .vi-bottomnav__item {
     flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 2px;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    appearance: none;
+    -webkit-appearance: none;
     color: var(--text-faint);
+    font-family: var(--font-sans);
     font-size: 0.65rem;
     font-weight: 600;
     text-decoration: none;
+    cursor: pointer;
   }
-  .vi-bottomnav__item[aria-current='page'] {
+  .vi-bottomnav .vi-bottomnav__item[aria-current='page'] {
     color: var(--accent);
   }
-  .vi-bottomnav__item:hover {
+  .vi-bottomnav .vi-bottomnav__item:hover {
     text-decoration: none;
     color: var(--text);
+    background: none;
+  }
+  .vi-bottomnav .vi-bottomnav__item:active {
+    transform: scale(0.96);
   }
 }
 

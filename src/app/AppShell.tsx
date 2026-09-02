@@ -42,6 +42,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [rail, setRail] = useState(readRail)
   const [moreOpen, setMoreOpen] = useState(false)
   const liveRef = useRef<HTMLParagraphElement>(null)
+  const moreBtnRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     try {
@@ -59,6 +61,50 @@ export function AppShell({ children }: { children: ReactNode }) {
       liveRef.current.textContent = `${title}, loaded`
     }
   }, [location.pathname, title])
+
+  // Mobile "More" drawer: Esc closes, focus enters on open and returns to the
+  // trigger on close, and Tab is trapped inside while it is open.
+  useEffect(() => {
+    if (!moreOpen) {
+      return
+    }
+    const trigger = moreBtnRef.current
+    drawerRef.current
+      ?.querySelector<HTMLElement>('a, button, [tabindex]:not([tabindex="-1"])')
+      ?.focus()
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMoreOpen(false)
+        return
+      }
+      if (event.key !== 'Tab' || !drawerRef.current) {
+        return
+      }
+      const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+        'a, button, [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) {
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      trigger?.focus()
+    }
+  }, [moreOpen])
 
   const mobilePrimary = NAV.filter((n) => n.primaryMobile)
 
@@ -148,11 +194,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
         ))}
         <button
+          ref={moreBtnRef}
           type="button"
           className="vi-bottomnav__item"
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
-          onClick={() => setMoreOpen(true)}
+          onClick={() => setMoreOpen((v) => !v)}
         >
           <Icon name="more" size={20} />
           More
@@ -166,7 +213,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setMoreOpen(false)}
             aria-hidden="true"
           />
-          <div className="vi-drawer" role="dialog" aria-modal="true" aria-label="More navigation">
+          <div
+            ref={drawerRef}
+            className="vi-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="More navigation"
+          >
             {NAV.filter((n) => !n.primaryMobile).map((entry) => (
               <NavLink
                 key={entry.to}

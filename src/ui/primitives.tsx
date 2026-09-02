@@ -257,10 +257,14 @@ export function RatingControl({
   const rounded = value ?? 0
   if (readOnly) {
     return (
-      <span className="vi-rating" role="img" aria-label={`Rated ${rounded} of 5`}>
+      <span
+        className="vi-rating"
+        role="img"
+        aria-label={value === null ? 'Not rated' : `Rated ${rounded} of 5`}
+      >
         {[1, 2, 3, 4, 5].map((n) => (
           <span key={n} className="vi-rating__star" data-on={n <= rounded} aria-hidden="true">
-            *
+            <Icon name="star" size={15} filled={n <= rounded} />
           </span>
         ))}
       </span>
@@ -278,7 +282,7 @@ export function RatingControl({
           aria-pressed={n === rounded}
           onClick={() => onChange?.(n === value ? null : n)}
         >
-          *
+          <Icon name="star" size={16} filled={n <= rounded} />
         </button>
       ))}
     </span>

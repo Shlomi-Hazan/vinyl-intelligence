@@ -72,6 +72,26 @@ describe('AppShell', () => {
     ).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('the More drawer opens, closes on Escape, and restores focus to the trigger', async () => {
+    wrap('/dashboard', <AppShell>content</AppShell>)
+    const u = userEvent.setup()
+    const trigger = screen.getByRole('button', { name: /More/ })
+
+    await u.click(trigger)
+    const drawer = screen.getByRole('dialog', { name: 'More navigation' })
+    expect(drawer).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    // focus moved into the drawer
+    expect(drawer.contains(document.activeElement)).toBe(true)
+
+    await u.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: 'More navigation' }),
+    ).not.toBeInTheDocument()
+    // focus returned to the trigger
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('the user control keeps its name and expanded card when the sidebar is expanded', () => {
     const { container } = wrap('/dashboard', <AppShell>content</AppShell>)
     expect(container.querySelector('.vi-app')).toHaveAttribute('data-rail', 'false')

@@ -207,6 +207,11 @@ samp,
   font-size: var(--fs-body);
 }
 
+/* NOTE (Phase E): this transitional rule (0,1,1) also outranks the bare
+   design-system `.vi-btn` variants (0,1,0) inside the shell - see
+   docs/verification.md "Phase E" MEDIUM finding. A broad fix visibly changes
+   many human-accepted pages, so it is deferred; the compact icon/nav controls
+   that MUST win are individually scoped at (0,2,0). */
 .legacy-host button {
   background: var(--surface-2);
   color: var(--text);

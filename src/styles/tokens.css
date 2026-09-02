@@ -105,10 +105,10 @@
   --topbar-h: 64px;
   --bottomnav-h: 62px;
 
-  /* --- motion --- */
-  --dur-fast: 130ms;
-  --dur: 220ms;
-  --dur-slow: 420ms;
+  /* --- motion (approved vocabulary) --- */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 
