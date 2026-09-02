@@ -1326,3 +1326,102 @@
     animation: none;
   }
 }
+
+/* ======================= PHASE D: HISTORY JOURNAL ======================= */
+
+.vi-journal__count {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  margin: 0 0 var(--space-4);
+}
+.vi-journal {
+  display: grid;
+  gap: var(--space-6);
+}
+.vi-journal__day {
+  display: grid;
+  gap: var(--space-3);
+}
+.vi-journal__daylabel {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: var(--text);
+  margin: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.vi-journal__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.vi-histrow {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+}
+.vi-histrow:hover {
+  background: var(--surface-2);
+}
+.vi-histrow__art {
+  width: 48px;
+  height: 48px;
+}
+.vi-histrow__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vi-histrow__title {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+a.vi-histrow__title:hover {
+  text-decoration: underline;
+}
+.vi-histrow__title--gone {
+  color: var(--text-faint);
+  font-style: italic;
+  font-weight: 500;
+}
+.vi-histrow__time {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.vi-histrow__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+.vi-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+@media (max-width: 560px) {
+  .vi-histrow {
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-areas:
+      'art body'
+      'actions actions';
+  }
+  .vi-histrow__art {
+    grid-area: art;
+  }
+  .vi-histrow__body {
+    grid-area: body;
+  }
+  .vi-histrow__actions {
+    grid-area: actions;
+    justify-content: flex-start;
+  }
+}

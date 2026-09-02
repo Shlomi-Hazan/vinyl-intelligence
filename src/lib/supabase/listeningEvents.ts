@@ -80,3 +80,60 @@ export async function addListeningEvent(
 
   return data
 }
+
+/**
+ * Phase D: correct the time of an OWN listening event.
+ *
+ * ONLY `listened_at` is sent - the column-level grant plus RLS mean the browser
+ * cannot touch id / user_id / collection_item_id / created_at, so a listen can
+ * never be re-pointed at another album or another user. `listenedAt` must be a
+ * valid ISO 8601 instant (the UI converts the user's local date+time to one).
+ * Errors are surfaced so the caller never fabricates a local change.
+ */
+export async function updateListeningEventTime(
+  client: BrowserSupabaseClient,
+  eventId: string,
+  listenedAt: string,
+): Promise<ListeningEventRecord> {
+  if (Number.isNaN(new Date(listenedAt).getTime())) {
+    throw new Error('That is not a valid date and time.')
+  }
+
+  const { data, error } = await client
+    .from('listening_events')
+    .update({ listened_at: listenedAt })
+    .eq('id', eventId)
+    .select('id, collection_item_id, listened_at, created_at')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
+/**
+ * Phase D: delete an accidental OWN listening event. RLS scopes the delete to
+ * the caller's own row. The album itself is untouched - only this play is
+ * removed. Errors are surfaced.
+ */
+export async function deleteListeningEvent(
+  client: BrowserSupabaseClient,
+  eventId: string,
+): Promise<void> {
+  const { data, error } = await client
+    .from('listening_events')
+    .delete()
+    .eq('id', eventId)
+    .select('id')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  if (data?.id !== eventId) {
+    throw new Error('The listening event was not deleted.')
+  }
+}
