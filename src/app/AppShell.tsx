@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Logo } from '../brand/Logo.tsx'
+import { UserAvatar } from '../brand/UserAvatar.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { NAV, pageTitleForPath } from './nav.ts'
 import { useAuth } from '../auth/useAuth.ts'
@@ -13,12 +14,6 @@ function readRail(): boolean {
   } catch {
     return false
   }
-}
-
-function initials(name: string | null, email: string | null): string {
-  const source = (name ?? email ?? 'VI').trim()
-  const parts = source.split(/[\s@._-]+/).filter(Boolean)
-  return (parts[0]?.[0] ?? 'V').concat(parts[1]?.[0] ?? '').toUpperCase()
 }
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
@@ -43,7 +38,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
-  const { profile, user, signOut } = useAuth()
+  const { profile, user, client, signOut } = useAuth()
   const [rail, setRail] = useState(readRail)
   const [moreOpen, setMoreOpen] = useState(false)
   const liveRef = useRef<HTMLParagraphElement>(null)
@@ -107,9 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             title={`${profile?.display_name ?? user?.email ?? 'Account'} - sign out`}
             aria-label={`${profile?.display_name ?? user?.email ?? 'Account'}, sign out`}
           >
-            <span className="vi-avatar" aria-hidden="true">
-              {initials(profile?.display_name ?? null, user?.email ?? null)}
-            </span>
+            <UserAvatar profile={profile} email={user?.email} client={client} size="md" />
             <span className="vi-sidebar__account-text" aria-hidden="true">
               <span style={{ color: 'var(--text)', fontWeight: 600 }}>
                 {profile?.display_name ?? user?.email ?? 'Account'}
@@ -138,9 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             Add a record
           </NavLink>
           <div className="vi-topbar__user">
-            <span className="vi-avatar" aria-hidden="true">
-              {initials(profile?.display_name ?? null, user?.email ?? null)}
-            </span>
+            <UserAvatar profile={profile} email={user?.email} client={client} size="md" />
           </div>
         </div>
 

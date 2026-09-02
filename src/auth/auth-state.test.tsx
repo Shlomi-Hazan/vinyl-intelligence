@@ -176,7 +176,9 @@ describe('auth and profile workflow (routed)', () => {
       route: '/settings',
     })
 
-    expect(await screen.findByText('Protected profile')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Settings', level: 1 }),
+    ).toBeInTheDocument()
     expect(screen.getByText('user-a@example.test')).toBeInTheDocument()
     expect(screen.getByLabelText('Display name')).toBeInTheDocument()
   })
@@ -239,7 +241,9 @@ describe('auth and profile workflow (routed)', () => {
         ),
       ).toBeInTheDocument()
     })
-    expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Settings', level: 1 }),
+    ).not.toBeInTheDocument()
   })
 
   it('keeps the sign-in form usable after a failed password sign-in', async () => {
@@ -292,7 +296,9 @@ describe('auth and profile workflow (routed)', () => {
     renderApp({ client, route: '/settings' })
 
     await waitFor(() => {
-      expect(screen.getByText('Protected profile')).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Settings', level: 1 }),
+      ).toBeInTheDocument()
     })
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' })
@@ -330,14 +336,18 @@ describe('auth and profile workflow (routed)', () => {
     renderApp({ client, route: '/settings' })
 
     await waitFor(() => {
-      expect(screen.getByText('Protected profile')).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Settings', level: 1 }),
+      ).toBeInTheDocument()
     })
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
 
     await waitFor(() => {
       expect(screen.getByText('Sign-out service unavailable')).toBeInTheDocument()
     })
-    expect(screen.getByText('Protected profile')).toBeInTheDocument()
+    expect(
+        screen.getByRole('heading', { name: 'Settings', level: 1 }),
+      ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(client.auth.signOut).toHaveBeenCalledTimes(2)
@@ -357,7 +367,7 @@ describe('auth and profile workflow (routed)', () => {
     expect(
       screen.getByText('Display name must be 80 characters or fewer.'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save profile' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save display name' })).toBeDisabled()
   })
 
   it('trims and saves display-name updates through the profile service', async () => {
@@ -369,7 +379,7 @@ describe('auth and profile workflow (routed)', () => {
     const input = await screen.findByLabelText('Display name')
     await user.clear(input)
     await user.type(input, ' Alice Updated ')
-    await user.click(screen.getByRole('button', { name: 'Save profile' }))
+    await user.click(screen.getByRole('button', { name: 'Save display name' }))
 
     await waitFor(() => {
       expect(client.__query.update).toHaveBeenCalledWith({
@@ -391,13 +401,15 @@ describe('auth and profile workflow (routed)', () => {
     const input = await screen.findByLabelText('Display name')
     await user.clear(input)
     await user.type(input, 'Alice Updated')
-    await user.click(screen.getByRole('button', { name: 'Save profile' }))
+    await user.click(screen.getByRole('button', { name: 'Save display name' }))
 
     await waitFor(() => {
       expect(screen.getByText('Profile update rejected')).toBeInTheDocument()
     })
-    expect(screen.getByText('Protected profile')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save profile' })).toBeEnabled()
+    expect(
+        screen.getByRole('heading', { name: 'Settings', level: 1 }),
+      ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save display name' })).toBeEnabled()
   })
 
   it('shows a controlled missing-profile state without browser-side creation', async () => {
@@ -456,6 +468,8 @@ describe('auth and profile workflow (routed)', () => {
     await waitFor(() => {
       expect(screen.getByText('Auth service unavailable')).toBeInTheDocument()
     })
-    expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Settings', level: 1 }),
+    ).not.toBeInTheDocument()
   })
 })

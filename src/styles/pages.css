@@ -1596,3 +1596,43 @@ a.vi-histrow__title:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===================== PHASE D: SETTINGS ===================== */
+
+.vi-settings {
+  max-width: 44rem;
+}
+.vi-settings__section {
+  margin-top: var(--space-6);
+  display: grid;
+  gap: var(--space-4);
+}
+.vi-settings__section h2 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.vi-settings__email {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.vi-avatarctl {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.vi-avatarctl__body {
+  display: grid;
+  gap: var(--space-3);
+  min-width: min(100%, 18rem);
+  flex: 1;
+}
+.vi-avatarctl__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}

@@ -178,8 +178,10 @@ samp,
   color: var(--danger);
 }
 
-.notice {
+.notice,
+.vi-notice {
   color: var(--success);
+  font-size: var(--fs-sm);
 }
 
 .lede {
