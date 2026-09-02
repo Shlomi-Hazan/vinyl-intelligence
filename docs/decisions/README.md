@@ -26,6 +26,13 @@ Accepted decisions:
   catalog-add lookup (accepted 2026-08-31; Visual Experience & Product Identity
   pass, spec `0012`)
 
+- [0006 Listening-Event Mutability & Optional Profile Avatar](0006-listening-event-mutability-and-profile-avatar.md) -
+  Phase D: owner-scoped `listened_at` correction + play deletion (M8 was
+  append-only, superseded minimally); user-owned `collection_items.personal_genres`
+  instead of weakening catalog `releases` RLS (finding 8D-2); optional profile
+  avatar in a private bucket with signed URLs never persisted, initials always
+  the default and fallback (accepted 2026-09-02, spec `0012`)
+
 Proposed decisions (pending human approval):
 
 - [0003 OpenRouter Vision Provider](0003-openrouter-vision-provider.md) - vision

@@ -88,9 +88,24 @@ fallback), and a motion/responsive/accessibility pass.
   real data-driven dashboard, and route-level code splitting) is **implemented
   and locally verified on the same branch, not merged**
   (`docs/verification.md` "Visual Phase B Evidence").
-- **Phases C-E** (artwork infra + visual collection/discover/scan;
-  VIN/history/settings/album-detail; motion/responsive/a11y/perf) are not
-  started.
+- **Phase C** (artwork infrastructure - one canonical `AlbumArtwork` with the
+  custom-cover -> Cover Art Archive release -> release-group -> branded fallback
+  precedence - plus the visual Collection / Discover / Scan surfaces) is
+  **implemented and locally verified on the same branch, not merged**, including
+  a final human-acceptance correction pass and a shared-shell top-bar fix
+  (`docs/verification.md` "Phase C ...").
+- **Phase D** (History as a day-grouped listening journal with play-time
+  correction + play deletion; Album Detail as the definitive record page with
+  read-only catalog metadata + user-owned personal genres; Settings; an optional
+  private-bucket profile avatar with initials always the fallback) is
+  **implemented and locally verified on the same branch, not merged**
+  (`docs/verification.md` "Phase D", ADR
+  `docs/decisions/0006-listening-event-mutability-and-profile-avatar.md`). Three
+  forward migrations applied locally only. VIN / Ask VIN and all M9/M10 curator
+  behaviour are unchanged.
+- **Phase E** (motion vocabulary, responsive + accessibility audit, route
+  code-split finalisation + bundle budget, the single end-of-pass code review)
+  is not started.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 
@@ -149,12 +164,14 @@ Implemented:
   plain-text personal note (<= 1000 chars); partial-patch saves on the browser
   Supabase client with an own-row `UPDATE` policy scoped to the three signal
   columns (Milestone 7)
-- Listening history: immutable append-only `listening_events` as the source of
+- Listening history: append-only `listening_events` as the source of
   truth, "Mark played" on every owned record, browser-derived play count and
   last-listened time (no denormalized columns, no triggers), and a compact
   collapsible reverse-chronological history; authenticated `SELECT` + `INSERT
-  (collection_item_id)` only, no `UPDATE`/`DELETE`, own-item `INSERT` RLS, both
-  foreign keys `ON DELETE CASCADE` (Milestone 8)
+  (collection_item_id)` only, own-item `INSERT` RLS, both foreign keys
+  `ON DELETE CASCADE` (Milestone 8). *The Visual Experience Phase D branch (not
+  merged) adds an owner-scoped `UPDATE (listened_at)` + `DELETE` grant so a
+  collector can correct or remove their own play - see ADR 0006.*
 - AI Curator: `POST /api/curator/recommend` - a single-turn natural-language
   request produces a small set of recommendations drawn only from owned records.
   Two-stage OpenRouter pipeline (intent extraction -> deterministic hard filter

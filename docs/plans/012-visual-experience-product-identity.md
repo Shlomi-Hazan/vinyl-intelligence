@@ -421,6 +421,74 @@ listening + cover + edit/remove). M9/M10 curator code unchanged.
 Exit: existing curator suites unchanged and green; mascot state tests;
 history grouping tests; detail not-found state.
 
+**Phase D implemented (2026-09-02, on-branch, not merged) - history + album
+detail + settings + profile avatar.** VIN / Ask VIN / Vinny were finished in
+Phase B and are explicitly untouched here (no M9/M10 curator prompt, contract,
+or OpenRouter change).
+
+- **DB (3 forward migrations, applied locally via `supabase migration up`, not
+  `db reset`, not applied to hosted):**
+  - `20260904120000_allow_listening_event_management.sql` - M8 shipped
+    `listening_events` append-only; Phase D product review approved letting a
+    collector fix a wrong play time and delete an accidental play *of their own*.
+    Minimum change: column-scoped `UPDATE (listened_at)` grant + `DELETE` grant +
+    own-row RLS for UPDATE and DELETE; anon gets neither; id / user_id /
+    collection_item_id / created_at stay immutable to the browser.
+  - `20260904121000_add_personal_genres.sql` - fixes finding 8D-2. Catalog
+    releases are `source='catalog'` / `created_by=NULL` and read-only to the
+    browser, so the generic edit form could never save a genre onto them.
+    Rather than weaken `releases` RLS, add `collection_items.personal_genres
+    text[]` (owner-scoped, CHECK reuses `public.release_genres_valid`). Effective
+    genres = union of `release.genres` + `personal_genres`, computed client-side,
+    neither source mutated.
+  - `20260904122000_add_profile_avatar_storage.sql` - human-approved optional
+    avatar. `profiles.avatar_path` / `avatar_updated_at` (nullable, canonical
+    `{userId}/avatar.webp` CHECK, column-scoped grant), `updated_at` trigger
+    recreated to also fire on an avatar change, private `profile-avatars` bucket
+    (webp only, 1 MiB), four owner-isolated `storage.objects` policies modelled
+    on the custom-cover architecture. `config.toml` mirrors the bucket for local
+    dev.
+- **History** rebuilt as a day-grouped listening journal (browser-local Today /
+  Yesterday / full date, newest first), real `AlbumArtwork` thumbnails, each row
+  linking to `/collection/:id`, edit-play-time (native `datetime-local`, local
+  <-> ISO, only `listened_at` written) and delete-play, both through the Dialog
+  primitive with a truthful destructive confirmation. Loading is never an empty
+  state; collection and listening errors stay independent with their own Retry.
+- **Album Detail** rebuilt as the definitive record page: album-focused hero
+  (large canonical artwork, artist, title, only real catalog metadata), personal
+  state (filled-heart favourite, star rating, notes), truthful listening section
+  with recent plays, custom-cover management, "Remove from collection" via a
+  Dialog with wording distinct from deleting a listen. Catalog metadata is
+  READ-ONLY (manual releases keep the edit form; catalog releases show an
+  explanation instead of a form RLS would reject); owners manage their own
+  genres via `personal_genres`. `legacy-host` retired on this page.
+- **Settings** rebuilt to two honest sections - PROFILE (photo, display name,
+  read-only account email) and ACCOUNT (sign out). No invented settings, no
+  password / email-change flows. `legacy-host` retired; the unused `ProfilePanel`
+  removed.
+- **Profile avatar** - one canonical WebP per user, client-side centre-crop +
+  resize (no external service), direct browser Storage calls governed by RLS +
+  bucket config. The signed URL is treated as a bearer credential: memory-only
+  cache with early re-sign, never written to the profile row, `localStorage`,
+  `sessionStorage`, a log, telemetry, or an error message. **Initials are the
+  default AND the fallback** in every state (no photo, URL still resolving,
+  signing failed, `<img>` errored) - a broken-image glyph is never shown. One
+  shared `UserAvatar` component owns photo + initials + circle geometry + failed-
+  image fallback, used in the AppShell topbar, the sidebar account control
+  (expanded + collapsed rail), and the Settings preview. `AuthProvider.refresh
+  Profile()` propagates a profile mutation to every avatar without a reload.
+
+Verification: `typecheck`, `lint` (0 warnings), `test:run` (**60 files /
+619 tests**), `build`, `supabase test db` (**10 files / 507 assertions**,
+including the new `profile_avatar_storage.test.sql` and extended
+`listening_events` / `collection_item_signals` / `catalog_releases_rls`
+suites - no local QA data deleted), `supabase db lint`, `npm audit --omit=dev`
+(0). Full detail: `docs/verification.md` "Phase D".
+
+VIN personal-genres integration is intentionally **deferred** - it would touch
+the `curator-handlers.mts` Netlify function / M9-M10 candidate contract, and
+section 8D-2.F permits deferral rather than accept that risk in this pass.
+
 ### Phase E - motion + responsive + accessibility + performance + final review
 
 Motion vocabulary (spec section 10) applied consistently; `prefers-reduced-

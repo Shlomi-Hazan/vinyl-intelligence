@@ -3974,3 +3974,124 @@ No `listening_events` UPDATE/DELETE grant or RLS change in this correction.
 - `AlbumDetailPage` keeps its Phase-A structural layout (Phase D redesign).
 - History redesign + listening-event edit/delete: Phase D.
 - Human pixel-level design acceptance for Phase C still pending.
+
+## Phase D - History + Album Detail + Settings + Profile Avatar (2026-09-02)
+
+Starting HEAD `bcee8c5`; `origin/main` unchanged at `945ed3d`. Three **forward**
+migrations (never edits history), applied locally with `supabase migration up`
+(**no `supabase db reset`**), **not** applied to hosted Supabase. No merge, no
+PR, no deployment. Phase E / Milestone 11 not started. VIN / Ask VIN / Vinny /
+the bronze V·I glyph and all M9/M10 curator prompts, contracts, and OpenRouter
+behaviour are untouched.
+
+### Database changes
+
+| Migration | What | Why |
+| --- | --- | --- |
+| `20260904120000_allow_listening_event_management.sql` | column-scoped `UPDATE (listened_at)` grant + `DELETE` grant on `listening_events`; own-row RLS for UPDATE and DELETE; anon denied both | M8 intentionally shipped append-only; Phase D product review approved owner-scoped time correction + play deletion. Minimum change - id / user_id / collection_item_id / created_at remain immutable to the browser. |
+| `20260904121000_add_personal_genres.sql` | `collection_items.personal_genres text[] not null default '{}'`, CHECK reuses `public.release_genres_valid`, column-scoped `UPDATE` grant | Finding 8D-2: catalog releases (`source='catalog'`, `created_by=NULL`) are read-only to the browser, so the generic edit form could never save a genre onto them. Owner genres live on the owned collection item instead of weakening `releases` RLS. |
+| `20260904122000_add_profile_avatar_storage.sql` | `profiles.avatar_path` / `avatar_updated_at` (nullable, canonical-path CHECK, column-scoped grant); `updated_at` trigger recreated to fire on an avatar change; private `profile-avatars` bucket (webp, 1 MiB); four owner-isolated `storage.objects` policies | Human-approved optional avatar, modelled on the Phase 0 custom-cover storage architecture. `config.toml` mirrors the bucket for local dev. |
+
+### Commands run (this pass)
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` | pass |
+| `npm run lint` | pass, **0 warnings** (the `react-refresh/only-export-components` warning was removed by extracting `userInitials` to its own module) |
+| `npm run test:run` | **60 files / 619 tests, all pass** |
+| `npm run build` | pass; new route chunks `HistoryPage` 6.64 kB, `AlbumDetailPage` 12.45 kB, `SettingsPage` 4.35 kB gz; main bundle 464.93 kB / 134.77 kB gz (bundle budget is a Phase E gate) |
+| `npx supabase migration up --local` | 3 migrations applied cleanly, objects verified present |
+| `npx supabase test db` | **10 files / 507 assertions, PASS** |
+| `npx supabase db lint` | `No schema errors found` |
+| `npm audit --omit=dev` | `found 0 vulnerabilities` |
+| `git diff --check` | clean |
+
+### pgTAP - new and extended, no local QA data destroyed
+
+The local database still holds the human's Phase-C-acceptance review record
+("Kendrick Lamar - good kid, m.A.A.d city", owned by `m10-runtime`). Phase D
+section 24 forbids deleting it to make tests pass. Two previously **global**
+row-count assertions that this data had broken in earlier phases were instead
+made **isolation-scoped to their own seeded rows** (a legitimate pgTAP
+hygiene improvement - the security property is still fully asserted):
+
+- `catalog_releases_rls.test.sql` #22 - "authenticated user can read shared
+  catalog metadata" now asserts the seeded row's `artist` + a count scoped to
+  that id, not `count(*) where source='catalog' == 1`.
+- `listening_events.test.sql` - the "User B's event unaffected" cross-user
+  count is scoped to the two seeded user ids.
+
+New / extended pgTAP:
+
+- **`listening_events.test.sql`** (extended) - still 5 columns after Phase D;
+  `authenticated` HAS `UPDATE(listened_at)` but NOT `UPDATE` on id / user_id /
+  collection_item_id / created_at; HAS `DELETE`; anon has neither; policy count
+  2 -> 4; behavioural: User A updates own `listened_at` (persisted), cannot
+  re-point user_id / collection_item_id / created_at, a cross-user UPDATE and
+  DELETE run without error and touch 0 rows, User A can DELETE own event.
+- **`collection_item_signals.test.sql`** (extended) - `personal_genres` column
+  shape / default / grant / CHECK; behavioural: owner sets a normalised list
+  (persisted), an un-normalised value is rejected `23514`, a cross-user
+  `personal_genres` UPDATE touches 0 rows, the shared `releases.genres` is
+  never written.
+- **`profile_avatar_storage.test.sql`** (new) - profile column shape / grants
+  (exactly display_name + the two avatar columns, never id / created_at /
+  updated_at) / canonical-path CHECK (own prefix + `avatar.webp` only,
+  arbitrary paths rejected `23514`); profiles still has exactly 2 RLS policies;
+  `updated_at` bumps on an avatar change; cross-user profile UPDATE touches 0
+  rows; bucket is private / 1 MiB / webp-only; 4 `profile-avatars`
+  `storage.objects` policies; User A manages only their own canonical object,
+  User B cannot select / insert / update / delete it, anon has no access,
+  non-canonical filenames / deeper paths / other-user folders are rejected
+  `42501`. No `service_role` browser path.
+
+### Client tests added
+
+| File | Covers |
+| --- | --- |
+| `src/collection/historyGrouping.test.ts` | Today/Yesterday/full-date labels, newest-first day + event ordering, unparseable timestamps dropped, `datetime-local` <-> ISO round-trip |
+| `src/pages/HistoryPage.test.tsx` | loading != empty, error != empty (+ Retry), day grouping + row link to `/collection/:id`, gone-record placeholder, edit dialog prefill + only `listened_at` persisted + refresh, delete needs confirmation + refreshes, delete failure surfaced (no false success) |
+| `src/lib/supabase/personalGenres.test.ts` | `normalizePersonalGenres` (trim/lowercase/dedupe/limits), `effectiveGenres` (union, catalog-first, no mutation), `isEditableRelease` (manual vs catalog vs explicit source), `updateCollectionItemPersonalGenres` writes ONLY `personal_genres`, rejects invalid input pre-write, propagates RLS error |
+| `src/collection/PersonalGenresEditor.test.tsx` | remove + persist, save failure rolls back the optimistic change, catalog chips have no remove control, over-long genre rejected pre-write |
+| `src/pages/AlbumDetailPage.test.tsx` | title as `h1`, only real metadata, manual gets an edit form, catalog does NOT (shows the read-only explanation), catalog genres read-only + own genres editable, listening section truthful while events load, remove needs a deliberate confirmation distinct from deleting a listen, collection load error != not-found |
+| `src/collection/collectionQuery.test.ts` (extended) | genre filter matches a personal-only genre; `availableGenres` lists personal + catalog deduped |
+| `src/lib/supabase/collection.test.ts` (updated) | `loadCollection` now returns `personal_genres`; select string includes it |
+| `src/brand/userInitials.test.ts` | display-name / email / fallback derivation |
+| `src/brand/UserAvatar.test.tsx` | initials when no path, photo once signed, `<img>` error -> initials, signing failure -> initials, never a broken-image glyph |
+| `src/lib/profile/avatar.test.ts` | `avatarPath` canonical, input validation, `uploadAvatar` writes ONLY the two avatar columns + upserts webp, storage failure -> `AvatarError`, `removeAvatar` nulls the profile columns *before* deleting the object, signed URL is signed against the private bucket + memory-cached + **never written to `localStorage` / `sessionStorage`**, signing failure returns `null` (never throws) |
+| `src/pages/SettingsPage.test.tsx` | initials by default, read-only account email, upload success -> `refreshProfile`, Remove present only with a photo -> `removeAvatar` + refresh, upload failure surfaced without false success, display-name save + sign-out preserved |
+| `src/auth/auth-state.test.tsx` (updated) | routed `/settings` assertions retargeted from the removed `ProfilePanel` shell to the new Settings h1 / "Save display name" |
+
+### Real provider calls
+
+- **Automated tests:** 0 OpenRouter, 0 MusicBrainz, 0 Cover Art Archive
+  (History thumbnails and the Album Detail hero use the existing `AlbumArtwork`
+  component, whose CAA tiers are plain `<img src>` values built client-side and
+  never hit in jsdom; avatar signing is mocked).
+
+### legacy-host
+
+Retired on `AlbumDetailPage` and `SettingsPage` (both fully rebuilt on the
+design system). `HistoryPage` already did not carry it. `CollectionPanel` /
+`CatalogPanel` / `CatalogPhotoPanel` / `CollectionItemCard` remain (still
+imported by their own unmounted tests) - broad legacy cleanup is Phase E.
+
+### Known gaps / deferred
+
+- **Human browser visual QA for Phase D is pending** - this pass verified the
+  automated gate (typecheck / lint / tests / build / pgTAP / db lint / audit).
+  A running-server pass across 1440x900 / 1280x800 / 1024x768 / 390x844 for
+  History (empty / long / multi-group / edit dialog / event-moves-group /
+  delete confirm / errors), Album Detail (provider / manual / favourite /
+  notes+rating / listening / loading+error / custom cover / fallback / edit
+  manual / destructive confirm), Settings (initials / upload / uploaded /
+  replace / remove / invalid / storage failure), and the AppShell avatar in
+  all four locations still needs a human.
+- **VIN personal-genres integration deferred** - would touch the
+  `curator-handlers.mts` Netlify function / M9-M10 candidate contract; section
+  8D-2.F permits deferral to avoid that risk in this pass.
+- Motion vocabulary, exhaustive responsive/a11y audit, route-code-split
+  finalisation, bundle budget, and the single end-of-Phase-E code review remain
+  Phase E.
+- `RatingControl` `*` glyphs; `AlbumDetailPage` rating uses the new star Icon,
+  but the shared `RatingControl` primitive used elsewhere is still Phase E.
