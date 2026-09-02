@@ -211,7 +211,12 @@ describe('auth and profile workflow (routed)', () => {
       route: '/discover',
     })
 
-    expect(await screen.findByText('Search MusicBrainz')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Discover', level: 1 }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('searchbox', { name: 'Search the catalog' }),
+    ).toBeInTheDocument()
   })
 
   it('shows the confirmation-pending state after sign-up without a session', async () => {

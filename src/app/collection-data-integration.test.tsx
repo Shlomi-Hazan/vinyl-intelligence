@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, User } from '@supabase/supabase-js'
@@ -114,7 +114,8 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
 
     renderApp({ client: authedClient(), route: '/collection' })
 
-    await screen.findByRole('link', { name: /Nevermind/ })
+    const grid = await screen.findByRole('list', { name: 'Records' })
+    expect(within(grid).getAllByRole('listitem')).toHaveLength(1)
 
     // Exactly one initial load each - the provider's, not a second from the browser.
     expect(loadCollection).toHaveBeenCalledTimes(1)
@@ -138,7 +139,7 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
     })
 
     renderApp({ client: authedClient(), route: '/collection' })
-    await screen.findByRole('link', { name: /OK Computer/ })
+    await screen.findByRole('list', { name: 'Records' })
 
     await userEvent
       .setup()
@@ -167,7 +168,7 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
     })
 
     const first = renderApp({ client: authedClient(), route: '/collection' })
-    await screen.findByRole('link', { name: /Doolittle/ })
+    await screen.findByRole('list', { name: 'Records' })
     expect(loadCollection).toHaveBeenCalledTimes(1)
 
     await userEvent
