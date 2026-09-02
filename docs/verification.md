@@ -2867,9 +2867,77 @@ deterministic seed accent, decorative `aria-hidden`);
 `media/fallbackCover.test.ts` (deterministic, in-ramp, empty-string safe). All
 M9/M10 curator suites unchanged and green.
 
+### Phase A correction - single collection source + independent error handling (2026-09-02)
+
+The above section records the **initial** Phase A implementation. An
+**independent GitHub audit** then found **two related MEDIUM findings** in the
+`CollectionDataProvider` integration, both **corrected on the same branch before
+Phase B** (the initial implementation and its evidence are preserved above; this
+subsection is the correction record).
+
+- **MEDIUM 1 - not actually the single post-auth source.** The first
+  implementation kept `CollectionDataProvider` *and* a self-loading
+  `CollectionPanel` (its own `items` / `events` state, its own
+  `loadCollection` + `loadListeningEvents`, local-only mutation updates). Two
+  competing client snapshots: a mutation on `/collection` (mark-played /
+  rating / favourite / notes / add / edit / remove) updated only the panel, so
+  `/history` and `/collection/:id` could show stale data until a later
+  invalidation.
+  - **Fix:** `CollectionPanel` gained a **controlled mode** - when
+    `CollectionPage` passes provider-owned `data` (`items` / `events` /
+    load + events phase + errors) plus `onReload` / `onReloadEvents` /
+    `onMutated`, the panel **never issues its own load** and, after every
+    successful mutation, calls `onMutated()` -> the provider's `invalidate()`
+    for **one authoritative reload**. Uncontrolled mode (the pre-router shell
+    and the panel's own ~40 unit tests) is byte-for-byte unchanged. No
+    state-management dependency; RLS still authoritative; no `service_role`.
+- **MEDIUM 2 - partial load failure misreported as "not in your collection".**
+  The provider used `Promise.all`: either load failing cleared *both* arrays and
+  set one global error, and `AlbumDetailPage` only handled `loading` (not
+  `error`), so a collection-load failure rendered "Not in your collection".
+  - **Fix:** the provider now loads collection and listening events in **two
+    independent effects** with **separate phases** (`status` / `eventsStatus`)
+    and **separate errors** (`error` / `eventsError`); a failure of one never
+    blanks the other's data, and a reload failure never clears an
+    already-loaded list. `AlbumDetailPage` now distinguishes **loading** ->
+    skeleton, **collection error** -> recoverable `ErrorState` + Retry (never a
+    false not-found), and **ready + item absent** -> genuine "not in your
+    collection". `HistoryPage` surfaces a collection error and a
+    listening-events error independently, each with its own retry (Milestone 8
+    principle preserved).
+
+Correction commit(s): see the git log entry `fix: make CollectionDataProvider
+the single collection source` (and any follow-up). Correction verification
+(2026-09-02, same gate): `git diff --check` clean; `typecheck` / `lint` /
+`build` pass; `test:run` **36 files / 431 tests** (+1 file / +7 over the initial
+Phase A, `src/app/collection-data-integration.test.tsx`); `supabase test db`
+9 / 433 unchanged; `db lint` clean; `npm audit` 0. **0 OpenRouter / 0
+MusicBrainz / 0 Cover Art Archive calls. No schema / migration change. No hosted
+action.**
+
+New regression tests (`src/app/collection-data-integration.test.tsx`):
+
+- **A** - mounting `/collection` triggers exactly one `loadCollection` and one
+  `loadListeningEvents` (the provider's; no second panel load).
+- **B** - mark-played on `/collection`, then navigate to `/history`: the new
+  event's record shows without a browser refresh.
+- **C** - a rating change on `/collection` triggers one authoritative provider
+  reload and is shown on `/collection/:id` after navigation.
+- **D** - a removal leaves `/history` (event gone) and `/collection/:id`
+  (genuine "we could not find that record") consistent, not stale.
+- **E** - a collection-load error on `/collection/:id` is a recoverable
+  `ErrorState` with Retry, **not** "not in your collection".
+- **F** - a listening-events-load error keeps the owned collection available on
+  `/collection`; `/history` shows the events error + retry and does **not**
+  report a collection error.
+- **G** - Retry recovers after a collection-load error.
+
+`src/app/CollectionDataProvider.test.tsx` still covers loading -> ready,
+error -> retry -> ready, and the fresh-user keyed remount starting empty.
+
 ### Known LOW / deferred (deadline mode - recorded, not fixed in Phase A)
 
-- **Bundle size:** the client JS chunk grew to ~521 KB (149 KB gz) with
+- **Bundle size:** the client JS chunk grew to ~523 KB (149 KB gz) with
   `react-router-dom`. Route-level `React.lazy` code-splitting is a Phase B/E task
   per `docs/plans/012` (Phase E: "route-level code splitting finalised + bundle
   budget check"). Build only warns; it does not fail.

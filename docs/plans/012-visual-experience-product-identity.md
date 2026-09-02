@@ -215,13 +215,29 @@ it.
    `src/media/fallbackCover.test.ts`. Every M9/M10 curator suite is byte
    unchanged. **Done.**
 
-Exit met: `typecheck` / `lint` / `test:run` (35 files / 424) / `build` green;
-`supabase test db` 9 / 433; every route reachable; every M2-M10 feature usable;
-M9/M10 contract tests unchanged. The one code review is still reserved for the
-end of Phase E.
+Exit met: `typecheck` / `lint` / `test:run` (initial 35 files / 424; after the
+correction below 36 / 431) / `build` green; `supabase test db` 9 / 433; every
+route reachable; every M2-M10 feature usable; M9/M10 contract tests unchanged.
+The one code review is still reserved for the end of Phase E.
 
-**Known Phase A deferrals (LOW / documented):** the client JS bundle grew to
-~521 KB (149 KB gz) with `react-router-dom`; route-level `React.lazy`
+**Phase A correction (2026-09-02, before Phase B).** An independent GitHub audit
+found two MEDIUM findings in the `CollectionDataProvider` integration - the
+initial implementation was **not** actually the single post-auth source
+(`CollectionPanel` still self-loaded and held a competing snapshot), and a
+`Promise.all` partial-load failure could render "not in your collection" for a
+data-load error. Both **fixed on this branch before Phase B**: `CollectionPanel`
+gained a controlled mode (provider-owned data + `onMutated` -> one authoritative
+`invalidate()`; uncontrolled mode unchanged for its own tests); the provider now
+loads collection and listening events in two independent effects with separate
+phases and separate errors; `AlbumDetailPage` / `HistoryPage` distinguish
+loading / collection-error / genuine-not-found / events-error. +1 regression
+test file (`src/app/collection-data-integration.test.tsx`, cases A-G). Full
+detail in `docs/verification.md` "Phase A correction". The transitional
+double-load in the first implementation was a mistake, not an intended design -
+this plan is not being rewritten to suggest otherwise.
+
+**Known Phase A deferrals (LOW / documented):** the client JS bundle is
+~523 KB (149 KB gz) with `react-router-dom`; route-level `React.lazy`
 code-splitting is a Phase B/E task per this plan (Phase E: "route-level code
 splitting finalised + bundle budget check"). `src/styles.css` still present
 (retired page-by-page in C-D). `/history` and `/collection/:id` are transitional
