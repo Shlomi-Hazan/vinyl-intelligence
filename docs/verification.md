@@ -3432,3 +3432,127 @@ pushed - the agent's screenshot review is not a substitute for it.
 - Collection / Discover / Scan / History / Settings / Album-detail keep their
   transitional hosts (full redesigns are Phases C-D).
 - Vinny's full 5-state system (success / no-match) is Phase D.
+
+## Visual Experience Pass - Phase B final asset + micro-polish (2026-09-02)
+
+The narrow closing patch for Phase B. Starting HEAD `ffb450e`; `origin/main`
+unchanged at `945ed3d`. No Phase C, no schema / migration / routing / page
+architecture / backend change, no `supabase db reset`, no external AI calls.
+
+### 1. Vinny -> five approved image assets
+
+The human supplied five approved 3D-rendered Vinny images. They are now
+canonical. Optimised (resized to 600x750, palette PNG) and committed as static
+files:
+
+| state | file | bytes |
+| --- | --- | --- |
+| idle | `public/vinny/vinny-idle.png` | 109 793 |
+| thinking | `public/vinny/vinny-thinking.png` | 99 504 |
+| success | `public/vinny/vinny-success.png` | 114 580 |
+| no-match | `public/vinny/vinny-no-match.png` | 108 548 |
+| empty | `public/vinny/vinny-empty.png` | 129 984 |
+
+All are transparent (`sips -g hasAlpha` = yes on every file). Served as static
+assets, loaded on demand by `<img>` - **not bundled** (entry JS 456.73 kB,
+unchanged; the old `VinAvatar` chunk is gone).
+
+New shared component `src/brand/Vinny.tsx` owns the only state -> file mapping
+(`<Vinny state="idle|thinking|success|no-match|empty" size= className= label= />`).
+`width`/`height` attributes reserve layout space (no load shift); `object-fit:
+contain`; `aria-hidden` unless `label` is given (never the filename).
+
+The hand-drawn `src/brand/VinAvatar.tsx` and its EQ/head-wobble CSS are deleted.
+`src/brand/EmptyCrate.tsx` is deleted too - the `empty` asset already contains a
+record crate, so the separate drawing (only ever rendered beside Vinny) is
+redundant. `.vi-vinny--thinking` keeps a gentle 3% image bob, disabled under
+`prefers-reduced-motion`.
+
+**State mapping in the running app:**
+
+| location | state |
+| --- | --- |
+| Landing "Ask VIN" section | idle |
+| Auth left panel | idle |
+| Dashboard - Quick VIN header | idle |
+| Dashboard - empty collection | empty |
+| Collection - empty shelf | empty |
+| Ask VIN aside - empty collection | empty |
+| Ask VIN aside - request idle | idle |
+| Ask VIN aside - request pending | thinking |
+| Ask VIN aside - ok recommendation | success |
+| Ask VIN aside - no_match result | no-match |
+| Ask VIN aside - technical error | idle (panel shows its own error) |
+
+`CuratorPanel.onStatusChange` was widened from the raw panel status to a
+semantic `CuratorUiState` (`idle | thinking | success | no-match`), derived from
+the initial-request flow. UI-only - no curator client/contract/prompt/schema/
+model/rate-limit/telemetry change.
+
+### 2. V·I glyph -> light bronze
+
+New token `--vi-glyph: #d08b48` (one source of truth). `ViGlyph`'s default
+colour now reads it, so every runtime mark inherits the bronze with no
+per-call change: landing header + hero record label + final CTA, sidebar full
+wordmark + rail disc mark, 404 / full-page `Suspense` states, and
+`public/favicon.svg` (hand-matched). Geometry and V/I spacing unchanged. The
+bronze reads clearly as a bold letterform on the ivory label (verified in the
+browser at header, hero and CTA sizes).
+
+### 3. Sidebar collapse toggle centring
+
+**Cause:** the button is inside `.legacy-host`, so `.legacy-host button`
+(`padding: 0.6rem 1rem`, specificity 0,1,1) and the legacy `styles.css`
+`button { min-height: 2.6rem }` beat the plain `.vi-collapse-btn` rule (0,1,0).
+Measured: the intended 26x26 box rendered **34 x 41.6** with the 15px icon
+pushed to `offL 17 / offR 2`.
+
+**Fix:** re-scope as `.vi-sidebar__top .vi-collapse-btn` (0,2,0) with a full
+reset - `appearance: none`, `padding: 0`, `min-height: 0`, `line-height: 0`,
+`display: inline-flex; align-items/justify-content: center`, and
+`.vi-collapse-btn svg { display: block }` (kills the inline-SVG baseline gap).
+Re-measured: **26 x 26**, `padding 0`, icon `offL = offR = offT = offB = 5.5`
+in **both** expanded and collapsed states.
+
+### Automated verification (2026-09-02; `supabase db reset` NOT run)
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed (0 errors, 0 warnings) |
+| `npm run test:run` | Passed: **43 files, 485 tests** (was 42 / 474; +`Vinny.test.tsx`, +curator state-mapping + asset assertions) |
+| `npm run build` | Passed - entry JS 456.73 kB (132.18 kB gz), unchanged; no chunk advisory; `public/vinny/*` copied to `dist/` |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests (no schema change) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New tests: `src/brand/Vinny.test.tsx` (5 states -> assets, decorative vs
+labelled, thinking modifier); `CuratorPanel.test.tsx` (`onStatusChange` ->
+`thinking`/`success`/`no-match`; technical error -> `idle`, never `no-match`);
+asset assertions added to the Dashboard and Collection empty-state tests and
+the Landing "no album `<img>`" test.
+
+### Visual verification performed
+
+`puppeteer-core` + system Chrome, screenshots reviewed at 1440x900 / 1280x800 /
+1024x768 / 390x844 for landing, auth, dashboard (empty), collection (empty),
+Ask VIN (empty), plus a 3x-DPR crop of the collapse toggle in both states and a
+combined render of all five Vinny assets. Confirmed: bronze V·I in the header /
+hero / final CTA / sidebar / favicon with no dark glyph surviving; the empty
+asset renders with transparency and no clipping and the empty states fit at
+every viewport with the CTAs above the fold; the idle asset on landing/auth;
+the empty asset in the Ask VIN aside; the collapse icon centred in both states.
+Human pixel-level sign-off is still the next step.
+
+### Remaining limitations
+
+- Human visual design sign-off still pending.
+- The `thinking` / `success` / `no-match` assets were verified as images and via
+  unit-tested state mapping, but not through a live end-to-end curator run
+  (that needs the OpenRouter call, deliberately not made here).
+- Assets have differing internal margins/scale (the empty scene is wider); each
+  is displayed at a size tuned per location rather than one global size.
+- `@supabase/supabase-js` still in the entry chunk (Phase E bundle budget).
+- Collection / Discover / Scan / History / Settings / Album-detail keep their
+  transitional hosts (full redesigns are Phases C-D).

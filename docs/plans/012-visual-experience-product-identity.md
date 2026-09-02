@@ -329,12 +329,25 @@ and visually reviewed. 42 files / **474 tests** (+2 landing regressions).
 `supabase db reset` **not** run. Full detail: `docs/verification.md` "Final
 Phase B visual acceptance".
 
+**Final Phase B asset + micro-polish patch (2026-09-02, before Phase C).** Three
+closing items, still on this branch. (1) Vinny is now the five approved
+3D-rendered image assets (`public/vinny/*.png`, transparent, static, not
+bundled) behind one `Vinny` component with an `idle|thinking|success|no-match|
+empty` state map; the hand-drawn `VinAvatar` and the now-redundant `EmptyCrate`
+are deleted; `CuratorPanel.onStatusChange` emits a semantic `CuratorUiState` so
+Ask VIN shows the right Vinny. (2) The V·I glyph is light bronze via one new
+`--vi-glyph: #d08b48` token inherited everywhere (geometry unchanged). (3) The
+sidebar collapse toggle is now exactly 26x26 with the icon centred in both
+states - it had been inheriting `.legacy-host button` padding + `min-height`.
+43 files / **485 tests**. `supabase db reset` not run. Full detail:
+`docs/verification.md` "Phase B final asset + micro-polish".
+
 **Known deferrals (LOW):** `supabase-js` in the entry chunk;
-`src/styles.css` still present for the C-D hosts; the `EmptyCrate` / demo SVGs
-and Vinny are original project-owned schematic illustrations (a higher-fidelity
-illustration pass and Vinny's full 5-state system are Phase D-E); human
-pixel-level design sign-off still pending; exhaustive responsive/motion passes
-are Phase E.
+`src/styles.css` still present for the C-D hosts; the landing demo SVGs remain
+original project-owned schematic illustrations; the `thinking`/`success`/
+`no-match` Vinny assets are verified as images + unit-tested state mapping but
+not via a live curator run; human pixel-level design sign-off still pending;
+exhaustive responsive/motion passes are Phase E.
 
 ### Phase C - artwork infrastructure + collection / discover / scan
 
