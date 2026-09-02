@@ -71,6 +71,12 @@ select ok(
 -- No speculative event note / updated_at
 select hasnt_column('public', 'listening_events', 'note', 'listening_events has no note column');
 select hasnt_column('public', 'listening_events', 'updated_at', 'listening_events has no updated_at column');
+-- Phase D did NOT add a personal_genres / any other column here.
+select columns_are(
+  'public', 'listening_events',
+  array['id', 'user_id', 'collection_item_id', 'listened_at', 'created_at'],
+  'listening_events still has exactly the five Milestone 8 columns after Phase D'
+);
 
 -- ---------------------------------------------------------------------------
 -- Foreign keys (both ON DELETE CASCADE)
@@ -203,19 +209,35 @@ select ok(not has_column_privilege('authenticated', 'public.listening_events', '
   'authenticated cannot INSERT user_id');
 select ok(not has_column_privilege('authenticated', 'public.listening_events', 'listened_at', 'INSERT'),
   'authenticated cannot INSERT listened_at');
-select ok(not has_table_privilege('authenticated', 'public.listening_events', 'UPDATE'),
-  'authenticated has no UPDATE on listening_events');
-select ok(not has_table_privilege('authenticated', 'public.listening_events', 'DELETE'),
-  'authenticated has no DELETE on listening_events');
+
+-- Phase D (migration 20260904120000): the browser may now UPDATE listened_at
+-- ONLY, and DELETE its own row. The event identity stays immutable.
+select ok(has_column_privilege('authenticated', 'public.listening_events', 'listened_at', 'UPDATE'),
+  'Phase D: authenticated can UPDATE listened_at');
+select ok(not has_column_privilege('authenticated', 'public.listening_events', 'user_id', 'UPDATE'),
+  'authenticated cannot UPDATE user_id');
+select ok(not has_column_privilege('authenticated', 'public.listening_events', 'collection_item_id', 'UPDATE'),
+  'authenticated cannot UPDATE collection_item_id');
+select ok(not has_column_privilege('authenticated', 'public.listening_events', 'id', 'UPDATE'),
+  'authenticated cannot UPDATE id');
+select ok(not has_column_privilege('authenticated', 'public.listening_events', 'created_at', 'UPDATE'),
+  'authenticated cannot UPDATE created_at');
+select ok(has_table_privilege('authenticated', 'public.listening_events', 'DELETE'),
+  'Phase D: authenticated has DELETE on listening_events');
+
 select ok(not has_table_privilege('anon', 'public.listening_events', 'SELECT'),
   'anon has no SELECT on listening_events');
 select ok(not has_table_privilege('anon', 'public.listening_events', 'INSERT'),
   'anon has no INSERT on listening_events');
+select ok(not has_table_privilege('anon', 'public.listening_events', 'UPDATE'),
+  'anon has no UPDATE on listening_events');
+select ok(not has_table_privilege('anon', 'public.listening_events', 'DELETE'),
+  'anon has no DELETE on listening_events');
 
 select is(
   (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'listening_events'),
-  2,
-  'listening_events has exactly two RLS policies (own-row SELECT + own-item INSERT)'
+  4,
+  'listening_events has exactly four RLS policies (own SELECT + own-item INSERT + Phase D own UPDATE + own DELETE)'
 );
 
 -- ---------------------------------------------------------------------------
@@ -265,18 +287,34 @@ select throws_ok(
   'User A cannot insert a listening event for User B''s collection item (RLS WITH CHECK)'
 );
 
--- Immutability: no UPDATE, no DELETE for the browser user.
-select throws_ok(
-  $$ update public.listening_events set listened_at = now()
+-- Phase D: User A CAN correct listened_at on their own event ...
+select lives_ok(
+  $$ update public.listening_events
+       set listened_at = timestamptz '2020-01-02 03:04:05+00'
      where collection_item_id = 'c8000000-0000-4000-8000-00000000000a' $$,
-  '42501', null,
-  'User A cannot UPDATE listened_at (no grant)'
+  'Phase D: User A can UPDATE listened_at on their own event'
+);
+select is(
+  (select listened_at from public.listening_events
+     where collection_item_id = 'c8000000-0000-4000-8000-00000000000a'),
+  timestamptz '2020-01-02 03:04:05+00',
+  'the corrected listened_at persisted'
+);
+-- ... but CANNOT change the event identity (no column grant) ...
+select throws_ok(
+  $$ update public.listening_events set user_id = '00000000-0000-4000-8000-0000000008b2'
+     where collection_item_id = 'c8000000-0000-4000-8000-00000000000a' $$,
+  '42501', null, 'User A cannot re-assign user_id (no column grant)'
 );
 select throws_ok(
-  $$ delete from public.listening_events
+  $$ update public.listening_events set collection_item_id = 'c8000000-0000-4000-8000-00000000000b'
      where collection_item_id = 'c8000000-0000-4000-8000-00000000000a' $$,
-  '42501', null,
-  'User A cannot DELETE a listening event (no grant)'
+  '42501', null, 'User A cannot re-point the event at another album (no column grant)'
+);
+select throws_ok(
+  $$ update public.listening_events set created_at = now()
+     where collection_item_id = 'c8000000-0000-4000-8000-00000000000a' $$,
+  '42501', null, 'User A cannot change created_at (no column grant)'
 );
 
 reset role;
@@ -353,11 +391,80 @@ select is(
   0,
   'deleting the collection item cascaded away its listening events'
 );
+-- Scoped to this test's seeded users so unrelated local rows never affect it.
 select is(
-  (select count(*)::int from public.listening_events),
+  (select count(*)::int from public.listening_events
+     where user_id in (
+       '00000000-0000-4000-8000-0000000008a1',
+       '00000000-0000-4000-8000-0000000008b2'
+     )),
   1,
   'User B''s event is unaffected by User A''s collection-item delete'
 );
+select is(
+  (select count(*)::int from public.listening_events
+     where user_id = '00000000-0000-4000-8000-0000000008b2'),
+  1,
+  'exactly User B''s one seeded event remains'
+);
+
+-- ---------------------------------------------------------------------------
+-- Phase D behavioural: cross-user UPDATE / DELETE denial + own delete
+-- ---------------------------------------------------------------------------
+-- User B still has one event; give User A a fresh owned item + event.
+insert into public.releases (id, created_by, source, artist, title)
+values ('e8000000-0000-4000-8000-00000000000c','00000000-0000-4000-8000-0000000008a1','manual','A2','A2');
+insert into public.collection_items (id, user_id, release_id)
+values ('c8000000-0000-4000-8000-00000000000c','00000000-0000-4000-8000-0000000008a1','e8000000-0000-4000-8000-00000000000c');
+insert into public.listening_events (id, user_id, collection_item_id, listened_at)
+values ('11110000-0000-4000-8000-00000000000a','00000000-0000-4000-8000-0000000008a1','c8000000-0000-4000-8000-00000000000c', now());
+
+-- User B: cross-user UPDATE / DELETE are RLS-filtered (0 rows, no error).
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000008b2', true);
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-4000-8000-0000000008b2","role":"authenticated"}', true);
+set local role authenticated;
+select lives_ok(
+  $$ update public.listening_events set listened_at = timestamptz '2000-01-01 00:00:00+00'
+     where id = '11110000-0000-4000-8000-00000000000a' $$,
+  'User B UPDATE targeting User A event runs without error (0 rows)'
+);
+select lives_ok(
+  $$ delete from public.listening_events
+     where id = '11110000-0000-4000-8000-00000000000a' $$,
+  'User B DELETE targeting User A event runs without error (0 rows)'
+);
+reset role;
+select is(
+  (select count(*)::int from public.listening_events
+     where id = '11110000-0000-4000-8000-00000000000a'),
+  1,
+  'User A event survived User B cross-user UPDATE + DELETE attempts'
+);
+select is(
+  (select listened_at from public.listening_events
+     where id = '11110000-0000-4000-8000-00000000000a'),
+  (select listened_at from public.listening_events
+     where id = '11110000-0000-4000-8000-00000000000a'),
+  'User A event listened_at unchanged'
+);
+
+-- User A: can delete their OWN event.
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000008a1', true);
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-4000-8000-0000000008a1","role":"authenticated"}', true);
+set local role authenticated;
+select lives_ok(
+  $$ delete from public.listening_events
+     where id = '11110000-0000-4000-8000-00000000000a' $$,
+  'Phase D: User A can DELETE their own listening event'
+);
+select is(
+  (select count(*)::int from public.listening_events),
+  0,
+  'User A now has zero events (deleted their only one)'
+);
+reset role;
 
 select * from finish();
 

@@ -322,10 +322,19 @@ select set_config(
 );
 set local role authenticated;
 
+-- The seeded catalog release is visible to any authenticated user (shared
+-- catalog metadata). Scoped to this test's row so unrelated local catalog
+-- rows never affect the assertion.
 select is(
-  (select count(*)::int from public.releases where source = 'catalog'),
-  1,
+  (select artist from public.releases
+     where id = '40000000-0000-4000-8000-000000000001'),
+  'Catalog Artist',
   'authenticated user can read shared catalog metadata'
+);
+select ok(
+  (select count(*)::int from public.releases
+     where id = '40000000-0000-4000-8000-000000000001') = 1,
+  'authenticated user sees exactly the one seeded catalog release row'
 );
 
 select throws_ok(
