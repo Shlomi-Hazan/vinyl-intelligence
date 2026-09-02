@@ -342,6 +342,8 @@ describe('manual collection service', () => {
         rating: 4,
         is_favorite: true,
         notes: 'a personal note',
+        custom_cover_path: null,
+        custom_cover_updated_at: null,
         release: releaseRow(),
       },
     ])
@@ -351,7 +353,9 @@ describe('manual collection service', () => {
     // Personal signals are selected at the collection-item level, not nested
     // under `release`.
     const selectText = String(firstMockArg(query.select)).replace(/\s+/g, ' ')
-    expect(selectText).toMatch(/created_at,\s*rating,\s*is_favorite,\s*notes,\s*release:/)
+    expect(selectText).toMatch(
+      /created_at,\s*rating,\s*is_favorite,\s*notes,\s*custom_cover_path,\s*custom_cover_updated_at,\s*release:/,
+    )
     expect(query.order.mock.calls).toEqual([
       ['added_at', { ascending: false }],
       ['id', { ascending: false }],

@@ -35,6 +35,13 @@ export type CollectionItem = {
   rating: number | null
   is_favorite: boolean
   notes: string | null
+  /**
+   * Canonical custom-cover object path in the private `collection-covers`
+   * bucket: `{user_id}/{id}/cover.webp` (DB CHECK enforces the exact shape).
+   * Null = no custom cover.
+   */
+  custom_cover_path: string | null
+  custom_cover_updated_at: string | null
 }
 
 export type ListeningEvent = {
@@ -61,6 +68,8 @@ type Database = {
           rating?: number | null
           is_favorite?: boolean
           notes?: string | null
+          custom_cover_path?: string | null
+          custom_cover_updated_at?: string | null
         }
         Relationships: [
           {

@@ -43,6 +43,12 @@ export type CollectionItemWithRelease = Pick<
   CollectionItem,
   'id' | 'added_at' | 'created_at' | 'rating' | 'is_favorite' | 'notes'
 > & {
+  /**
+   * Custom-cover fields. Always populated by `loadCollection`; declared
+   * optional so pre-artwork test fixtures stay valid.
+   */
+  custom_cover_path?: string | null
+  custom_cover_updated_at?: string | null
   release: Pick<
     Release,
     | 'id'
@@ -55,7 +61,11 @@ export type CollectionItemWithRelease = Pick<
     | 'format'
     | 'genres'
     | 'updated_at'
-  >
+  > & {
+    /** MusicBrainz ids for display-time Cover Art Archive artwork (optional). */
+    provider_release_id?: string | null
+    provider_release_group_id?: string | null
+  }
 }
 
 /** Milestone 7 personal preference signals; all live at the collection-item level. */
@@ -84,6 +94,8 @@ type CollectionItemRow = CollectionItemWithRelease | {
   rating: number | null
   is_favorite: boolean
   notes: string | null
+  custom_cover_path?: string | null
+  custom_cover_updated_at?: string | null
   release: CollectionItemWithRelease['release'] | CollectionItemWithRelease['release'][]
 }
 
@@ -215,6 +227,12 @@ function normalizeCollectionRow(row: CollectionItemRow): CollectionItemWithRelea
     rating: typeof row.rating === 'number' ? row.rating : null,
     is_favorite: row.is_favorite === true,
     notes: typeof row.notes === 'string' ? row.notes : null,
+    custom_cover_path:
+      typeof row.custom_cover_path === 'string' ? row.custom_cover_path : null,
+    custom_cover_updated_at:
+      typeof row.custom_cover_updated_at === 'string'
+        ? row.custom_cover_updated_at
+        : null,
     release,
   }
 }
@@ -232,6 +250,8 @@ export async function loadCollection(
         rating,
         is_favorite,
         notes,
+        custom_cover_path,
+        custom_cover_updated_at,
         release:releases!inner (
           id,
           artist,
@@ -242,6 +262,8 @@ export async function loadCollection(
           country,
           format,
           genres,
+          provider_release_id,
+          provider_release_group_id,
           updated_at
         )
       `,
@@ -284,6 +306,8 @@ export async function addManualCollectionItem(
         rating,
         is_favorite,
         notes,
+        custom_cover_path,
+        custom_cover_updated_at,
         release:releases!inner (
           id,
           artist,
@@ -294,6 +318,8 @@ export async function addManualCollectionItem(
           country,
           format,
           genres,
+          provider_release_id,
+          provider_release_group_id,
           updated_at
         )
       `,

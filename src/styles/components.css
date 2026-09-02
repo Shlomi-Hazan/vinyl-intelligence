@@ -424,19 +424,22 @@ button.vi-chip:hover {
   background: var(--surface-2);
   display: block;
 }
-.vi-art img {
+/* the branded fallback is always the box background; a real cover image
+   overlays it once it has loaded */
+.vi-art__vinyl {
+  position: absolute;
+  inset: 4%;
+  width: 92%;
+  height: 92%;
+}
+.vi-art__img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-}
-.vi-art--fallback {
-  display: grid;
-  place-items: center;
-}
-.vi-art__vinyl {
-  width: 92%;
-  height: 92%;
+  background: var(--surface-2);
 }
 .vi-art__label {
   position: absolute;
@@ -446,7 +449,15 @@ button.vi-chip:hover {
   text-align: center;
   padding: 12%;
 }
-.vi-art__label span {
+.vi-art__label-inner {
+  display: grid;
+  gap: 0.15rem;
+  max-width: 84%;
+  padding: 0.5rem 0.7rem;
+  border-radius: 999px;
+}
+.vi-art__title,
+.vi-art__artist {
   display: block;
   max-width: 100%;
   overflow: hidden;
