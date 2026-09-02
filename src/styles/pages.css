@@ -1573,17 +1573,25 @@ a.vi-histrow__title:hover {
   color: var(--text-muted);
 }
 .vi-chip__x {
-  display: inline-flex;
-  background: none;
-  border: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 -3px 0 1px;
   padding: 0;
-  margin: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
   color: var(--text-faint);
   cursor: pointer;
-  line-height: 0;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.vi-chip__x svg {
+  display: block;
 }
 .vi-chip__x:hover {
   color: var(--text);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 .vi-genres__add {
   display: flex;
