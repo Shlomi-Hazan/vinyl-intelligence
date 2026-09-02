@@ -3,8 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CollectionBrowser } from './CollectionBrowser.tsx'
+import { ToastProvider } from '../ui/ToastProvider.tsx'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 const addListeningEvent = vi.fn()
@@ -65,28 +67,39 @@ function LocationProbe() {
   return <span data-testid="loc">{useLocation().search}</span>
 }
 
-function renderBrowser(items: CollectionItemWithRelease[], route = '/collection') {
+function renderBrowser(
+  items: CollectionItemWithRelease[],
+  route = '/collection',
+  opts: {
+    events?: ListeningEventRecord[]
+    eventsStatus?: 'loading' | 'ready' | 'error'
+    onMutated?: () => void
+  } = {},
+) {
   return render(
-    <MemoryRouter initialEntries={[route]}>
-      <Routes>
-        <Route
-          path="/collection"
-          element={
-            <>
-              <CollectionBrowser
-                client={{} as BrowserSupabaseClient}
-                userId="uid"
-                items={items}
-                events={[]}
-                onMutated={vi.fn()}
-              />
-              <LocationProbe />
-            </>
-          }
-        />
-        <Route path="/collection/:id" element={<div>detail</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[route]}>
+        <Routes>
+          <Route
+            path="/collection"
+            element={
+              <>
+                <CollectionBrowser
+                  client={{} as BrowserSupabaseClient}
+                  userId="uid"
+                  items={items}
+                  events={opts.events ?? []}
+                  eventsStatus={opts.eventsStatus ?? 'ready'}
+                  onMutated={opts.onMutated ?? vi.fn()}
+                />
+                <LocationProbe />
+              </>
+            }
+          />
+          <Route path="/collection/:id" element={<div>detail</div>} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   )
 }
 
@@ -158,14 +171,127 @@ describe('CollectionBrowser', () => {
     expect(sessionStorage.getItem('vi:collection:view')).toBe('list')
   })
 
-  it('the log-listen quick action records a listen', async () => {
+  it('the log-listen quick action records a listen and confirms it', async () => {
     addListeningEvent.mockResolvedValue({})
+    const onMutated = vi.fn()
     const user = userEvent.setup()
-    renderBrowser([item('1')])
+    renderBrowser([item('1')], '/collection', { onMutated })
     await user.click(screen.getAllByRole('button', { name: 'Log a listen' })[0])
     await waitFor(() =>
       expect(addListeningEvent).toHaveBeenCalledWith(expect.anything(), '1'),
     )
+    expect(onMutated).toHaveBeenCalled()
+    expect(
+      await screen.findByText('Added to listening history.'),
+    ).toBeInTheDocument()
+  })
+
+  it('a failed log-listen shows a recoverable error and fabricates nothing', async () => {
+    addListeningEvent.mockRejectedValue(new Error('history service down'))
+    const onMutated = vi.fn()
+    const user = userEvent.setup()
+    renderBrowser([item('1')], '/collection', { onMutated })
+    await user.click(screen.getAllByRole('button', { name: 'Log a listen' })[0])
+    expect(await screen.findByText('history service down')).toBeInTheDocument()
+    expect(onMutated).not.toHaveBeenCalled()
+  })
+
+  it('a failed favourite toggle shows an error and does not lie about state', async () => {
+    updateSignals.mockRejectedValue(new Error('signal write failed'))
+    const onMutated = vi.fn()
+    const user = userEvent.setup()
+    renderBrowser([item('1', { is_favorite: false })], '/collection', { onMutated })
+    const fav = screen.getByRole('button', { name: 'Add favourite' })
+    await user.click(fav)
+    expect(await screen.findByText('signal write failed')).toBeInTheDocument()
+    // still shows "not favourite" - no optimistic lie
+    expect(
+      screen.getByRole('button', { name: 'Add favourite', pressed: false }),
+    ).toBeInTheDocument()
+    expect(onMutated).not.toHaveBeenCalled()
+  })
+
+  it('a successful favourite toggle confirms and asks the provider to reload', async () => {
+    updateSignals.mockResolvedValue({ id: '1', rating: null, is_favorite: true, notes: null })
+    const onMutated = vi.fn()
+    const user = userEvent.setup()
+    renderBrowser([item('1', { is_favorite: false })], '/collection', { onMutated })
+    await user.click(screen.getByRole('button', { name: 'Add favourite' }))
+    await waitFor(() =>
+      expect(updateSignals).toHaveBeenCalledWith(expect.anything(), '1', {
+        is_favorite: true,
+      }),
+    )
+    expect(onMutated).toHaveBeenCalled()
+    expect(await screen.findByText('Added to favourites.')).toBeInTheDocument()
+  })
+
+  it('the set favourite renders as a filled heart (aria-pressed + fill)', () => {
+    const { container } = render(
+      <ToastProvider>
+        <MemoryRouter>
+          <CollectionBrowser
+            client={{} as BrowserSupabaseClient}
+            userId="uid"
+            items={[item('1', { is_favorite: true })]}
+            events={[]}
+            eventsStatus="ready"
+            onMutated={vi.fn()}
+          />
+        </MemoryRouter>
+      </ToastProvider>,
+    )
+    const btn = screen.getByRole('button', { name: 'Remove favourite', pressed: true })
+    expect(btn).toHaveClass('vi-albumcard__act--fav')
+    expect(btn.querySelector('svg')?.getAttribute('fill')).toBe('currentColor')
+    void container
+  })
+
+  describe('listening truthfulness (list view)', () => {
+    const events = (id: string): ListeningEventRecord[] => [
+      {
+        id: 'e-' + id,
+        collection_item_id: id,
+        listened_at: '2026-09-01T00:00:00.000Z',
+        created_at: '2026-09-01T00:00:00.000Z',
+      },
+    ]
+
+    it('events ready + zero events legitimately shows "Never played"', async () => {
+      const user = userEvent.setup()
+      renderBrowser([item('1')], '/collection', { eventsStatus: 'ready', events: [] })
+      await user.click(screen.getByRole('button', { name: 'List' }))
+      expect(screen.getByText('Never played')).toBeInTheDocument()
+    })
+
+    it('events ready + N events shows the count', async () => {
+      const user = userEvent.setup()
+      renderBrowser([item('1')], '/collection', {
+        eventsStatus: 'ready',
+        events: events('1'),
+      })
+      await user.click(screen.getByRole('button', { name: 'List' }))
+      expect(screen.getByText('1 play')).toBeInTheDocument()
+    })
+
+    it('events LOADING never shows "Never played"', async () => {
+      const user = userEvent.setup()
+      renderBrowser([item('1')], '/collection', { eventsStatus: 'loading', events: [] })
+      await user.click(screen.getByRole('button', { name: 'List' }))
+      expect(screen.queryByText('Never played')).toBeNull()
+      expect(screen.getByText('Plays loading…')).toBeInTheDocument()
+      // the collection itself is still fully browsable
+      expect(screen.getByRole('link', { name: /Album 1/ })).toBeInTheDocument()
+    })
+
+    it('events ERROR never shows "Never played"', async () => {
+      const user = userEvent.setup()
+      renderBrowser([item('1')], '/collection', { eventsStatus: 'error', events: [] })
+      await user.click(screen.getByRole('button', { name: 'List' }))
+      expect(screen.queryByText('Never played')).toBeNull()
+      expect(screen.getByText('Plays unavailable')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /Album 1/ })).toBeInTheDocument()
+    })
   })
 
   it('reads initial filter state from the URL query', () => {

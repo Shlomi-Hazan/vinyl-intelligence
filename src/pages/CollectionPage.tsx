@@ -6,6 +6,7 @@ import { CollectionForm } from '../collection/CollectionForm.tsx'
 import { Vinny } from '../brand/Vinny.tsx'
 import { ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { Button } from '../ui/primitives.tsx'
+import { Icon } from '../ui/Icon.tsx'
 import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
 import { useToast } from '../ui/useToast.ts'
@@ -32,7 +33,8 @@ import {
  */
 export function CollectionPage() {
   const { client, userId } = useClient()
-  const { items, events, status, error, reload, invalidate } = useCollectionData()
+  const { items, events, status, error, eventsStatus, reload, invalidate } =
+    useCollectionData()
   const toast = useToast()
   const [showManual, setShowManual] = useState(false)
 
@@ -59,7 +61,15 @@ export function CollectionPage() {
       {status === 'ready' && items.length === 0 ? (
         showManual ? (
           <div className="legacy-host vi-manual-add">
-            <h2 style={{ fontFamily: 'var(--font-display)' }}>Add a record manually</h2>
+            <button
+              type="button"
+              className="vi-btn vi-btn--ghost vi-btn--sm"
+              style={{ justifySelf: 'start' }}
+              onClick={() => setShowManual(false)}
+            >
+              <Icon name="chevron-left" size={15} /> Back to collection
+            </button>
+            <h2>Add a record manually</h2>
             <p className="vi-hint">
               No catalog match needed — enter what you know.
             </p>
@@ -101,6 +111,7 @@ export function CollectionPage() {
           userId={userId}
           items={items}
           events={events}
+          eventsStatus={eventsStatus}
           onMutated={invalidate}
         />
       ) : null}

@@ -29,7 +29,8 @@ import {
 export function AlbumDetailPage() {
   const { id = '' } = useParams()
   const { client, userId } = useClient()
-  const { items, events, status, error, reload, invalidate } = useCollectionData()
+  const { items, events, status, error, eventsStatus, reload, invalidate } =
+    useCollectionData()
   const toast = useToast()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -127,6 +128,7 @@ export function AlbumDetailPage() {
           client={client}
           item={item}
           listeningSummary={summarizeListeningForItem(events, item.id)}
+          eventsStatus={eventsStatus}
           onEdit={() => setEditing((v) => !v)}
           onRemove={async () => {
             if (!window.confirm(`Remove "${release.title}" from your collection?`)) {

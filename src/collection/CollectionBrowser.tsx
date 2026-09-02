@@ -4,6 +4,7 @@ import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { customCoverPath } from '../lib/collection/customCover.ts'
 import { RatingControl, SegmentedControl, Select } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
+import { useToast } from '../ui/useToast.ts'
 import {
   COLLECTION_SORTS,
   DEFAULT_SORT,
@@ -38,6 +39,23 @@ function readStoredView(): CollectionView {
   }
 }
 
+/**
+ * Truthful listening label for the list view. "Never played" and a play count
+ * are only shown once the listening-events data has actually loaded.
+ */
+function playsLabel(
+  status: 'loading' | 'ready' | 'error',
+  count: number,
+): string {
+  if (status === 'loading') {
+    return 'Plays loading…'
+  }
+  if (status === 'error') {
+    return 'Plays unavailable'
+  }
+  return count > 0 ? `${count} play${count === 1 ? '' : 's'}` : 'Never played'
+}
+
 function metaLine(item: CollectionItemWithRelease): string {
   const year = item.release.release_year
   const genre = (item.release.genres ?? [])[0]
@@ -51,6 +69,11 @@ type CollectionBrowserProps = {
   userId: string
   items: CollectionItemWithRelease[]
   events: ListeningEventRecord[]
+  /**
+   * Load phase of the listening-events data. Play counts / "Never played" are
+   * only shown when this is `ready`; `loading` / `error` render as unknown.
+   */
+  eventsStatus?: 'loading' | 'ready' | 'error'
   /** Called after a successful inline mutation so the provider reloads. */
   onMutated: () => void
 }
@@ -60,9 +83,11 @@ export function CollectionBrowser({
   userId,
   items,
   events,
+  eventsStatus = 'ready',
   onMutated,
 }: CollectionBrowserProps) {
   const [params, setParams] = useSearchParams()
+  const toast = useToast()
   const [view, setView] = useState<CollectionView>(readStoredView)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -124,14 +149,26 @@ export function CollectionBrowser({
 
   async function toggleFavorite(item: CollectionItemWithRelease) {
     if (busyId) return
+    const next = !item.is_favorite
     setBusyId(item.id)
     try {
       await updateCollectionItemPersonalSignals(client, item.id, {
-        is_favorite: !item.is_favorite,
+        is_favorite: next,
       })
+      // No optimistic mutation: the authoritative reload is the source of truth.
       onMutated()
-    } catch {
-      /* provider surfaces its own errors elsewhere; keep the grid quiet */
+      toast.show({
+        message: next ? 'Added to favourites.' : 'Removed from favourites.',
+        tone: 'success',
+      })
+    } catch (error) {
+      toast.show({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Couldn't update that favourite. Try again.",
+        tone: 'error',
+      })
     } finally {
       setBusyId(null)
     }
@@ -143,8 +180,15 @@ export function CollectionBrowser({
     try {
       await addListeningEvent(client, item.id)
       onMutated()
-    } catch {
-      /* keep the grid quiet */
+      toast.show({ message: 'Added to listening history.', tone: 'success' })
+    } catch (error) {
+      toast.show({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Couldn't add that play to your history. Try again.",
+        tone: 'error',
+      })
     } finally {
       setBusyId(null)
     }
@@ -295,7 +339,10 @@ export function CollectionBrowser({
                 userId={userId}
                 client={client}
                 busy={busyId === item.id}
-                summary={summarizeListeningForItem(events, item.id)}
+                playsLabel={playsLabel(
+                  eventsStatus,
+                  summarizeListeningForItem(events, item.id).count,
+                )}
                 onToggleFavorite={() => toggleFavorite(item)}
                 onLogListen={() => logListen(item)}
               />
@@ -336,14 +383,14 @@ function QuickActions({ item, busy, onToggleFavorite, onLogListen }: CardProps) 
     <div className="vi-albumcard__actions">
       <button
         type="button"
-        className="vi-albumcard__act"
+        className="vi-albumcard__act vi-albumcard__act--fav"
         aria-pressed={item.is_favorite}
         aria-label={item.is_favorite ? 'Remove favourite' : 'Add favourite'}
         disabled={busy}
         onClick={onToggleFavorite}
         data-on={item.is_favorite}
       >
-        <Icon name="heart" size={16} />
+        <Icon name="heart" size={16} filled={item.is_favorite} />
       </button>
       <button
         type="button"
@@ -352,7 +399,7 @@ function QuickActions({ item, busy, onToggleFavorite, onLogListen }: CardProps) 
         disabled={busy}
         onClick={onLogListen}
       >
-        <Icon name="play" size={16} />
+        <Icon name="play" size={15} />
       </button>
     </div>
   )
@@ -380,8 +427,8 @@ function AlbumCard(props: CardProps) {
   )
 }
 
-function AlbumRow(props: CardProps & { summary: { count: number; lastListenedAt: string | null } }) {
-  const { item, userId, client, summary } = props
+function AlbumRow(props: CardProps & { playsLabel: string }) {
+  const { item, userId, client, playsLabel: plays } = props
   return (
     <div className="vi-albumrow">
       <Link to={`/collection/${item.id}`} className="vi-albumrow__link">
@@ -394,9 +441,7 @@ function AlbumRow(props: CardProps & { summary: { count: number; lastListenedAt:
         <span className="vi-albumrow__rating">
           {item.rating ? <RatingControl value={item.rating} readOnly /> : null}
         </span>
-        <span className="vi-albumrow__plays">
-          {summary.count > 0 ? `${summary.count} play${summary.count === 1 ? '' : 's'}` : 'Never played'}
-        </span>
+        <span className="vi-albumrow__plays">{plays}</span>
       </Link>
       <QuickActions {...props} />
     </div>
