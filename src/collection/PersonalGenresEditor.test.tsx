@@ -80,4 +80,15 @@ describe('PersonalGenresEditor', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('40 characters')
     expect(updateCollectionItemPersonalGenres).not.toHaveBeenCalled()
   })
+
+  it('refuses a personal genre already present in the catalog genres', async () => {
+    renderEditor([], ['Hip Hop'])
+    const u = userEvent.setup()
+    await u.type(screen.getByLabelText('Add a genre'), 'hip hop')
+    await u.click(screen.getByRole('button', { name: 'Add' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'already listed under the catalog genres',
+    )
+    expect(updateCollectionItemPersonalGenres).not.toHaveBeenCalled()
+  })
 })

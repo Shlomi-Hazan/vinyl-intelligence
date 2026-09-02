@@ -65,17 +65,37 @@ export function PersonalGenresEditor({
     }
   }
 
+  const catalogNormalized = catalogGenres.map((g) => g.trim().toLocaleLowerCase())
+
   function addDraft() {
-    let next: string[]
+    let candidate: string[]
     try {
-      next = normalizePersonalGenres([...genres, draft])
+      candidate = normalizePersonalGenres([draft])
     } catch (error) {
       setMessage(errorText(error))
       return
     }
-    if (next.length === genres.length) {
-      // blank or duplicate - nothing to add
+    const value = candidate[0]
+    if (!value) {
       setDraft('')
+      return
+    }
+    if (catalogNormalized.includes(value)) {
+      // The shared catalog release already carries this genre; adding it as a
+      // personal genre would only show a confusing duplicate chip. Effective
+      // filtering already includes it.
+      setMessage('That genre is already listed under the catalog genres.')
+      return
+    }
+    if (genres.includes(value)) {
+      setDraft('')
+      return
+    }
+    let next: string[]
+    try {
+      next = normalizePersonalGenres([...genres, value])
+    } catch (error) {
+      setMessage(errorText(error))
       return
     }
     setDraft('')
@@ -124,7 +144,7 @@ export function PersonalGenresEditor({
           </ul>
         ) : (
           <p className="vi-hint">
-            None yet. Add your own to help browsing and recommendations.
+            None yet. Add your own to make your collection easier to browse.
           </p>
         )}
 
