@@ -3556,3 +3556,188 @@ Human pixel-level sign-off is still the next step.
 - `@supabase/supabase-js` still in the entry chunk (Phase E bundle budget).
 - Collection / Discover / Scan / History / Settings / Album-detail keep their
   transitional hosts (full redesigns are Phases C-D).
+
+## Phase C - Collection / Discover / Scan / Artwork (2026-09-02)
+
+Starting HEAD `80d7ecb`; `origin/main` unchanged at `945ed3d`. **No migration,
+no schema / RLS / bucket / service_role change** (Phase 0 already supplied the
+custom-cover storage). No hosted action, no deployment, no `supabase db reset`.
+
+### Artwork resolution (one canonical component)
+
+`AlbumArtwork` owns the full four-tier chain and is the only artwork component
+in the app:
+
+1. **user custom cover** - short-TTL signed URL from the private
+   `collection-covers` bucket (`media/signedCover.ts`)
+2. **Cover Art Archive release front** - deterministic URL from
+   `provider_release_id` (`media/coverArtUrl.ts`)
+3. **Cover Art Archive release-group front** - from `provider_release_group_id`
+4. **branded CSS/SVG fallback** - always painted as the box background
+
+`<img onError>` advances exactly one tier; a per-instance failure counter that
+resets only when the source list changes identity makes looping impossible
+(once past the last real source, no `<img>` renders and the branded fallback
+shows - nothing left to error). Every tier renders into a fixed `1/1`
+aspect-ratio box -> zero layout shift; `loading="lazy"`, `decoding="async"`.
+The accessible name is the album for a real cover and `"<artist> - <title> (no
+cover art)"` for the fallback.
+
+`coverArtUrl.ts` builds `https://coverartarchive.org/{release|release-group}/
+{mbid}/front-{250|500|1200}` and returns null for a missing/malformed id. No
+backend CAA call, no persisted cover URL, no proxy, no Discogs. `public.releases`
+gains no column.
+
+### Signed-URL security
+
+`media/signedCover.ts` is the **only** home of a tier-1 signed URL. It lives in
+an in-memory `Map` only: never written to a Supabase table, `localStorage`, or
+`sessionStorage`; never logged; never in telemetry, an error message, or a
+thrown value; never in test output (a test asserts browser storage never
+contains the token). TTL 3600 s (`createSignedUrl(path, 3600)`), re-signed 5 min
+before expiry, concurrent requests for one path de-duped, and evicted on
+upload / replace / remove. A signing failure returns null (artwork falls to the
+next tier) - it never throws.
+
+### Custom cover (`lib/collection/customCover.ts`)
+
+- Canonical **lowercase-UUID** path `customCoverPath(uid, item)` =
+  `{uid}/{item}/cover.webp` - matches the DB CHECK exactly.
+- `validateCustomCoverInput`: jpeg / png / webp only; rejects a source over
+  20 MB before decode.
+- `fileToWebpBlob`: `createImageBitmap` -> canvas downscale (<= 1400 px longest
+  edge) -> `toBlob('image/webp', 0.85)`, retried at 0.65 if over the 3 MiB
+  stored-object cap, then rejected as `output_too_large`.
+- `uploadCustomCover`: validate -> convert -> `storage.upload(path, blob,
+  { upsert: true, contentType: 'image/webp' })` -> write `custom_cover_path` +
+  `custom_cover_updated_at` -> evict the signed-URL cache.
+- `removeCustomCover`: **nulls the columns first** (UI recovers even if the
+  object delete fails), then best-effort `storage.remove([path])`, then evict.
+- Surfaced on `AlbumDetailPage` via `CustomCoverControl` (Use my own cover /
+  Replace cover / Remove custom cover, with validation + progress + failure
+  states). Owner-only (RLS + bucket config enforce it).
+
+### Collection - populated experience (`collection/CollectionBrowser.tsx`)
+
+Cover-first grid (default) + compact list, toggle persisted in
+`sessionStorage`. One toolbar bound to the **existing** `collectionQuery.ts`
+(`applyCollectionQuery`, `availableGenres`, `availableDecades` - semantics
+unchanged): search, genre, decade, sort, favourites-only, clear. Filter state
+is reflected in the URL query (`?q=&genre=&decade=&year=&fav=1&sort=`) so a
+filtered view is shareable/refresh-safe. Favourite + log-listen quick actions
+call the existing signal / event paths and trigger one authoritative provider
+reload. A **FILTERED-empty** state ("No records match these filters - your
+collection still has N records") is distinct from the empty collection. The
+accepted Phase B empty state is unchanged (manual add still behind the
+disclosure). Per-record management (rating / notes / edit / remove / cover)
+lives on `/collection/:id`, which gained inline "Edit metadata" and
+`CustomCoverControl`. `CollectionPanel` / `CollectionLibraryControls` are
+retained and still fully tested but no longer mounted.
+
+### Discover (`catalog/DiscoverPanel.tsx`)
+
+Around the unchanged `searchCatalog` / `addCatalogReleaseToCollection`.
+States: initial (prompt + examples) / loading (skeletons) / results /
+no-results (distinct from error) / provider-error (honest message + retry).
+Result cards use `AlbumArtwork` with the candidate MBIDs and show only real
+metadata (year / label / cat# / country / format - omitted when absent, never
+fabricated). An already-owned release (dedupe by `provider_release_id`) shows
+"In your collection" instead of Add. The search draft is still restored, so a
+scan hand-off prefills the query. Manual entry stays available.
+
+### Scan (`catalog/ScanPanel.tsx`)
+
+A four-step Photo -> Analyse -> Catalogue -> Confirm rail around the unchanged
+recognition + catalog logic (`recognizeCover`, `downscaleImageToDataUrl`,
+`buildCatalogQueryFromRecognition`). Distinct, truthful states: idle /
+invalid-image / **analysing** / **searching-catalogue** (two separate phases) /
+candidates / low-confidence / no-match / saving / success / provider-error /
+model-error. A provider or model failure is an error state with its own
+message - never "no match". A candidate is added only on an explicit "This is
+it - add" - never silently. VIN shows thinking / no-match / success. The photo
+is never persisted. Text-search (-> Discover, prefilled) and manual entry are
+offered on every dead end. `CatalogPanel` / `CatalogPhotoPanel` retained + still
+tested, unmounted.
+
+### Automated gate (2026-09-02; `supabase db reset` NOT run)
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed (0 errors, 0 warnings) |
+| `npm run test:run` | Passed: **50 files, 531 tests** (was 43 / 485) |
+| `npm run build` | Passed - entry JS 459.33 kB (132.92 kB gz; +2.6 kB from shared artwork modules); no chunk advisory |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New test files: `media/coverArtUrl.test.ts`, `media/signedCover.test.ts`,
+`media/AlbumArtwork.test.tsx` (rewritten - four-tier chain, onError
+fall-through, no loop, custom-cover precedence), `lib/collection/
+customCover.test.ts`, `collection/CollectionBrowser.test.tsx`,
+`collection/CustomCoverControl.test.tsx`, `catalog/DiscoverPanel.test.tsx`,
+`catalog/ScanPanel.test.tsx`. The `collection-data-integration` single-source
+suite and `auth-state` `/discover` host test were updated to the new UI and
+stay green. Every existing curator / catalog / recognition / collection suite
+is preserved.
+
+**Local DB note:** at the start of Phase C `npx supabase test db` failed one
+pgTAP subtest (`catalog_releases_rls` test 22, `have 2 / want 1`) because of a
+single orphan `releases` row ("Kendrick Lamar - good kid, m.A.A.d city",
+`source=catalog`, created 2026-09-02T14:12 during the prior human Phase B
+review) with no `collection_items` referencing it. That one orphan row was
+deleted (a targeted cleanup, not `db reset`); the suite then passed. Phase C
+makes no schema/RLS/migration change, so a hosted `supabase db push` /
+`db reset` is unaffected.
+
+### Real provider calls
+
+- **Automated tests:** 0 OpenRouter, 0 MusicBrainz, 0 Cover Art Archive - all
+  mocked/fixture.
+- **Browser QA:** 1 real MusicBrainz search (a Discover search typed into the
+  live dev server, which returned a rate-limit response - captured as the
+  honest provider-error state). 0 OpenRouter, 0 CAA calls from a backend. The
+  `<img>` tiers do hotlink `coverartarchive.org` from the browser by design
+  (public, no auth, no user data) when a record has MBIDs - that is the
+  display-time architecture, not a backend call.
+
+### Browser verification performed
+
+`puppeteer-core` + system Chrome, logged in as the local QA user, with 6
+seeded collection items (3 with real release-group MBIDs, 3 manual) - **seed
+data removed afterwards**, local `releases` / `collection_items` back to empty.
+Reviewed at 1280x900 / 1024x768 / 390x844:
+
+- Collection **populated grid** - real Cover Art Archive covers (OK Computer,
+  Nevermind, Dark Side of the Moon) alongside branded fallbacks for the manual
+  records; "6 of 6 records"; cover-first, warm framing, no overflow.
+- Collection **list view** - compact rows, thumb + metadata + rating + plays +
+  quick actions; toggle persists.
+- Collection **filtered** (`?genre=jazz`) and **filtered-empty** (`?q=zzz` ->
+  "No records match these filters / your collection still has 6 records").
+- Collection at 1024 (icon rail, 4-col grid) and mobile (2-col, wrapped
+  toolbar, bottom nav) - no horizontal overflow.
+- **Album detail** - hero `AlbumArtwork` + `CustomCoverControl` ("Use my own
+  cover") + full CollectionItemCard management (Edit / Remove / Mark played /
+  Favorite / rating / notes).
+- **Discover** - initial prompt; a real search returned the honest
+  provider-error state with retry + manual fallback still present.
+- **Scan** - the four-step rail + drop zone + "photo is never saved" note.
+
+The results/candidate/analysing/success states that need a mocked provider
+were verified by the unit suites rather than the live dev server (no real
+OpenRouter/MB calls for QA).
+
+### Remaining LOW / NOTE
+
+- `CollectionPanel` / `CatalogPanel` / `CatalogPhotoPanel` / `CollectionLibraryControls`
+  are retained (still tested) but unmounted - a follow-up could delete them
+  with their suites once the human confirms nothing else needs them.
+- `RatingControl` still renders `*` glyphs (Phase A primitive) - a nicer star
+  glyph is Phase E polish.
+- `AlbumDetailPage` keeps its Phase-A structural layout (legacy-host); the
+  full hero redesign is Phase D. Cover + edit management are wired now.
+- The live "results" / "analysing" / "candidates" / "success" screens depend on
+  a provider response and were verified via unit tests, not the browser.
+- Human pixel-level design sign-off for Phase C still pending.

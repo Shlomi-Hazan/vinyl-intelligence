@@ -368,6 +368,20 @@ Exit: artwork four-tier + `onError` fall-through tests; custom-cover lifecycle
 tests; discover/scan state tests; Storage pgTAP green; **no real CAA call in
 tests**.
 
+**Phase C implemented (2026-09-02, on-branch, not merged).** `AlbumArtwork` now
+owns the four-tier chain (`media/coverArtUrl.ts` + `media/signedCover.ts` +
+rewritten `AlbumArtwork.tsx`); `lib/collection/customCover.ts` +
+`CustomCoverControl` on `AlbumDetailPage`. `CollectionBrowser` = cover-first
+grid / compact list + URL-synced toolbar over the unchanged `collectionQuery.ts`
++ favourite/log-listen quick actions + a filtered-empty state distinct from the
+empty collection. `DiscoverPanel` / `ScanPanel` wrap the unchanged
+`searchCatalog` / `addCatalogReleaseToCollection` / `recognizeCover` logic with
+polished visual result cards, an owned-state, honest error vs no-result states,
+a four-step scan rail with distinct analysing/searching phases, and
+confirmation-before-save. No migration / schema / RLS change. 50 files /
+**531 tests**. Full detail: `docs/verification.md` "Phase C - Collection /
+Discover / Scan / Artwork".
+
 ### Phase D - VIN + history + settings + album detail
 
 `VinPage` redesign + `VINAvatar` (5 states) + `VINThinking`; `HistoryPage`
