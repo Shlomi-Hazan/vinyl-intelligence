@@ -19,13 +19,15 @@ deletion; Album Detail with read-only catalog metadata + user-owned
 `personal_genres`; Settings; an optional private-bucket profile avatar with
 initials as the permanent fallback - ADR 0006), and **Phase E** (motion
 vocabulary + reduced-motion audit, responsive pass, accessibility corrections,
-contrast re-verification, bundle budget - entry 135 kB gzip - and the one
-reserved end-of-pass focused code review: 0 blocker / 0 high / 1 deferred
-medium / 4 low) are **implemented and locally verified on branch
-`claude/visual-experience-product-identity-ui`, not merged** (see
+contrast re-verification, bundle budget - entry ~135 kB gzip - and the one
+reserved end-of-pass focused code review, final: **0 blocker / 0 high /
+0 medium** / LOW-NOTE only) are **implemented, locally verified, and
+human-accepted on branch `claude/visual-experience-product-identity-ui`** (see
 `docs/verification.md` "Visual Phase A/B Evidence", "Phase C ...", "Phase D",
-"Phase E"). The A-E visual pass is complete on the branch; the final A-E PR is
-**not opened**, nothing is merged or deployed.
+"Phase E"). The A-E visual pass is complete on the branch; **the final A-E PR is
+being opened now — nothing is merged or deployed, and no hosted Supabase
+migration has been applied.** Milestone 11 has not started. Current roadmap:
+`docs/roadmaps/2026-09-02-complete-project-roadmap.md`.
 
 ### Art-direction approval addendum - 2026-09-01
 

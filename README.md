@@ -33,7 +33,21 @@ The recommended baseline is:
 
 ## Project Status
 
-Current status: Milestone 8 (Listening History - immutable `listening_events`,
+**Current state (2026-09-03):** Milestones 0–10 are complete and merged to
+`main`. The **Visual Experience & Product Identity pass** — a human-directed
+product-quality pass deliberately inserted between Milestone 10 and Milestone 11
+— is **complete and human-accepted (Phases A–E)** on branch
+`claude/visual-experience-product-identity-ui`; its Phase 0 is already merged
+(PR #12) and the final A–E pull request is being opened now. **Milestone 11
+(Production Deployment) has not started; no hosted Supabase migration has been
+applied; nothing is deployed.**
+
+- **Current roadmap:** [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md)
+- **Historical roadmap snapshot (2026-08-18, unchanged for auditability):** [`docs/roadmaps/2026-08-18-complete-project-roadmap.md`](docs/roadmaps/2026-08-18-complete-project-roadmap.md)
+
+### Milestone evidence
+
+Milestone 8 (Listening History - append-only `listening_events`,
 derived listening count / last-listened, and a reverse-chronological history) is
 **merged to `main`** in PR #8 (merge commit
 `9af8beec701cb108b3ed6de7bdf3962fbf938ee3`), following local automated
@@ -62,61 +76,58 @@ focused self-review plus an independent GitHub review whose one MEDIUM was fixed
 verification and production deployment have not occurred and remain later
 milestones; no hosted Supabase migration has been applied.
 
-Before Milestone 11 (Production Deployment), a **Visual Experience & Product
-Identity pass** is underway
+### Visual Experience & Product Identity pass (inserted pre-M11)
+
+After Milestone 10 the application was functionally complete but its interface
+was a development shell. The human deliberately inserted a **Visual Experience &
+Product Identity pass** before Milestone 11
 (`docs/specs/0012-visual-experience-product-identity.md`,
-`docs/plans/012-visual-experience-product-identity.md`, ADR
-`docs/decisions/0005-visual-experience-and-artwork-architecture.md`). The design
-is **human-approved** (decisions A-K, art-direction addendum 2026-09-01); it
-adds real multi-page navigation, a brand system (VIN curator identity, Grooved
-V-I logo, dark warm hi-fi visual system), first-class album artwork (client-side
-Cover Art Archive front images + optional user custom covers + a branded
-fallback), and a motion/responsive/accessibility pass.
+`docs/plans/012-visual-experience-product-identity.md`, ADRs
+`docs/decisions/0005-visual-experience-and-artwork-architecture.md` and
+`docs/decisions/0006-listening-event-mutability-and-profile-avatar.md`). This
+pass was **not part of the 2026-08-18 roadmap** — it is a documented mid-project
+evolution recorded in the current roadmap. The design is **human-approved and
+Phases A–E are human-accepted**; it adds real multi-page navigation, a brand
+system (VIN curator identity, Grooved V·I logo, dark warm hi-fi visual system),
+first-class album artwork (client-side Cover Art Archive front images + optional
+user custom covers + a branded fallback), user custom covers, an optional
+profile avatar, user-owned personal genres, an owner-scoped listening-event
+correction affordance, and a motion / responsive / accessibility / performance
+pass. **M9/M10 curator contracts, the AI boundaries, and the security model are
+unchanged.**
 
 - **Phase 0** (private `collection-covers` Storage bucket +
   `collection_items.custom_cover_path`; migration
   `20260903120000_add_custom_cover_storage.sql`) is **merged to `main` in
   PR #12** (merge commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`).
-- **Phase A** (design system + `react-router-dom` routing + the 9-route app
-  shell + transitional page hosts for every M2-M10 feature + fallback
-  `AlbumArtwork` + `CollectionDataProvider`) is **implemented and locally
-  verified on branch `claude/visual-experience-product-identity-ui`, not
-  merged** - independently audited and corrected (`docs/verification.md`
-  "Visual Phase A Evidence" + "Phase A correction"). `react-router-dom` is the
-  only new runtime dependency in the whole pass.
-- **Phase B** (the full cinematic landing, the redesigned split-layout auth, the
-  real data-driven dashboard, and route-level code splitting) is **implemented
-  and locally verified on the same branch, not merged**
-  (`docs/verification.md` "Visual Phase B Evidence").
-- **Phase C** (artwork infrastructure - one canonical `AlbumArtwork` with the
-  custom-cover -> Cover Art Archive release -> release-group -> branded fallback
-  precedence - plus the visual Collection / Discover / Scan surfaces) is
-  **implemented and locally verified on the same branch, not merged**, including
-  a final human-acceptance correction pass and a shared-shell top-bar fix
-  (`docs/verification.md` "Phase C ...").
-- **Phase D** (History as a day-grouped listening journal with play-time
+- **Phase A** — design system + `react-router-dom` routing + the app shell +
+  transitional page hosts for every M2–M10 feature + fallback `AlbumArtwork` +
+  `CollectionDataProvider`. **COMPLETE + HUMAN ACCEPTED** (independently audited
+  and corrected). `react-router-dom` is the only new runtime dependency in the
+  whole pass.
+- **Phase B** — the full cinematic landing, the redesigned split-layout auth,
+  the real data-driven dashboard, route-level code splitting, canonical Vinny
+  assets, bronze V·I glyph. **COMPLETE + HUMAN ACCEPTED.**
+- **Phase C** — one canonical `AlbumArtwork` (custom cover → Cover Art Archive
+  release → release-group → branded fallback), the visual Collection / Discover
+  / Scan surfaces, plus a shared-shell top-bar fix. **COMPLETE + HUMAN
+  ACCEPTED.**
+- **Phase D** — History as a day-grouped journal with owner-scoped play-time
   correction + play deletion; Album Detail as the definitive record page with
   read-only catalog metadata + user-owned personal genres; Settings; an optional
-  private-bucket profile avatar with initials always the fallback) is
-  **implemented and locally verified on the same branch, not merged**
-  (`docs/verification.md` "Phase D", ADR
-  `docs/decisions/0006-listening-event-mutability-and-profile-avatar.md`). Three
-  forward migrations applied locally only. VIN / Ask VIN and all M9/M10 curator
-  behaviour are unchanged.
-- **Phase E** (motion vocabulary + `prefers-reduced-motion` audit, responsive
-  pass across 1280/768/390/360, accessibility corrections - Collection search
-  focus ring, mobile "More" drawer keyboard trap, bottom-nav touch targets,
-  SVG rating stars for no-colour-only-meaning - contrast re-verification,
-  bundle budget check, and the one reserved end-of-pass focused code review) is
-  **implemented and locally verified on the same branch, not merged**
-  (`docs/verification.md` "Phase E"). Entry JS is 135 kB gzip (< 200 kB
-  target). The code review found 0 blocker / 0 high / 1 deferred medium (a
-  `.legacy-host button` cascade that needs a human design call) / 4 low. No
-  migration, no model-contract change.
+  private-bucket profile avatar with initials always the fallback. **COMPLETE +
+  HUMAN ACCEPTED** (ADR 0006). Three forward migrations applied locally only.
+- **Phase E** — motion vocabulary + `prefers-reduced-motion` audit, responsive
+  pass, accessibility corrections, contrast re-verification, bundle budget
+  (entry ≈ 135 kB gzip, < 200 kB), and the one reserved end-of-pass focused code
+  review: **final 0 blocker / 0 high / 0 medium** (the one MEDIUM
+  `.legacy-host button` cascade was fixed by commit `8226328` and visually
+  human-verified). **COMPLETE + HUMAN ACCEPTED.** No model-contract change.
 
-The A-E visual pass is complete on the branch but **not merged, not deployed**;
-the final A-E pull request has not been opened. Milestone pull-request and
-merge state are tracked in GitHub history.
+The A–E visual pass is **complete and human-accepted** on the branch. It is
+**not yet merged and not deployed**; the final A–E pull request is being opened
+now. Full per-phase evidence is in `docs/verification.md`. Milestone
+pull-request and merge state are tracked in GitHub history.
 
 Implemented:
 
@@ -276,11 +287,16 @@ Never commit `.env` or local credentials. This repository includes a safe `.env.
 ## Documentation
 
 - [Product Intent](intent.txt)
-- Original project roadmap: [Complete Project Roadmap - 2026-08-18 historical
-  snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) - this is the
-  original planning document, preserved unchanged and intentionally historical.
-  Every milestone status inside it reflects what was known or planned on
-  2026-08-18, **not** current state. Current implementation status is tracked by
+- **Current project roadmap:** [Complete Project Roadmap - 2026-09-02
+  (current)](docs/roadmaps/2026-09-02-complete-project-roadmap.md) - reflects the
+  actual project evolution, including the Visual Experience & Product Identity
+  pass deliberately inserted between Milestone 10 and Milestone 11.
+- **Historical roadmap snapshot:** [Complete Project Roadmap - 2026-08-18
+  historical snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) -
+  the original planning document, preserved unchanged and intentionally
+  historical. Every milestone status inside it reflects what was known or planned
+  on 2026-08-18, **not** current state, and it does **not** mention the inserted
+  visual pass. Current implementation status is tracked by the current roadmap,
   this README, the feature specs, the verification evidence, the pull requests,
   and Git history - not by that file.
 - [Architecture](docs/architecture.md)

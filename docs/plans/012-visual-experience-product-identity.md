@@ -6,18 +6,24 @@ correction stands (no `releases.cover_url`, no catalog-add Cover Art Archive
 lookup - artwork is a client-side display-time concern) plus the canonical
 `cover.webp` custom-cover object.
 
-Progress:
+Progress (current — 2026-09-03):
 
 - **Phase 0** (custom-cover storage): **merged to `main` in PR #12** (merge
   commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`).
-- **Phase A** (design system + routing + app shell + transitional page hosts +
-  fallback `AlbumArtwork` + `CollectionDataProvider`): **implemented and locally
-  verified on branch `claude/visual-experience-product-identity-ui`, not
-  merged.** `react-router-dom` 7.18.3 added (the one runtime dependency). See
-  `docs/verification.md` "Visual Phase A Evidence".
-- **Phases B-E:** unstarted.
+- **Phases A–E**: **implemented, locally verified, and human-accepted** on
+  branch `claude/visual-experience-product-identity-ui`. `react-router-dom`
+  7.18.3 is the one runtime dependency added. The A–E work is **not yet merged**;
+  the final PR is being opened now. Per-phase detail (with the on-branch
+  implementation notes, corrections, and the final code-review outcome —
+  **0 BLOCKER / 0 HIGH / 0 MEDIUM**) is recorded in the phase sections below and
+  in `docs/verification.md` ("Visual Phase A/B Evidence", "Phase C …",
+  "Phase D", "Phase E").
+- **Milestone 11** (Production Deployment) has **not started**; no hosted
+  Supabase migration has been applied. See the current roadmap:
+  `docs/roadmaps/2026-09-02-complete-project-roadmap.md`.
 
-Date: 2026-08-31 (plan); 2026-09-01 (art-direction addendum)
+Date: 2026-08-31 (plan); 2026-09-01 (art-direction addendum); 2026-09-03
+(progress sync)
 
 Branch: `claude/visual-experience-product-identity`
 
@@ -558,13 +564,16 @@ accepted pages are unchanged; this pass only corrected observable issues.
   (C) the mounted `*`-glyph rating (`RatingControl`) is replaced with the SVG
   star - the `★☆` unicode stars in the accepted `CuratorRecommendationCard`
   and the unmounted `CollectionItemPersonalControls` are left.
-- **Focused code review** (the one reserved end-of-A-E review): **0 BLOCKER,
-  0 HIGH, 1 MEDIUM, 4 LOW/NOTE.** MEDIUM: `.legacy-host button` (0,1,1) on the
-  shell root outranks the bare `.vi-btn` variants (0,1,0), so in-shell buttons
-  render with the transitional dark treatment rather than the design-system
-  bronze primary / tinted danger / transparent ghost. A fix visibly changes
-  many human-accepted pages, so it is **deferred** pending human design
-  confirmation and recorded (with a `base.css` NOTE). Full detail:
+- **Focused code review** (the one reserved end-of-A-E review): initially
+  **0 BLOCKER, 0 HIGH, 1 MEDIUM, 4 LOW/NOTE**. The MEDIUM
+  (`.legacy-host button` (0,1,1) outranking the bare `.vi-btn` variants (0,1,0),
+  so in-shell primary/danger/ghost buttons rendered with the transitional dark
+  treatment) was then **fixed by commit `8226328`** with the narrow selector
+  `.legacy-host button:where(:not(.vi-btn))` (and its `:hover` pair) - `:where()`
+  keeps the rule at (0,1,1) so it simply stops matching `.vi-btn`; the
+  `button.vi-chip` chips and the circular × / bottom-nav controls are provably
+  unchanged, and the fix was visually human-verified. **Final review status:
+  0 BLOCKER, 0 HIGH, 0 MEDIUM, LOW/NOTE only.** Full detail:
   `docs/verification.md` "Phase E".
 
 Legacy cleanup (`CollectionPanel`/`CatalogPanel`/`CatalogPhotoPanel`/

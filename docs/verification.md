@@ -4288,31 +4288,37 @@ Vinny-state signal, explicitly no request/response change. No `localStorage` /
 rail, and the documented form-draft keys). pgTAP (507 assertions) covers custom-
 cover, avatar, personal-genres, and listening-event owner isolation.
 
-| Severity | Count |
+| Severity | Count (final) |
 | --- | --- |
 | BLOCKER | 0 |
 | HIGH | 0 |
-| MEDIUM | 1 |
+| MEDIUM | 0 |
 | LOW / NOTE | 4 |
 
-**MEDIUM - `.legacy-host button` outranks the design-system `.vi-btn` variants
-inside the shell.** `.legacy-host button` (specificity 0,1,1) is on the
-`.vi-app` root; `.vi-btn` / `.vi-btn--primary` / `--secondary` / `--ghost` /
-`--danger` / `--sm` are single-class (0,1,0), so inside every authenticated
-route the buttons render with the transitional treatment (surface-2 fill,
-`0.6rem 1rem` padding) instead of the design system's bronze-gradient primary,
-danger-surface danger, transparent ghost, and compact `--sm`. `.vi-btn--secondary`
-happens to match the transitional look, so the common case is visually
-unaffected; primary CTAs (e.g. VIN "Recommend") and ghost buttons (e.g.
-History "Edit time") are the visible cases. This has been true since Phase A and
-Phases A-D were human-accepted with it. **Disposition: deferred.** A clean fix
-(`.legacy-host button:not([class*="vi-"])`) was prototyped and measured - it
-also un-frames the `<button class="vi-chip">` starter/suggestion chips on
-Dashboard / Discover / Ask VIN and visibly resizes many controls across
-human-accepted pages, which section 29 forbids without design confirmation. The
-compact icon / nav controls that *must* win are each individually scoped at
-(0,2,0) (the × buttons in Phase D, the bottom-nav "More" button in this pass). A
-`base.css` NOTE points here.
+**MEDIUM (RESOLVED) - `.legacy-host button` outranked the design-system
+`.vi-btn` variants inside the shell.** `.legacy-host button` (specificity 0,1,1)
+is on the `.vi-app` root; `.vi-btn` / `.vi-btn--primary` / `--secondary` /
+`--ghost` / `--danger` / `--sm` are single-class (0,1,0), so inside every
+authenticated route the buttons rendered with the transitional treatment
+(surface-2 fill, `0.6rem 1rem` padding) instead of the design system's
+bronze-gradient primary, danger-surface danger, transparent ghost, and compact
+`--sm`. `.vi-btn--secondary` matches the transitional look, so the common case
+was visually unaffected; primary CTAs (VIN "Recommend") and ghost buttons
+(History "Edit time", dialog "Keep it") were the visible cases.
+
+**Fixed by commit `8226328bde6f94dadbb650b19e013f8dda714a2c`** with the narrow
+selector `.legacy-host button:where(:not(.vi-btn))` and the equivalent
+`:hover` pair. `:where()` contributes 0 specificity, so the rule stays exactly
+(0,1,1) - it simply no longer matches `.vi-btn`. Measured in-app after the fix:
+VIN "Recommend" renders the bronze `--primary` gradient (`color` accent-ink,
+padding `--lg`); Album Detail "Keep it" is a transparent `--ghost`; "Remove
+record" is the `--danger-surface` tint; the `<button class="vi-chip">`
+starter/suggestion chips on Dashboard / Discover / Ask VIN are **unchanged**
+(`0.6rem 1rem` / surface-2 / radius-md); the circular × controls
+(`.vi-iconbtn`, `.vi-chip__x`) and the bottom-nav "More" button are
+**unchanged** (padding 0, radius 999px, transparent) - they keep winning via
+their own (0,2,0) scoped rules. Visually human-verified. The `base.css` NOTE
+was replaced with a comment describing the final selector.
 
 **LOW / NOTE:**
 1. **Rating primitive** - the mounted `RatingControl` `*` glyph is fixed;
@@ -4356,15 +4362,35 @@ signed URL persisted or logged, no secret in the client bundle or logs.
 - A dedicated local QA user + 5 fixture collection items were seeded for the
   browser pass and **removed afterwards**; the human's local review data
   (`m10-runtime`, 2 items) was never touched. pgTAP re-run after cleanup: PASS.
+- A second short-lived local QA user + 1 fixture item were seeded to
+  visually verify the `.vi-btn` cascade fix, then **removed**; pgTAP re-run
+  after cleanup: PASS. The human's local data was again never touched.
 - No `supabase db reset`. No migration applied to hosted Supabase. No
-  deployment. No PR. No merge.
+  deployment.
+
+### Post-review follow-up commits (still Phase E, on the same branch)
+
+- `8226328` `fix(ui): stop .legacy-host button overriding the design-system
+  .vi-btn` - resolves the one MEDIUM finding (see the RESOLVED note above);
+  visually human-verified.
+
+### Final Phase E review status
+
+**BLOCKER 0 / HIGH 0 / MEDIUM 0.** Remaining items are LOW / NOTE only.
 
 ### Remaining LOW / NOTE technical debt
 
-- `.legacy-host button` vs `.vi-btn` cascade (MEDIUM above) - needs a human
-  design call before the broad fix.
-- Legacy unmounted component subtree + tests - dedicated cleanup pass.
-- `CuratorRecommendationCard` / `CollectionItemPersonalControls` `★☆` glyphs.
-- `UserAvatar` image-error re-sign nicety.
+- Legacy unmounted component subtree + tests (`CollectionPanel`,
+  `CatalogPanel`, `CatalogPhotoPanel`, `CollectionItemCard`) - dedicated
+  cleanup pass (Milestone 12).
+- `CuratorRecommendationCard` / `CollectionItemPersonalControls` `★☆` unicode
+  star glyphs (both carry geometry + an aria label; the second is unmounted).
+- `UserAvatar` image-error re-sign nicety (current fall-back-to-initials
+  behaviour is safe).
 - `Vinny` `loading="lazy"`.
-- Human pixel-level visual acceptance of Phases C-E still pending.
+
+### Human visual acceptance
+
+Phases A–E of the Visual Experience & Product Identity pass are **human
+accepted** (confirmed at the start of the final roadmap/PR task). The one
+MEDIUM button-cascade fix (`8226328`) was fixed and visually human-verified.
