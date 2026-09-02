@@ -207,12 +207,13 @@ samp,
   font-size: var(--fs-body);
 }
 
-/* NOTE (Phase E): this transitional rule (0,1,1) also outranks the bare
-   design-system `.vi-btn` variants (0,1,0) inside the shell - see
-   docs/verification.md "Phase E" MEDIUM finding. A broad fix visibly changes
-   many human-accepted pages, so it is deferred; the compact icon/nav controls
-   that MUST win are individually scoped at (0,2,0). */
-.legacy-host button {
+/* Transitional styling for the genuinely legacy buttons in the not-yet-rebuilt
+   panels. `:where(:not(.vi-btn))` excludes the design-system button family
+   WITHOUT raising this rule's specificity (`:where()` contributes 0), so it
+   stays (0,1,1): `.vi-btn`/variants (0,1,0) now win, while the compact
+   icon/nav controls keep winning via their own (0,2,0) scoped rules and the
+   `button.vi-chip` starter/suggestion chips are unaffected. */
+.legacy-host button:where(:not(.vi-btn)) {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -223,7 +224,7 @@ samp,
   cursor: pointer;
 }
 
-.legacy-host button:hover {
+.legacy-host button:where(:not(.vi-btn)):hover {
   border-color: var(--border-accent);
 }
 
