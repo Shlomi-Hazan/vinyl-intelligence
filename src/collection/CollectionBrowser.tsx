@@ -22,7 +22,10 @@ import {
   addListeningEvent,
   type ListeningEventRecord,
 } from '../lib/supabase/listeningEvents.ts'
-import { updateCollectionItemPersonalSignals } from '../lib/supabase/collection.ts'
+import {
+  effectiveGenres,
+  updateCollectionItemPersonalSignals,
+} from '../lib/supabase/collection.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
@@ -58,7 +61,7 @@ function playsLabel(
 
 function metaLine(item: CollectionItemWithRelease): string {
   const year = item.release.release_year
-  const genre = (item.release.genres ?? [])[0]
+  const genre = effectiveGenres(item)[0]
   return [year ? String(year) : null, genre]
     .filter((x): x is string => Boolean(x))
     .join(' · ')

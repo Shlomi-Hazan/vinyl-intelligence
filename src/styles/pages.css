@@ -1425,3 +1425,174 @@ a.vi-histrow__title:hover {
     justify-content: flex-start;
   }
 }
+
+/* ===================== PHASE D: ALBUM DETAIL ===================== */
+
+.vi-album__back {
+  margin-bottom: var(--space-3);
+}
+.vi-album__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+.vi-album__art {
+  display: grid;
+  gap: var(--space-4);
+}
+.vi-album__ident {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+.vi-album__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.vi-album__meta dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+.vi-album__meta dd {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.vi-album__personal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.vi-favbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.vi-favbtn[aria-pressed='true'] {
+  color: var(--vi-glyph, #d08b48);
+  border-color: currentColor;
+}
+.vi-album__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.vi-star {
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+  line-height: 0;
+}
+.vi-star .is-on {
+  color: var(--vi-glyph, #d08b48);
+}
+.vi-album__section {
+  margin-top: var(--space-7);
+  display: grid;
+  gap: var(--space-3);
+}
+.vi-album__section h2 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.vi-album__plays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.vi-album__editform,
+.vi-album__notes {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 42rem;
+}
+.vi-album__notesfoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.vi-album__danger {
+  margin-top: var(--space-3);
+}
+
+/* personal / catalog genre chips */
+.vi-genres {
+  display: grid;
+  gap: var(--space-4);
+}
+.vi-genres__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin: 0 0 var(--space-2);
+}
+.vi-chiprow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.vi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+.vi-chip--static {
+  color: var(--text-muted);
+}
+.vi-chip__x {
+  display: inline-flex;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--text-faint);
+  cursor: pointer;
+  line-height: 0;
+}
+.vi-chip__x:hover {
+  color: var(--text);
+}
+.vi-genres__add {
+  display: flex;
+  gap: var(--space-2);
+  max-width: 22rem;
+  margin-top: var(--space-2);
+}
+@media (max-width: 720px) {
+  .vi-album__hero {
+    grid-template-columns: 1fr;
+  }
+}

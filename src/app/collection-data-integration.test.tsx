@@ -219,12 +219,16 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
     deleteCollectionItem.mockImplementation(async () => {
       present = false
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     renderApp({ client: authedClient(), route: '/collection/1' })
     await screen.findByRole('heading', { name: 'Parklife', level: 1 })
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Remove' }))
+    const u = userEvent.setup()
+    await u.click(screen.getByRole('button', { name: 'Remove from collection' }))
+    // a deliberate destructive confirmation, distinct from deleting a listen
+    await u.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove record' }),
+    )
     await waitFor(() => expect(deleteCollectionItem).toHaveBeenCalled())
 
     await goTo('History')

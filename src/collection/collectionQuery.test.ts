@@ -189,4 +189,31 @@ describe('collectionQuery', () => {
       expect(collection).toContain(entry)
     }
   })
+
+  describe('effective genres (catalog + personal)', () => {
+    it('filters on a personal genre the catalog does not carry', () => {
+      const withPersonal: CollectionItemWithRelease = {
+        ...item({ genres: ['hip hop'] }),
+        personal_genres: ['west coast hip hop'],
+      }
+      const plain = item({ genres: ['rock'] })
+      const collection = [withPersonal, plain]
+
+      expect(
+        applyCollectionQuery(
+          collection,
+          filters({ genre: 'west coast hip hop' }),
+          'recently-added',
+        ),
+      ).toEqual([withPersonal])
+    })
+
+    it('lists personal genres alongside catalog genres without duplicates', () => {
+      const collection = [
+        { ...item({ genres: ['Jazz'] }), personal_genres: ['fusion', 'jazz'] },
+        { ...item({ genres: [] }), personal_genres: ['ambient'] },
+      ]
+      expect(availableGenres(collection)).toEqual(['ambient', 'fusion', 'jazz'])
+    })
+  })
 })
