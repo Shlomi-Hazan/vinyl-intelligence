@@ -1,8 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, User } from '@supabase/supabase-js'
 import { renderApp } from '../test/renderApp.tsx'
+import { caaReleaseFrontUrl } from '../media/coverArtUrl.ts'
+import { customCoverPath } from '../lib/collection/customCover.ts'
+import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import type { BrowserSupabaseClient, Profile } from '../lib/supabase/client.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
@@ -312,5 +315,111 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('dash boom')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(screen.queryByText('Your crate is empty')).not.toBeInTheDocument()
+  })
+})
+
+describe('DashboardPage - canonical artwork inputs (Phase C)', () => {
+  const REL = 'b1392450-e666-3926-a536-22c65f834433'
+  const RG = 'f5093c06-23e3-404f-aeaa-40f72885ee3a'
+
+  function providerItem(
+    id: string,
+    over: Partial<CollectionItemWithRelease> & {
+      release?: Partial<CollectionItemWithRelease['release']>
+    } = {},
+  ): CollectionItemWithRelease {
+    return {
+      id,
+      added_at: `2026-08-${id.padStart(2, '0')}T00:00:00.000Z`,
+      created_at: '2026-08-01T00:00:00.000Z',
+      rating: null,
+      is_favorite: false,
+      notes: null,
+      custom_cover_path: null,
+      custom_cover_updated_at: null,
+      ...over,
+      release: {
+        id: `rel-${id}`,
+        artist: `Artist ${id}`,
+        title: `Album ${id}`,
+        release_year: 1997,
+        label: null,
+        catalog_number: null,
+        country: null,
+        format: null,
+        genres: [],
+        updated_at: '2026-08-01T00:00:00.000Z',
+        provider_release_id: REL,
+        provider_release_group_id: RG,
+        ...over.release,
+      },
+    }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.sessionStorage.clear()
+    __clearSignedCoverCache()
+  })
+  afterEach(() => __clearSignedCoverCache())
+
+  it('the "Recently added" rail resolves provider artwork, not just the fallback', async () => {
+    loadCollection.mockResolvedValue([providerItem('01')])
+    loadListeningEvents.mockResolvedValue([])
+    const { container } = renderApp({ client: authedClient(), route: '/dashboard' })
+
+    const heading = await screen.findByRole('heading', { name: 'Recently added' })
+    const section = heading.closest('section') as HTMLElement
+    // AlbumArtwork tier 2: an <img> whose src is the CAA release front URL
+    // built from the release MBID the rail forwarded.
+    const img = await waitFor(() => {
+      const el = section.querySelector('img.vi-art__img')
+      if (!el) throw new Error('no artwork img yet')
+      return el
+    })
+    expect(img.getAttribute('src')).toBe(caaReleaseFrontUrl(REL, 250))
+    void container
+  })
+
+  it('"Recently played" uses the same AlbumMini artwork path', async () => {
+    loadCollection.mockResolvedValue([providerItem('01')])
+    loadListeningEvents.mockResolvedValue([
+      ev('e1', '01', daysAgo(1)),
+    ])
+    renderApp({ client: authedClient(), route: '/dashboard' })
+
+    const heading = await screen.findByRole('heading', { name: 'Recently played' })
+    const section = heading.closest('section') as HTMLElement
+    const img = await waitFor(() => {
+      const el = section.querySelector('img.vi-art__img')
+      if (!el) throw new Error('no artwork img yet')
+      return el
+    })
+    expect(img.getAttribute('src')).toContain(`/release/${REL}/front-250`)
+  })
+
+  it('a custom-cover record keeps the tier-1 signed-cover input on the dashboard', async () => {
+    const createSignedUrl = vi
+      .fn()
+      .mockResolvedValue({ data: { signedUrl: 'blob:dash-cover' }, error: null })
+    const client = authedClient() as unknown as {
+      storage: { from: () => { createSignedUrl: typeof createSignedUrl } }
+    }
+    client.storage = { from: () => ({ createSignedUrl }) }
+
+    loadCollection.mockResolvedValue([
+      providerItem('01', { custom_cover_path: `${user.id}/01/cover.webp` }),
+    ])
+    loadListeningEvents.mockResolvedValue([])
+    renderApp({ client: client as unknown as BrowserSupabaseClient, route: '/dashboard' })
+
+    await screen.findByRole('heading', { name: 'Recently added' })
+    // the rail forwarded the canonical custom-cover path -> tier 1 was tried
+    await waitFor(() =>
+      expect(createSignedUrl).toHaveBeenCalledWith(
+        customCoverPath(user.id, '01'),
+        3600,
+      ),
+    )
   })
 })
