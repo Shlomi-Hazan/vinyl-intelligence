@@ -5,6 +5,7 @@ import { Button, SearchInput } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { SkeletonAlbumCard } from '../ui/feedback.tsx'
 import {
+  clearCatalogSearchDraft,
   loadCatalogSearchDraft,
   saveCatalogSearchDraft,
 } from './catalogSearchDraft.ts'
@@ -65,12 +66,30 @@ export function DiscoverPanel({
         : 'no-results'
       : 'initial',
   )
+  const [submittedQuery, setSubmittedQuery] = useState(
+    restored?.result?.submittedQuery ?? '',
+  )
   const [searchError, setSearchError] = useState<string | null>(null)
   const [addingId, setAddingId] = useState<string | null>(null)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
   const [showManual, setShowManual] = useState(false)
   const inProgress = useRef(false)
   const lastResult = useRef(restored?.result ?? null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const resetSearch = useCallback(() => {
+    setQuery('')
+    setCandidates([])
+    setSubmittedQuery('')
+    setSearchError(null)
+    setAddErrors({})
+    setShowManual(false)
+    setPhase('initial')
+    lastResult.current = null
+    clearCatalogSearchDraft(userId)
+    // focus the input so the user can type immediately
+    window.setTimeout(() => searchRef.current?.focus(), 0)
+  }, [userId])
 
   const ownedReleaseIds = useMemo(() => {
     const s = new Set<string>()
@@ -99,6 +118,7 @@ export function DiscoverPanel({
       try {
         const next = await searchCatalog(client, q)
         setCandidates(next)
+        setSubmittedQuery(q)
         setPhase(next.length > 0 ? 'results' : 'no-results')
         lastResult.current = { submittedQuery: q, candidates: next }
         saveCatalogSearchDraft(userId, { draftQuery: q, result: lastResult.current })
@@ -139,15 +159,37 @@ export function DiscoverPanel({
     setShowManual(false)
   }
 
+  const searched = phase !== 'initial'
+
   return (
     <div className="vi-discover">
-      <SearchInput
-        label="Search the catalog"
-        placeholder="Artist and album, e.g. Portishead Dummy"
-        value={query}
-        onChange={setQuery}
-        onSubmit={() => void runSearch()}
-      />
+      <div className="vi-discover__searchrow">
+        <SearchInput
+          label="Search the catalog"
+          placeholder="Artist and album, e.g. Portishead Dummy"
+          value={query}
+          onChange={setQuery}
+          onSubmit={() => void runSearch()}
+          inputRef={searchRef}
+        />
+        {searched ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconBefore="close"
+            onClick={resetSearch}
+          >
+            New search
+          </Button>
+        ) : null}
+      </div>
+
+      {searched && submittedQuery ? (
+        <p className="vi-hint vi-discover__current">
+          Showing results for &ldquo;{submittedQuery}&rdquo; &middot; press Enter
+          to run it again
+        </p>
+      ) : null}
 
       {phase === 'initial' ? (
         <div className="vi-discover__hint">

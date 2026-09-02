@@ -53,7 +53,7 @@ function candidate(over: Partial<CatalogCandidate> = {}): CatalogCandidate {
 
 function renderPanel(owned: CollectionItemWithRelease[] = []) {
   const onCollectionChanged = vi.fn()
-  render(
+  const view = render(
     <MemoryRouter>
       <DiscoverPanel
         client={{} as BrowserSupabaseClient}
@@ -63,7 +63,7 @@ function renderPanel(owned: CollectionItemWithRelease[] = []) {
       />
     </MemoryRouter>,
   )
-  return { onCollectionChanged }
+  return { onCollectionChanged, ...view }
 }
 
 describe('DiscoverPanel', () => {
@@ -169,5 +169,55 @@ describe('DiscoverPanel', () => {
       .setup()
       .click(screen.getByRole('button', { name: /Add it manually/i }))
     expect(screen.getByRole('heading', { name: 'Add a record manually' })).toBeInTheDocument()
+  })
+
+  it('"New search" clears the query, results, and the stored draft', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+    expect(sessionStorage.length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'New search' }))
+
+    // back to the initial prompt, empty field, no results, no stored draft
+    expect(screen.getByText(/Search MusicBrainz for a release/i)).toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.queryByRole('article')).toBeNull()
+    expect(
+      JSON.stringify({ ...sessionStorage }),
+    ).not.toContain('portishead')
+  })
+
+  it('restores the previous query + results, and the same query can be re-run', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    const user = userEvent.setup()
+
+    const first = renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+    first.unmount?.()
+
+    // a fresh mount restores from the draft without a new call
+    searchCatalog.mockClear()
+    searchCatalog.mockResolvedValue([candidate(), candidate({ providerReleaseId: 'x2' })])
+    render(
+      <MemoryRouter>
+        <DiscoverPanel
+          client={{} as BrowserSupabaseClient}
+          userId="uid"
+          ownedItems={[]}
+          onCollectionChanged={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('article')).toBeInTheDocument()
+    expect(searchCatalog).not.toHaveBeenCalled()
+
+    // re-running the same restored query still works
+    await user.type(screen.getByRole('searchbox'), '{enter}')
+    await waitFor(() => expect(searchCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead'))
   })
 })

@@ -3,6 +3,7 @@ import {
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react'
@@ -137,12 +138,14 @@ export function SearchInput({
   onSubmit,
   placeholder = 'Search...',
   label = 'Search',
+  inputRef,
 }: {
   value: string
   onChange: (next: string) => void
   onSubmit?: () => void
   placeholder?: string
   label?: string
+  inputRef?: Ref<HTMLInputElement>
 }) {
   return (
     <form
@@ -157,6 +160,7 @@ export function SearchInput({
         <Icon name="search" size={16} />
       </span>
       <Input
+        ref={inputRef}
         type="search"
         aria-label={label}
         placeholder={placeholder}

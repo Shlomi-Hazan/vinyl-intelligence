@@ -972,8 +972,27 @@
 
 .vi-manual-add {
   display: grid;
-  gap: var(--space-3);
-  max-width: 42rem;
+  gap: var(--space-4);
+  max-width: 44rem;
+  padding: clamp(var(--space-5), 4vw, var(--space-7));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--groove) var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.vi-manual-add > h2,
+.vi-manual-add > h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 1rem + 0.9vw, 1.5rem);
+  margin: 0;
+}
+.vi-manual-add > .vi-hint {
+  margin-top: calc(var(--space-3) * -1);
+}
+.vi-manual-add .collection-form,
+.vi-manual-add form {
+  display: grid;
+  gap: var(--space-4);
 }
 
 @media (max-width: 640px) {
@@ -990,8 +1009,27 @@
 /* --- Discover --- */
 .vi-discover {
   display: grid;
-  gap: var(--space-5);
+  gap: clamp(var(--space-5), 3.5vw, var(--space-7));
   max-width: 46rem;
+  padding-top: var(--space-2);
+}
+.vi-discover__searchrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.vi-discover__searchrow .vi-search {
+  flex: 1 1 18rem;
+}
+.vi-discover__current {
+  margin-top: calc(var(--space-4) * -1 + var(--space-1));
+}
+/* the results list keeps clear air below the search row */
+.vi-discover .vi-candidate__list,
+.vi-discover__empty,
+.vi-discover > .vi-errorstate {
+  margin-top: var(--space-2);
 }
 .vi-discover__hint {
   display: grid;
@@ -1133,6 +1171,27 @@
   border-radius: var(--radius-lg);
   text-align: center;
   color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background-color var(--dur-fast),
+    color var(--dur-fast);
+}
+.vi-scan__drop:hover {
+  border-color: var(--border-accent);
+}
+.vi-scan__drop[data-dragging] {
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+/* the inner elements must not intercept the drag so dragleave fires cleanly */
+.vi-scan__drop[data-dragging] * {
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vi-scan__drop {
+    transition: none;
+  }
 }
 .vi-scan__clues {
   display: flex;
