@@ -114,17 +114,14 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
 
     renderApp({ client: authedClient(), route: '/collection' })
 
-    expect(await screen.findByText('Your records')).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByText('Nirvana')).toBeInTheDocument()
-    })
+    await screen.findByRole('link', { name: /Nevermind/ })
 
-    // Exactly one initial load each - the provider's, not a second from the panel.
+    // Exactly one initial load each - the provider's, not a second from the browser.
     expect(loadCollection).toHaveBeenCalledTimes(1)
     expect(loadListeningEvents).toHaveBeenCalledTimes(1)
   })
 
-  it('B. mark-played on /collection is visible on /history without a refresh', async () => {
+  it('B. log-listen on /collection is visible on /history without a refresh', async () => {
     const item = makeItem('1', 'Radiohead', 'OK Computer')
     let events: ListeningEventRecord[] = []
     loadCollection.mockImplementation(async () => [item])
@@ -141,11 +138,11 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
     })
 
     renderApp({ client: authedClient(), route: '/collection' })
-    await screen.findByText('Radiohead')
+    await screen.findByRole('link', { name: /OK Computer/ })
 
     await userEvent
       .setup()
-      .click(screen.getByRole('button', { name: 'Mark played' }))
+      .click(screen.getByRole('button', { name: 'Log a listen' }))
 
     await waitFor(() => expect(addListeningEvent).toHaveBeenCalledWith(expect.anything(), '1'))
 
@@ -158,41 +155,44 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
     })
   })
 
-  it('C. a rating change on /collection is reflected on /collection/:id after navigation', async () => {
-    const item = makeItem('1', 'Pixies', 'Doolittle', { rating: null })
-    // The single source: both routes read whatever loadCollection returns now.
+  it('C. a favourite toggle on /collection is reflected on /collection/:id after navigation', async () => {
+    const item = makeItem('1', 'Pixies', 'Doolittle', { is_favorite: false })
     loadCollection.mockImplementation(async () => [
-      { ...item, rating: item.rating, release: { ...item.release } },
+      { ...item, is_favorite: item.is_favorite, release: { ...item.release } },
     ])
     loadListeningEvents.mockResolvedValue([])
     updateCollectionItemPersonalSignals.mockImplementation(async () => {
-      item.rating = 4
-      return { id: '1', rating: 4, is_favorite: false, notes: null }
+      item.is_favorite = true
+      return { id: '1', rating: null, is_favorite: true, notes: null }
     })
 
     const first = renderApp({ client: authedClient(), route: '/collection' })
-    await screen.findByText('Pixies')
+    await screen.findByRole('link', { name: /Doolittle/ })
     expect(loadCollection).toHaveBeenCalledTimes(1)
 
     await userEvent
       .setup()
-      .click(screen.getByRole('button', { name: 'Rate 4 stars' }))
+      .click(screen.getByRole('button', { name: 'Add favourite' }))
 
-    // persist -> onSignalsSaved -> onMutated -> ONE authoritative provider reload
+    // persist -> onMutated -> ONE authoritative provider reload
     await waitFor(() =>
-      expect(updateCollectionItemPersonalSignals).toHaveBeenCalled(),
+      expect(updateCollectionItemPersonalSignals).toHaveBeenCalledWith(
+        expect.anything(),
+        '1',
+        { is_favorite: true },
+      ),
     )
     await waitFor(() =>
       expect(loadCollection.mock.calls.length).toBeGreaterThanOrEqual(2),
     )
     first.unmount()
 
-    // Navigating to the detail route (fresh mount) shows the persisted rating,
+    // Navigating to the detail route (fresh mount) shows the persisted favourite,
     // sourced only from the provider.
     renderApp({ client: authedClient(), route: '/collection/1' })
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Rate 4 stars', pressed: true }),
+        screen.getByRole('button', { name: 'Favorite this record', pressed: true }),
       ).toBeInTheDocument()
     })
   })
@@ -218,8 +218,8 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
     })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
 
-    renderApp({ client: authedClient(), route: '/collection' })
-    await screen.findByText('Blur')
+    renderApp({ client: authedClient(), route: '/collection/1' })
+    await screen.findByRole('heading', { name: 'Parklife', level: 1 })
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(deleteCollectionItem).toHaveBeenCalled())

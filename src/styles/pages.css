@@ -888,6 +888,245 @@
   }
 }
 
+/* ======================= COLLECTION / DISCOVER / SCAN ======================= */
+
+.vi-collection {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.vi-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--groove) var(--surface);
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--space-2));
+  z-index: 5;
+}
+.vi-filterbar__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset, var(--surface-2));
+  color: var(--text-faint);
+}
+.vi-filterbar__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0.5rem 0;
+  font: inherit;
+}
+.vi-filterbar__search input:focus {
+  outline: none;
+}
+.vi-filterbar .vi-select {
+  width: auto;
+  min-width: 7.5rem;
+}
+.vi-filterbar__end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.vi-filterbar .vi-chip[aria-pressed='true'] {
+  border-color: var(--border-accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.vi-filterbar__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.vi-collection__filtered-empty {
+  padding: clamp(var(--space-5), 6vw, var(--space-8)) var(--space-4);
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+.vi-collection__filtered-empty h3 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  margin-bottom: var(--space-2);
+}
+.vi-collection__filtered-empty p {
+  color: var(--text-muted);
+}
+
+.vi-manual-add {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 42rem;
+}
+
+@media (max-width: 640px) {
+  .vi-filterbar {
+    position: static;
+  }
+  .vi-filterbar__end {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* --- Discover / Scan candidate cards --- */
+.vi-candidate {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.vi-candidate[data-owned='true'] {
+  border-color: var(--border-accent);
+}
+.vi-candidate__art {
+  width: 92px;
+}
+.vi-candidate__body {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.vi-candidate__title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+.vi-candidate__artist {
+  color: var(--text-muted);
+}
+.vi-candidate__meta {
+  font-size: var(--fs-sm);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+.vi-candidate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.vi-candidate__owned {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--accent-2-hover);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.vi-candidate__list {
+  display: grid;
+  gap: var(--space-3);
+}
+@media (max-width: 560px) {
+  .vi-candidate {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .vi-candidate__art {
+    width: 64px;
+  }
+}
+
+/* --- Scan step rail --- */
+.vi-scan {
+  display: grid;
+  gap: var(--space-5);
+}
+.vi-scan__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.vi-scan__step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--fs-sm);
+  color: var(--text-faint);
+}
+.vi-scan__step[data-state='active'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.vi-scan__step[data-state='done'] {
+  color: var(--accent-2-hover);
+}
+.vi-scan__dot {
+  width: 1.4rem;
+  height: 1.4rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.7rem;
+}
+.vi-scan__panel {
+  display: grid;
+  gap: var(--space-4);
+  padding: clamp(var(--space-4), 4vw, var(--space-6));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--groove) var(--surface);
+}
+.vi-scan__drop {
+  display: grid;
+  place-items: center;
+  gap: var(--space-3);
+  padding: clamp(var(--space-6), 9vw, var(--space-9)) var(--space-4);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  color: var(--text-muted);
+}
+.vi-scan__clues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.vi-scan__clue {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+}
+.vi-scan__figure {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.vi-scan__figure .vi-vinny {
+  width: clamp(120px, 30vw, 168px);
+}
+
 /* ============================ ASK VIN ============================ */
 
 .vi-vinpage {

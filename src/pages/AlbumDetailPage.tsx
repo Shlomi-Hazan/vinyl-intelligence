@@ -1,29 +1,38 @@
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { CollectionItemCard } from '../collection/CollectionItemCard.tsx'
+import { CollectionForm } from '../collection/CollectionForm.tsx'
+import { CustomCoverControl } from '../collection/CustomCoverControl.tsx'
 import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
 import { useToast } from '../ui/useToast.ts'
+import { customCoverPath } from '../lib/collection/customCover.ts'
 import { summarizeListeningForItem } from '../collection/listeningSummary.ts'
 import {
   addListeningEvent,
 } from '../lib/supabase/listeningEvents.ts'
-import { deleteCollectionItem } from '../lib/supabase/collection.ts'
+import {
+  deleteCollectionItem,
+  updateManualRelease,
+  type ManualReleaseInput,
+} from '../lib/supabase/collection.ts'
 
 /*
- * Phase A: structural album-detail route. Real owned data only - nothing
- * faked. The full hero design (large art, sticky metadata, custom-cover
- * replace) is Phase D.
+ * Phase A structure; Phase C wires real artwork (custom cover + Cover Art
+ * Archive) and lightweight cover / edit management. The full hero redesign is
+ * Phase D.
  */
 export function AlbumDetailPage() {
   const { id = '' } = useParams()
-  const { client } = useClient()
+  const { client, userId } = useClient()
   const { items, events, status, error, reload, invalidate } = useCollectionData()
   const toast = useToast()
   const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
 
   // The collection is still loading - do not decide "not found" yet.
   if (status === 'loading') {
@@ -93,17 +102,32 @@ export function AlbumDetailPage() {
           alignItems: 'start',
         }}
       >
-        <AlbumArtwork
-          artist={release.artist}
-          title={release.title}
-          seedId={release.id}
-          size="hero"
-        />
+        <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+          <AlbumArtwork
+            artist={release.artist}
+            title={release.title}
+            seedId={release.id}
+            size="hero"
+            releaseMbid={release.provider_release_id ?? null}
+            releaseGroupMbid={release.provider_release_group_id ?? null}
+            customCoverPath={
+              item.custom_cover_path ? customCoverPath(userId, item.id) : null
+            }
+            client={client}
+            customCoverVersion={item.custom_cover_updated_at ?? null}
+          />
+          <CustomCoverControl
+            client={client}
+            userId={userId}
+            item={item}
+            onChanged={invalidate}
+          />
+        </div>
         <CollectionItemCard
           client={client}
           item={item}
           listeningSummary={summarizeListeningForItem(events, item.id)}
-          onEdit={() => navigate('/collection')}
+          onEdit={() => setEditing((v) => !v)}
           onRemove={async () => {
             if (!window.confirm(`Remove "${release.title}" from your collection?`)) {
               return
@@ -128,6 +152,24 @@ export function AlbumDetailPage() {
           onSignalsSaved={() => invalidate()}
         />
       </div>
+
+      {editing ? (
+        <div style={{ marginTop: 'var(--space-5)', maxWidth: '42rem' }}>
+          <h3 style={{ fontFamily: 'var(--font-display)' }}>Edit metadata</h3>
+          <CollectionForm
+            key={release.updated_at}
+            mode="edit"
+            initialRelease={release}
+            onCancel={() => setEditing(false)}
+            onSubmit={async (input: ManualReleaseInput) => {
+              await updateManualRelease(client, release.id, input)
+              invalidate()
+              setEditing(false)
+              toast.show({ message: 'Record saved.', tone: 'success' })
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

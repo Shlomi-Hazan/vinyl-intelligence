@@ -479,15 +479,27 @@ button.vi-chip:hover {
 
 .vi-album-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(clamp(140px, 22vw, 190px), 1fr));
+  gap: clamp(var(--space-3), 2.4vw, var(--space-5));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vi-album-grid > li {
+  min-width: 0;
 }
 
 .vi-albumcard {
+  position: relative;
+}
+.vi-albumcard__link {
   display: grid;
   gap: var(--space-2);
   text-decoration: none;
   color: inherit;
+}
+.vi-albumcard__link:hover {
+  text-decoration: none;
 }
 .vi-albumcard .vi-art {
   box-shadow: var(--shadow-sm);
@@ -495,34 +507,152 @@ button.vi-chip:hover {
     transform var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
-.vi-albumcard:hover {
-  text-decoration: none;
-}
-.vi-albumcard:hover .vi-art {
+.vi-albumcard__link:hover .vi-art {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lift);
 }
-.vi-albumcard:hover .vi-art img {
+.vi-albumcard__link:hover .vi-art img {
   transform: scale(1.015);
 }
-.vi-albumcard:hover .vi-albumcard__title {
+.vi-albumcard__link:hover .vi-albumcard__title {
   color: var(--accent-hover);
 }
 .vi-albumcard__title {
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size: 0.98rem;
   color: var(--text);
   line-height: 1.25;
   transition: color var(--dur-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .vi-albumcard__meta {
   font-size: var(--fs-meta);
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vi-albumcard__rating {
+  position: absolute;
+  left: var(--space-2);
+  bottom: 3.1rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  background: rgba(12, 10, 8, 0.72);
+  font-size: 0.7rem;
+}
+.vi-albumcard__actions {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+.vi-albumcard:hover .vi-albumcard__actions,
+.vi-albumcard:focus-within .vi-albumcard__actions {
+  opacity: 1;
+}
+.vi-albumcard__act {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: rgba(12, 10, 8, 0.8);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.vi-albumcard__act:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-accent);
+}
+.vi-albumcard__act[data-on='true'] {
+  color: var(--accent);
+  border-color: var(--border-accent);
+}
+.vi-albumcard__act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+@media (hover: none) {
+  .vi-albumcard__actions {
+    opacity: 1;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vi-albumcard:hover .vi-art,
-  .vi-albumcard:hover .vi-art img {
+  .vi-albumcard__link:hover .vi-art,
+  .vi-albumcard__link:hover .vi-art img {
     transform: none;
+  }
+}
+
+/* --- compact list rows --- */
+.vi-album-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.vi-albumrow {
+  position: relative;
+  border-radius: var(--radius-sm);
+}
+.vi-albumrow:hover {
+  background: var(--surface-2);
+}
+.vi-albumrow__link {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 5.5rem var(--space-2) var(--space-2);
+  text-decoration: none;
+  color: inherit;
+}
+.vi-albumrow__link:hover {
+  text-decoration: none;
+}
+.vi-albumrow__art {
+  width: 40px;
+}
+.vi-albumrow__art .vi-art {
+  border-radius: var(--radius-sm);
+}
+.vi-albumrow__title {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vi-albumrow__artist,
+.vi-albumrow__meta,
+.vi-albumrow__plays {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vi-albumrow .vi-albumcard__actions {
+  opacity: 1;
+  top: 50%;
+  transform: translateY(-50%);
+}
+@media (max-width: 720px) {
+  .vi-albumrow__link {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+  .vi-albumrow__meta,
+  .vi-albumrow__plays,
+  .vi-albumrow__rating {
+    display: none;
   }
 }
 
