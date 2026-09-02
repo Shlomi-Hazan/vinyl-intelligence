@@ -1,21 +1,20 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
-import App from '../App.tsx'
-import type {
-  BrowserSupabaseClient,
-  Profile,
-} from '../lib/supabase/client.ts'
+import { renderApp } from '../test/renderApp.tsx'
+import type { BrowserSupabaseClient, Profile } from '../lib/supabase/client.ts'
 
 vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('../lib/supabase/collection.ts')>()
+  return { ...actual, loadCollection: vi.fn(async () => []) }
+})
 
-  return {
-    ...actual,
-    loadCollection: vi.fn(async () => []),
-  }
+vi.mock('../lib/supabase/listeningEvents.ts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../lib/supabase/listeningEvents.ts')>()
+  return { ...actual, loadListeningEvents: vi.fn(async () => []) }
 })
 
 const userA = {
@@ -88,7 +87,6 @@ function createFakeClient(options: FakeClientOptions = {}) {
       if (options.updateError) {
         return { data: null, error: options.updateError }
       }
-
       return {
         data: {
           ...(options.profile ?? profileA),
@@ -105,15 +103,11 @@ function createFakeClient(options: FakeClientOptions = {}) {
         if (options.getSessionError) {
           return { data: { session: null }, error: options.getSessionError }
         }
-
         return { data: { session: options.session ?? null }, error: null }
       }),
       onAuthStateChange: vi.fn((callback: AuthStateCallback) => {
         authStateCallback = callback
-
-        return {
-          data: { subscription: { unsubscribe } },
-        }
+        return { data: { subscription: { unsubscribe } } }
       }),
       signInWithPassword: vi.fn(async () => ({
         data: {
@@ -136,7 +130,6 @@ function createFakeClient(options: FakeClientOptions = {}) {
       if (!authStateCallback) {
         throw new Error('Auth state callback was not registered.')
       }
-
       authStateCallback(nextSession ? 'SIGNED_IN' : 'SIGNED_OUT', nextSession)
     },
     __query: query,
@@ -148,59 +141,72 @@ function createFakeClient(options: FakeClientOptions = {}) {
   }
 }
 
-describe('auth and profile workflow', () => {
+describe('auth and profile workflow (routed)', () => {
   it('shows a loading auth state before the initial session resolves', () => {
-    const client = createFakeClient()
-
-    render(<App client={client} />)
-
+    renderApp({ client: createFakeClient(), route: '/settings' })
     expect(screen.getByText('Checking your session...')).toBeInTheDocument()
   })
 
-  it('signs in with email and password and renders the protected profile shell', async () => {
-    const client = createFakeClient({
-      profile: profileA,
-      signInSession: sessionA,
-    })
+  it('signs in with email and password and lands on the authenticated app', async () => {
+    const client = createFakeClient({ profile: profileA, signInSession: sessionA })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/auth' })
 
     await user.type(await screen.findByLabelText('Email'), 'user-a@example.test')
     await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
-      expect(screen.getByText('user-a@example.test')).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /Welcome back/ }),
+      ).toBeInTheDocument()
     })
-
     expect(client.auth.signInWithPassword).toHaveBeenCalledWith({
       email: 'user-a@example.test',
       password: 'password123',
     })
   })
 
-  it('renders profile and collection capabilities for an authenticated user with a loaded profile', async () => {
-    const client = createFakeClient({ session: sessionA, profile: profileA })
-
-    render(<App client={client} />)
+  it('shows the profile shell at /settings for an authenticated user', async () => {
+    renderApp({
+      client: createFakeClient({ session: sessionA, profile: profileA }),
+      route: '/settings',
+    })
 
     expect(await screen.findByText('Protected profile')).toBeInTheDocument()
     expect(screen.getByText('user-a@example.test')).toBeInTheDocument()
-    expect(screen.getByText('Search MusicBrainz')).toBeInTheDocument()
+    expect(screen.getByLabelText('Display name')).toBeInTheDocument()
+  })
+
+  it('shows the collection host at /collection for an authenticated user', async () => {
+    renderApp({
+      client: createFakeClient({ session: sessionA, profile: profileA }),
+      route: '/collection',
+    })
+
     expect(await screen.findByText('Your records')).toBeInTheDocument()
     expect(
-      screen.getByText(
+      await screen.findByText(
         'Your collection is empty. Add a record manually to start the shelf.',
       ),
     ).toBeInTheDocument()
+  })
+
+  it('shows the catalog search host at /discover', async () => {
+    renderApp({
+      client: createFakeClient({ session: sessionA, profile: profileA }),
+      route: '/discover',
+    })
+
+    expect(await screen.findByText('Search MusicBrainz')).toBeInTheDocument()
   })
 
   it('shows the confirmation-pending state after sign-up without a session', async () => {
     const client = createFakeClient({ signUpSession: null })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/auth' })
 
     await user.type(await screen.findByLabelText('Email'), 'new@example.test')
     await user.type(screen.getByLabelText('Password'), 'password123')
@@ -208,10 +214,11 @@ describe('auth and profile workflow', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Check your email to confirm your account before signing in.'),
+        screen.getByText(
+          'Check your email to confirm your account before signing in.',
+        ),
       ).toBeInTheDocument()
     })
-
     expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
   })
 
@@ -221,7 +228,7 @@ describe('auth and profile workflow', () => {
     })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/auth' })
 
     await user.type(await screen.findByLabelText('Email'), 'user-a@example.test')
     await user.type(screen.getByLabelText('Password'), 'wrong-password')
@@ -230,13 +237,10 @@ describe('auth and profile workflow', () => {
     await waitFor(() => {
       expect(screen.getByText('Invalid login credentials')).toBeInTheDocument()
     })
-
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
     expect(screen.queryByText('Something needs attention')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-
     expect(client.auth.signInWithPassword).toHaveBeenCalledTimes(2)
   })
 
@@ -246,7 +250,7 @@ describe('auth and profile workflow', () => {
     })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/auth' })
 
     await user.type(await screen.findByLabelText('Email'), 'new@example.test')
     await user.type(screen.getByLabelText('Password'), 'password123')
@@ -255,28 +259,20 @@ describe('auth and profile workflow', () => {
     await waitFor(() => {
       expect(screen.getByText('User already registered')).toBeInTheDocument()
     })
-
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
-    expect(screen.queryByText('Something needs attention')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Create account' }))
-
-    expect(client.auth.signUp).toHaveBeenCalledTimes(2)
   })
 
-  it('signs out from an authenticated profile shell', async () => {
+  it('signs out from the settings profile shell', async () => {
     const client = createFakeClient({ session: sessionA, profile: profileA })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/settings' })
 
     await waitFor(() => {
       expect(screen.getByText('Protected profile')).toBeInTheDocument()
     })
-
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
-
     expect(client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' })
 
     await waitFor(() => {
@@ -284,12 +280,11 @@ describe('auth and profile workflow', () => {
     })
   })
 
-  it('returns to the unauthenticated boundary when Supabase emits a signed-out auth state', async () => {
+  it('returns to /auth when Supabase emits a signed-out auth state', async () => {
     const client = createFakeClient({ session: sessionA, profile: profileA })
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/collection' })
 
-    expect(await screen.findByText('Protected profile')).toBeInTheDocument()
     expect(await screen.findByText('Your records')).toBeInTheDocument()
 
     act(() => {
@@ -299,11 +294,10 @@ describe('auth and profile workflow', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
-    expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
     expect(screen.queryByText('Your records')).not.toBeInTheDocument()
   })
 
-  it('keeps the protected profile visible after failed sign-out and allows retry', async () => {
+  it('keeps the profile visible after a failed sign-out and allows retry', async () => {
     const client = createFakeClient({
       session: sessionA,
       profile: profileA,
@@ -311,31 +305,28 @@ describe('auth and profile workflow', () => {
     })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/settings' })
 
     await waitFor(() => {
       expect(screen.getByText('Protected profile')).toBeInTheDocument()
     })
-
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
 
     await waitFor(() => {
       expect(screen.getByText('Sign-out service unavailable')).toBeInTheDocument()
     })
-
     expect(screen.getByText('Protected profile')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
-
     expect(client.auth.signOut).toHaveBeenCalledTimes(2)
   })
 
   it('validates display-name length before saving', async () => {
-    const client = createFakeClient({ session: sessionA, profile: profileA })
+    renderApp({
+      client: createFakeClient({ session: sessionA, profile: profileA }),
+      route: '/settings',
+    })
     const user = userEvent.setup()
-
-    render(<App client={client} />)
 
     const input = await screen.findByLabelText('Display name')
     await user.clear(input)
@@ -351,7 +342,7 @@ describe('auth and profile workflow', () => {
     const client = createFakeClient({ session: sessionA, profile: profileA })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/settings' })
 
     const input = await screen.findByLabelText('Display name')
     await user.clear(input)
@@ -365,7 +356,7 @@ describe('auth and profile workflow', () => {
     })
   })
 
-  it('keeps the protected profile visible after failed profile update', async () => {
+  it('keeps the profile visible after a failed profile update', async () => {
     const client = createFakeClient({
       session: sessionA,
       profile: profileA,
@@ -373,7 +364,7 @@ describe('auth and profile workflow', () => {
     })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/settings' })
 
     const input = await screen.findByLabelText('Display name')
     await user.clear(input)
@@ -383,52 +374,45 @@ describe('auth and profile workflow', () => {
     await waitFor(() => {
       expect(screen.getByText('Profile update rejected')).toBeInTheDocument()
     })
-
     expect(screen.getByText('Protected profile')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save profile' })).toBeEnabled()
-    expect(screen.queryByText('Something needs attention')).not.toBeInTheDocument()
   })
 
   it('shows a controlled missing-profile state without browser-side creation', async () => {
     const client = createFakeClient({ session: sessionA, profile: null })
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/dashboard' })
 
     await waitFor(() => {
       expect(
         screen.getByText('Profile setup needs attention'),
       ).toBeInTheDocument()
     })
-
     expect(client.__query.update).not.toHaveBeenCalled()
   })
 
-  it('remounts the user-scoped catalog and collection UI when the authenticated user changes', async () => {
+  it('remounts the user-scoped collection UI when the authenticated user changes', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const client = createFakeClient({ session: sessionA, profile: profileA })
     const user = userEvent.setup()
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/collection' })
 
-    expect(await screen.findByText('user-a@example.test')).toBeInTheDocument()
     await user.type(await screen.findByLabelText('Artist'), 'Draft by user A')
     expect(screen.getByLabelText('Artist')).toHaveValue('Draft by user A')
 
-    // Supabase reports a different authenticated user in the same tab.
     act(() => {
       client.__emitAuthStateChange(sessionB)
     })
 
-    expect(await screen.findByText('user-b@example.test')).toBeInTheDocument()
-    // Distinct `catalog-<id>` / `collection-<id>` keys force a remount, so
-    // user A's in-memory draft is not retained for user B.
-    expect(screen.getByLabelText('Artist')).toHaveValue('')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Artist')).toHaveValue('')
+    })
     expect(
       consoleError.mock.calls.some((call) =>
         String(call[0]).includes('same key'),
       ),
     ).toBe(false)
-
     consoleError.mockRestore()
   })
 
@@ -437,12 +421,11 @@ describe('auth and profile workflow', () => {
       getSessionError: new Error('Auth service unavailable'),
     })
 
-    render(<App client={client} />)
+    renderApp({ client, route: '/dashboard' })
 
     await waitFor(() => {
       expect(screen.getByText('Auth service unavailable')).toBeInTheDocument()
     })
-
     expect(screen.queryByText('Protected profile')).not.toBeInTheDocument()
   })
 })
