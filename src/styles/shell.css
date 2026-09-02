@@ -153,24 +153,39 @@
   color: var(--text);
 }
 
-/* utility control - deliberately quiet: a small square icon button */
-.vi-collapse-btn {
+/* Utility control - deliberately quiet. Scoped past `.legacy-host button`
+   (which would otherwise impose padding + min-height + a border on it) so the
+   26px box and the icon centring are exact. */
+.vi-sidebar__top .vi-collapse-btn {
   flex: 0 0 auto;
-  display: inline-grid;
-  place-items: center;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 26px;
   height: 26px;
-  background: transparent;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
   border: 1px solid transparent;
-  color: var(--text-faint);
   border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  line-height: 0;
   cursor: pointer;
   opacity: 0.6;
   transition: color var(--dur-fast), border-color var(--dur-fast),
     background-color var(--dur-fast), opacity var(--dur-fast);
 }
-.vi-collapse-btn:hover,
-.vi-collapse-btn:focus-visible {
+/* the icon is a block so no inline baseline gap offsets it vertically */
+.vi-sidebar__top .vi-collapse-btn svg {
+  display: block;
+}
+.vi-sidebar__top .vi-collapse-btn:hover,
+.vi-sidebar__top .vi-collapse-btn:focus-visible {
   opacity: 1;
   color: var(--text-muted);
   border-color: var(--border);
@@ -360,7 +375,7 @@
   .vi-app .vi-navitem__label,
   .vi-app .vi-sidebar__brand-full,
   .vi-app .vi-sidebar__account-text,
-  .vi-collapse-btn {
+  .vi-sidebar__top .vi-collapse-btn {
     display: none;
   }
   .vi-app .vi-sidebar__brand-mark {
