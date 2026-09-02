@@ -567,50 +567,29 @@ button.vi-chip:hover {
   }
 }
 
-/* --- Vinny character motion --- */
-@keyframes vi-eq {
+/* --- Vinny character (approved image assets; see brand/Vinny.tsx) --- */
+.vi-vinny {
+  display: block;
+  height: auto;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+/* a gentle bob while VIN is thinking - purely on the image, no internals */
+.vi-vinny--thinking {
+  animation: vi-vinny-bob 2.8s var(--ease-standard) infinite;
+}
+@keyframes vi-vinny-bob {
   0%,
   100% {
-    transform: scaleY(0.5);
+    transform: translateY(0);
   }
   50% {
-    transform: scaleY(1.5);
+    transform: translateY(-3%);
   }
-}
-@keyframes vi-vinny-wobble {
-  0%,
-  100% {
-    transform: rotate(-2.5deg);
-  }
-  50% {
-    transform: rotate(2.5deg);
-  }
-}
-.vi-vinny--thinking .vi-vinny__head {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: vi-vinny-wobble 2.6s var(--ease-standard) infinite;
-}
-.vi-vinny--thinking .vi-vinny__eq rect {
-  transform-box: fill-box;
-  transform-origin: bottom;
-  animation: vi-eq 0.9s ease-in-out infinite;
-}
-.vi-vinny--thinking .vi-vinny__eq rect[data-i='1'] {
-  animation-delay: 0.15s;
-}
-.vi-vinny--thinking .vi-vinny__eq rect[data-i='2'] {
-  animation-delay: 0.3s;
-}
-.vi-vinny--thinking .vi-vinny__eq rect[data-i='3'] {
-  animation-delay: 0.45s;
-}
-.vi-vinny--thinking .vi-vinny__eq rect[data-i='4'] {
-  animation-delay: 0.6s;
 }
 @media (prefers-reduced-motion: reduce) {
-  .vi-vinny--thinking .vi-vinny__head,
-  .vi-vinny--thinking .vi-vinny__eq rect {
+  .vi-vinny--thinking {
     animation: none;
   }
 }

@@ -89,10 +89,14 @@ describe('LandingPage', () => {
     expect(cue.querySelector('.vi-scrollcue__chevron svg')).not.toBeNull()
   })
 
-  it('has exactly one h1 and uses only the branded fallback artwork (no <img>)', () => {
+  it('has exactly one h1 and no album-artwork <img> (only the local Vinny asset)', () => {
     const { container } = renderLanding('unauthenticated')
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-    expect(container.querySelector('img')).toBeNull()
+    // the only <img> allowed is the project-owned Vinny character asset;
+    // album covers still use the CSS/SVG branded fallback, never an <img>
+    for (const img of container.querySelectorAll('img')) {
+      expect(img.getAttribute('src')).toMatch(/^\/vinny\/vinny-[a-z-]+\.png$/)
+    }
   })
 
   it('marks the decorative hero composition aria-hidden', () => {

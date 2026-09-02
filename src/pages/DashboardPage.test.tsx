@@ -107,6 +107,11 @@ describe('DashboardPage', () => {
     expect(
       within(onboard).getByRole('link', { name: 'Add a record' }),
     ).toHaveAttribute('href', '/discover')
+    // the empty-collection state uses the approved empty-crate Vinny asset
+    expect(onboard.querySelector('img.vi-vinny')).toHaveAttribute(
+      'src',
+      '/vinny/vinny-empty.png',
+    )
     // no zero-heavy analytics for an established-looking library
     expect(screen.queryByText('Records')).not.toBeInTheDocument()
     expect(screen.queryByText('Never played')).not.toBeInTheDocument()

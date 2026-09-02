@@ -1,5 +1,5 @@
 import { Logo } from '../brand/Logo.tsx'
-import { VinAvatar } from '../brand/VinAvatar.tsx'
+import { Vinny } from '../brand/Vinny.tsx'
 import { AuthCard } from '../auth/AuthCard.tsx'
 import { useAuth } from '../auth/useAuth.ts'
 
@@ -32,7 +32,7 @@ export function AuthPage() {
           VIN what to play - always from music you own.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-          <VinAvatar size={72} />
+          <Vinny state="idle" size={72} />
           <p className="vi-hint" style={{ margin: 0 }}>
             VIN is ready the moment you are in.
           </p>

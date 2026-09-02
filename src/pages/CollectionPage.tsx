@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { CollectionPanel } from '../collection/CollectionPanel.tsx'
-import { EmptyCrate } from '../brand/EmptyCrate.tsx'
-import { VinAvatar } from '../brand/VinAvatar.tsx'
+import { Vinny } from '../brand/Vinny.tsx'
 import { ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { Button } from '../ui/primitives.tsx'
 import { useClient } from '../app/useClient.ts'
@@ -74,8 +73,7 @@ export function CollectionPage() {
       {status === 'ready' && items.length === 0 && !showManual ? (
         <div className="vi-onboard">
           <div className="vi-onboard__figure">
-            <EmptyCrate size={200} />
-            <VinAvatar size={120} />
+            <Vinny state="empty" size={300} />
           </div>
           <h2>Your shelf is empty</h2>
           <p>

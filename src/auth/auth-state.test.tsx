@@ -194,6 +194,10 @@ describe('auth and profile workflow (routed)', () => {
     expect(
       within(onboard).getByRole('link', { name: 'Add a record' }),
     ).toHaveAttribute('href', '/discover')
+    expect(onboard.querySelector('img.vi-vinny')).toHaveAttribute(
+      'src',
+      '/vinny/vinny-empty.png',
+    )
     expect(screen.queryByLabelText('Artist')).not.toBeInTheDocument()
 
     // manual CRUD is still available, behind a disclosure

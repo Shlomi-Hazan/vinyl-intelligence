@@ -2,8 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
-import { VinAvatar } from '../brand/VinAvatar.tsx'
-import { EmptyCrate } from '../brand/EmptyCrate.tsx'
+import { Vinny } from '../brand/Vinny.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { Button, Input } from '../ui/primitives.tsx'
 import { ErrorState, SkeletonAlbumCard, SkeletonStat } from '../ui/feedback.tsx'
@@ -132,8 +131,7 @@ export function DashboardPage() {
       {emptyCollection ? (
         <div className="vi-onboard">
           <div className="vi-onboard__figure">
-            <EmptyCrate size={200} />
-            <VinAvatar size={120} />
+            <Vinny state="empty" size={300} />
           </div>
           <h2>Your crate is empty</h2>
           <p>
@@ -204,7 +202,7 @@ export function DashboardPage() {
               <div className="vi-dash__col">
                 <div className="vi-quickvin">
                   <div className="vi-quickvin__head">
-                    <VinAvatar size={56} />
+                    <Vinny state="idle" size={56} />
                     <div>
                       <strong>Quick VIN</strong>
                       <p className="vi-hint" style={{ margin: 0 }}>

@@ -836,10 +836,10 @@
    awkwardly cut off (normal page scroll is still fine). */
 .vi-onboard {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   justify-items: center;
   text-align: center;
-  padding: clamp(var(--space-5), 4vw, var(--space-7)) var(--space-5);
+  padding: clamp(var(--space-5), 3.5vw, var(--space-6)) var(--space-5);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
   background:
@@ -852,18 +852,11 @@
   display: inline-flex;
   align-items: flex-end;
   justify-content: center;
-  gap: var(--space-2);
   max-width: 100%;
 }
-.vi-onboard__figure .vi-crate {
-  width: clamp(150px, 34vw, 210px);
-  height: auto;
-}
 .vi-onboard__figure .vi-vinny {
-  width: clamp(88px, 20vw, 128px);
+  width: clamp(168px, 26vw, 224px);
   height: auto;
-  margin-bottom: -4%;
-  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.5));
 }
 .vi-onboard h2 {
   font-size: clamp(1.5rem, 1.15rem + 1.4vw, 2.1rem);
@@ -882,16 +875,16 @@
   margin-top: var(--space-1);
 }
 
-@media (max-height: 780px) {
+@media (max-height: 860px) {
   .vi-onboard {
-    padding: var(--space-5) var(--space-5);
-    gap: var(--space-3);
-  }
-  .vi-onboard__figure .vi-crate {
-    width: clamp(130px, 26vw, 170px);
+    padding: var(--space-4) var(--space-5);
+    gap: var(--space-2);
   }
   .vi-onboard__figure .vi-vinny {
-    width: clamp(78px, 16vw, 104px);
+    width: clamp(140px, 30vw, 188px);
+  }
+  .vi-onboard p {
+    font-size: 0.98rem;
   }
 }
 

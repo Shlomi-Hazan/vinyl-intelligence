@@ -1,7 +1,7 @@
 import { useCallback, useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Logo } from '../brand/Logo.tsx'
-import { VinAvatar } from '../brand/VinAvatar.tsx'
+import { Vinny } from '../brand/Vinny.tsx'
 import { HeroVinyl } from '../brand/HeroVinyl.tsx'
 import { ScanDemo } from '../brand/ScanDemo.tsx'
 import { RediscoverDemo } from '../brand/RediscoverDemo.tsx'
@@ -165,7 +165,7 @@ export function LandingPage() {
           title="Ask VIN"
           visual={
             <div className="vi-vin-quote">
-              <VinAvatar size={168} />
+              <Vinny state="idle" size={168} />
               <blockquote>
                 "I had a long day. Give me something mellow from the 70s I have
                 not heard recently."
