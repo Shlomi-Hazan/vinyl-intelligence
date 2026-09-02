@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth.ts'
 import { FullPageState } from './FullPageState.tsx'
 import { AppShell } from './AppShell.tsx'
 import { CollectionDataProvider } from './CollectionDataProvider.tsx'
+import { safeInternalPath } from './routing.ts'
 import { Button } from '../ui/primitives.tsx'
 import { Logo } from '../brand/Logo.tsx'
 
@@ -63,15 +64,20 @@ function RouteLoading() {
  *
  * Auth rules:
  * - `/` is always public.
- * - `/auth` redirects to `/dashboard` when already authenticated.
- * - every other route is behind the authenticated layout; an unauthenticated
- *   visit redirects to `/auth` (remembering where they were headed).
+ * - every non-public route is behind the authenticated layout; an
+ *   unauthenticated visit redirects to `/auth`, stashing the intended path in
+ *   `location.state.from`.
+ * - `/auth`, once authenticated, returns the user to that intended internal
+ *   route (allow-listed by `safeInternalPath`), else `/dashboard`.
  * - `CollectionDataProvider` is keyed by `user.id` so a user change remounts it
  *   with empty state - no previous user's collection can render.
  */
 export function AppRoutes() {
   const { status, client, user, errorMessage, signOut } = useAuth()
   const location = useLocation()
+  const intendedFrom = safeInternalPath(
+    (location.state as { from?: unknown } | null)?.from,
+  )
 
   if (status === 'loading') {
     return (
@@ -119,7 +125,13 @@ export function AppRoutes() {
         <Route path="/" element={<LandingPage />} />
         <Route
           path="/auth"
-          element={authed ? <Navigate to="/dashboard" replace /> : <AuthPage />}
+          element={
+            authed ? (
+              <Navigate to={intendedFrom ?? '/dashboard'} replace />
+            ) : (
+              <AuthPage />
+            )
+          }
         />
 
         <Route
@@ -131,7 +143,11 @@ export function AppRoutes() {
                 </AppShell>
               </CollectionDataProvider>
             ) : (
-              <Navigate to="/auth" replace state={{ from: location.pathname }} />
+              <Navigate
+                to="/auth"
+                replace
+                state={{ from: location.pathname + location.search }}
+              />
             )
           }
         >
