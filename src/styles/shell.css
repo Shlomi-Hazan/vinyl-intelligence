@@ -1,0 +1,566 @@
+/* Application shell: sidebar / icon rail / top bar / bottom nav / page frame. */
+
+.vi-app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: 100vh;
+}
+
+.vi-app[data-rail='true'] {
+  grid-template-columns: var(--sidebar-rail-w) 1fr;
+}
+
+/* --- sidebar --- */
+.vi-sidebar {
+  grid-row: 1;
+  grid-column: 1;
+  background: var(--groove) var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  overflow-y: auto;
+}
+
+.vi-sidebar__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.vi-sidebar__brand {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1);
+  min-height: 44px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+.vi-sidebar__brand:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+.vi-sidebar__brand-full {
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+}
+.vi-sidebar__brand-mark {
+  display: none;
+}
+
+.vi-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: var(--space-1);
+}
+
+.vi-navitem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.7rem var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 500;
+  position: relative;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.vi-navitem:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.vi-navitem[aria-current='page'] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.vi-navitem[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+.vi-navitem[aria-current='page'] .vi-navitem__icon {
+  color: var(--accent);
+}
+
+.vi-navitem__icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+}
+
+.vi-app[data-rail='true'] .vi-navitem__label,
+.vi-app[data-rail='true'] .vi-sidebar__brand-full,
+.vi-app[data-rail='true'] .vi-sidebar__account-text {
+  display: none;
+}
+.vi-app[data-rail='true'] .vi-sidebar__brand-mark {
+  display: block;
+}
+.vi-app[data-rail='true'] .vi-sidebar__brand {
+  justify-content: center;
+}
+
+.vi-app[data-rail='true'] .vi-navitem {
+  justify-content: center;
+}
+
+/* Collapsed sidebar: a deliberate compact user control - the avatar alone,
+   centred in the rail, no squeezed expanded-card geometry. */
+.vi-app[data-rail='true'] .vi-sidebar {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+  align-items: center;
+}
+.vi-app[data-rail='true'] .vi-sidebar__foot {
+  align-items: center;
+  width: 100%;
+}
+.vi-app[data-rail='true'] .vi-sidebar__account {
+  width: auto;
+  justify-content: center;
+  gap: 0;
+  padding: var(--space-1);
+  border-color: transparent;
+}
+.vi-app[data-rail='true'] .vi-sidebar__account:hover,
+.vi-app[data-rail='true'] .vi-sidebar__account:focus-visible {
+  border-color: var(--border-accent);
+}
+
+.vi-sidebar__foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.vi-sidebar__account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  width: 100%;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vi-sidebar__account:hover {
+  border-color: var(--border-accent);
+  color: var(--text);
+}
+
+/* Utility control - deliberately quiet. Scoped past `.legacy-host button`
+   (which would otherwise impose padding + min-height + a border on it) so the
+   26px box and the icon centring are exact. */
+.vi-sidebar__top .vi-collapse-btn {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  line-height: 0;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: color var(--dur-fast), border-color var(--dur-fast),
+    background-color var(--dur-fast), opacity var(--dur-fast);
+}
+/* the icon is a block so no inline baseline gap offsets it vertically */
+.vi-sidebar__top .vi-collapse-btn svg {
+  display: block;
+}
+.vi-sidebar__top .vi-collapse-btn:hover,
+.vi-sidebar__top .vi-collapse-btn:focus-visible {
+  opacity: 1;
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.vi-app[data-rail='true'] .vi-sidebar__top {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --- top bar --- */
+/* `.vi-main` is a fixed-height (100vh grid row) column that owns route
+   scrolling. Its children must NOT flex-shrink to fit, or a tall page squashes
+   the shared top bar (measured 64 -> 37 on a populated Dashboard). The top bar
+   is a rigid band; `<main>` grows with its content and `.vi-main` scrolls. */
+.vi-main {
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.vi-main > main {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
+.vi-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-topbar);
+  flex: 0 0 var(--topbar-h);
+  height: var(--topbar-h);
+  min-height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--page-gutter);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+/* wayfinding chrome - quiet, subordinate to the page <h1> */
+.vi-crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+.vi-crumb__home {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-faint);
+}
+.vi-crumb__home:hover {
+  color: var(--text-muted);
+}
+.vi-crumb__sep {
+  color: var(--border-strong);
+}
+.vi-crumb__here {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vi-topbar__spacer {
+  flex: 1;
+}
+
+.vi-topbar__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.vi-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--accent-2-hover), var(--accent-2));
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  user-select: none;
+}
+.vi-avatar[data-has-photo] {
+  background: var(--surface-2);
+}
+.vi-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* --- page frame --- */
+.vi-page {
+  flex: 1;
+  padding: var(--space-6) var(--page-gutter) var(--space-8);
+  width: 100%;
+  max-width: var(--width-content);
+  margin: 0 auto;
+  animation: vi-route-in var(--dur) var(--ease-out);
+}
+
+.vi-page--wide {
+  max-width: var(--width-wide);
+}
+
+/* a focused <h1> must clear the sticky top bar if anything does scroll to it */
+.vi-main :is(h1, h2, [id]) {
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-4));
+}
+
+@keyframes vi-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vi-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.vi-page-header__titles h1 {
+  font-size: var(--fs-h1);
+}
+/* the h1 is a programmatic screen-reader target (tabindex=-1), not an
+   interactive control - no visible focus ring. */
+.vi-page-header__titles h1[tabindex]:focus,
+.vi-page-header__titles h1[tabindex]:focus-visible {
+  outline: none;
+}
+
+.vi-page-header__eyebrow {
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.vi-page-header__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* --- bottom nav (mobile) --- */
+.vi-bottomnav {
+  display: none;
+}
+
+/* --- full-page boundary states --- */
+.vi-fullpage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--page-gutter);
+}
+
+.vi-fullpage__card {
+  max-width: 28rem;
+  text-align: center;
+  display: grid;
+  gap: var(--space-4);
+  justify-items: center;
+}
+.vi-fullpage__card h1 {
+  font-size: var(--fs-h2);
+}
+
+/* --- responsive --- */
+/* below this width the sidebar would eat too much of the content area, so it
+   drops to an icon rail (1024x768 laptops included). */
+@media (max-width: 1120px) and (min-width: 768px) {
+  .vi-app,
+  .vi-app[data-rail='true'] {
+    grid-template-columns: var(--sidebar-rail-w) 1fr;
+  }
+  .vi-app .vi-navitem__label,
+  .vi-app .vi-sidebar__brand-full,
+  .vi-app .vi-sidebar__account-text,
+  .vi-sidebar__top .vi-collapse-btn {
+    display: none;
+  }
+  .vi-app .vi-sidebar__brand-mark {
+    display: block;
+  }
+  .vi-app .vi-navitem,
+  .vi-app .vi-sidebar__brand {
+    justify-content: center;
+  }
+  .vi-sidebar {
+    padding: var(--space-4) var(--space-2);
+    align-items: center;
+  }
+  .vi-sidebar__top {
+    justify-content: center;
+    border-bottom: 0;
+  }
+  .vi-sidebar__foot {
+    align-items: center;
+    width: 100%;
+  }
+  .vi-sidebar__account {
+    width: auto;
+    justify-content: center;
+    gap: 0;
+    padding: var(--space-1);
+    border-color: transparent;
+  }
+  .vi-sidebar__account:hover,
+  .vi-sidebar__account:focus-visible {
+    border-color: var(--border-accent);
+  }
+}
+
+@media (max-width: 767px) {
+  .vi-app,
+  .vi-app[data-rail='true'] {
+    grid-template-columns: 1fr;
+  }
+  .vi-sidebar {
+    display: none;
+  }
+  .vi-main {
+    padding-bottom: var(--bottomnav-h);
+  }
+  .vi-page {
+    padding: var(--space-5) var(--page-gutter) var(--space-7);
+  }
+  /* the page <h1> carries the title on mobile - drop the redundant crumb
+     rather than let it truncate mid-word next to the actions */
+  .vi-crumb {
+    display: none;
+  }
+  .vi-bottomnav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-bottomnav);
+    height: var(--bottomnav-h);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  /* two classes (0,2,0) so a <button class="vi-bottomnav__item"> ("More")
+     is not framed by `.legacy-host button` from the app-shell root */
+  .vi-bottomnav .vi-bottomnav__item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    appearance: none;
+    -webkit-appearance: none;
+    color: var(--text-faint);
+    font-family: var(--font-sans);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .vi-bottomnav .vi-bottomnav__item[aria-current='page'] {
+    color: var(--accent);
+  }
+  .vi-bottomnav .vi-bottomnav__item:hover {
+    text-decoration: none;
+    color: var(--text);
+    background: none;
+  }
+  .vi-bottomnav .vi-bottomnav__item:active {
+    transform: scale(0.96);
+  }
+}
+
+/* --- mobile "More" drawer --- */
+.vi-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  background: rgba(0, 0, 0, 0.6);
+  animation: vi-fade-in var(--dur-fast) var(--ease-out);
+}
+
+.vi-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-dialog);
+  background: var(--surface);
+  border-top: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-4) var(--page-gutter) calc(var(--space-6) + env(safe-area-inset-bottom));
+  display: grid;
+  gap: var(--space-1);
+  animation: vi-drawer-up var(--dur) var(--ease-out);
+}
+
+@keyframes vi-drawer-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes vi-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

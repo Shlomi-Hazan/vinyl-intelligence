@@ -1,10 +1,13 @@
 # 0005 Visual Experience & Artwork Architecture
 
 Status: **accepted** 2026-08-31 (human design approval, with the mandatory
-provider-artwork correction in this revision). Spec `docs/specs/0012-...`
-section 20, decisions A-K approved. Phase 0 (custom-cover storage) implemented
-on branch `claude/visual-experience-product-identity`; migration
-`20260903120000_add_custom_cover_storage.sql`.
+provider-artwork correction in this revision); art-direction addendum approved
+2026-09-01 (spec `0012`). Decisions A-K approved. Phase 0 (custom-cover storage,
+migration `20260903120000_add_custom_cover_storage.sql`) **merged in PR #12**
+(`945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`). Phase A added
+`react-router-dom` 7.18.3 (the one runtime dependency) and the SPA
+`public/_redirects` fallback - implemented on branch
+`claude/visual-experience-product-identity-ui`, not merged.
 
 Date: 2026-08-31 (revised same day for the provider-artwork correction)
 

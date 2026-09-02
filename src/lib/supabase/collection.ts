@@ -43,6 +43,14 @@ export type CollectionItemWithRelease = Pick<
   CollectionItem,
   'id' | 'added_at' | 'created_at' | 'rating' | 'is_favorite' | 'notes'
 > & {
+  /**
+   * Custom-cover fields. Always populated by `loadCollection`; declared
+   * optional so pre-artwork test fixtures stay valid.
+   */
+  custom_cover_path?: string | null
+  custom_cover_updated_at?: string | null
+  /** Phase D owner-added genres. Always populated by `loadCollection`. */
+  personal_genres?: string[]
   release: Pick<
     Release,
     | 'id'
@@ -55,7 +63,35 @@ export type CollectionItemWithRelease = Pick<
     | 'format'
     | 'genres'
     | 'updated_at'
-  >
+  > & {
+    /** MusicBrainz ids for display-time Cover Art Archive artwork (optional). */
+    provider_release_id?: string | null
+    provider_release_group_id?: string | null
+    /**
+     * 'manual' (user-entered, editable) or 'catalog' (MusicBrainz, read-only).
+     * Optional so pre-Phase-D fixtures stay valid; treated as 'manual' when
+     * absent only for display, never to bypass RLS.
+     */
+    source?: 'manual' | 'catalog' | null
+  }
+}
+
+/**
+ * True when the release is user-entered manual metadata the owner may edit.
+ * A catalog release (any MusicBrainz provider id, or an explicit
+ * `source: 'catalog'`) is read-only to the browser - RLS enforces this, and
+ * the UI must not offer an edit form that will only fail.
+ */
+export function isEditableRelease(
+  release: CollectionItemWithRelease['release'],
+): boolean {
+  if (release.source === 'catalog') {
+    return false
+  }
+  if (release.source === 'manual') {
+    return true
+  }
+  return !release.provider_release_id && !release.provider_release_group_id
 }
 
 /** Milestone 7 personal preference signals; all live at the collection-item level. */
@@ -84,6 +120,9 @@ type CollectionItemRow = CollectionItemWithRelease | {
   rating: number | null
   is_favorite: boolean
   notes: string | null
+  custom_cover_path?: string | null
+  custom_cover_updated_at?: string | null
+  personal_genres?: string[]
   release: CollectionItemWithRelease['release'] | CollectionItemWithRelease['release'][]
 }
 
@@ -215,6 +254,13 @@ function normalizeCollectionRow(row: CollectionItemRow): CollectionItemWithRelea
     rating: typeof row.rating === 'number' ? row.rating : null,
     is_favorite: row.is_favorite === true,
     notes: typeof row.notes === 'string' ? row.notes : null,
+    custom_cover_path:
+      typeof row.custom_cover_path === 'string' ? row.custom_cover_path : null,
+    custom_cover_updated_at:
+      typeof row.custom_cover_updated_at === 'string'
+        ? row.custom_cover_updated_at
+        : null,
+    personal_genres: Array.isArray(row.personal_genres) ? row.personal_genres : [],
     release,
   }
 }
@@ -232,6 +278,9 @@ export async function loadCollection(
         rating,
         is_favorite,
         notes,
+        custom_cover_path,
+        custom_cover_updated_at,
+        personal_genres,
         release:releases!inner (
           id,
           artist,
@@ -242,6 +291,9 @@ export async function loadCollection(
           country,
           format,
           genres,
+          provider_release_id,
+          provider_release_group_id,
+          source,
           updated_at
         )
       `,
@@ -284,6 +336,9 @@ export async function addManualCollectionItem(
         rating,
         is_favorite,
         notes,
+        custom_cover_path,
+        custom_cover_updated_at,
+        personal_genres,
         release:releases!inner (
           id,
           artist,
@@ -294,6 +349,9 @@ export async function addManualCollectionItem(
           country,
           format,
           genres,
+          provider_release_id,
+          provider_release_group_id,
+          source,
           updated_at
         )
       `,
@@ -424,6 +482,88 @@ export async function updateCollectionItemPersonalSignals(
     is_favorite: data.is_favorite === true,
     notes: typeof data.notes === 'string' ? data.notes : null,
   }
+}
+
+/* --- Phase D: personal genres (owner metadata on the collection item) --- */
+
+export const PERSONAL_GENRE_MAX_LENGTH = 40
+export const PERSONAL_GENRES_MAX = 12
+
+/**
+ * Deterministic normalisation for a personal-genre list: trim + lowercase each
+ * entry, drop blanks, drop duplicates (after normalisation), preserving first
+ * occurrence order. Mirrors the release-genre rules so a record filters the
+ * same way whether the genre came from the catalog or from the user. Throws on
+ * an over-long entry or too many genres so the caller can surface it.
+ */
+export function normalizePersonalGenres(input: readonly string[]): string[] {
+  const out: string[] = []
+  for (const raw of input) {
+    const g = raw.trim().toLocaleLowerCase()
+    if (g.length === 0) {
+      continue
+    }
+    if (g.length > PERSONAL_GENRE_MAX_LENGTH) {
+      throw new Error(
+        `A genre must be ${PERSONAL_GENRE_MAX_LENGTH} characters or fewer.`,
+      )
+    }
+    if (!out.includes(g)) {
+      out.push(g)
+    }
+  }
+  if (out.length > PERSONAL_GENRES_MAX) {
+    throw new Error(`You can add up to ${PERSONAL_GENRES_MAX} personal genres.`)
+  }
+  return out
+}
+
+/**
+ * The effective genres for a collection item: the union of the shared catalog
+ * genres and the owner's personal genres, normalised + deduped, catalog first.
+ * Neither source is mutated.
+ */
+export function effectiveGenres(item: CollectionItemWithRelease): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of [
+    ...(item.release.genres ?? []),
+    ...(item.personal_genres ?? []),
+  ]) {
+    const g = raw.trim().toLocaleLowerCase()
+    if (g && !seen.has(g)) {
+      seen.add(g)
+      out.push(g)
+    }
+  }
+  return out
+}
+
+/**
+ * Replace the owner's personal genres for one owned collection item. Only
+ * `personal_genres` is written (column grant + M7 own-row RLS enforce the
+ * boundary). The shared `releases` row is never touched. Returns the saved
+ * normalised list.
+ */
+export async function updateCollectionItemPersonalGenres(
+  client: BrowserSupabaseClient,
+  collectionItemId: string,
+  genres: readonly string[],
+): Promise<string[]> {
+  const normalized = normalizePersonalGenres(genres)
+
+  const { data, error } = await client
+    .from('collection_items')
+    .update({ personal_genres: normalized })
+    .eq('id', collectionItemId)
+    .select('id, personal_genres')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return Array.isArray(data.personal_genres) ? data.personal_genres : []
 }
 
 export async function deleteCollectionItem(

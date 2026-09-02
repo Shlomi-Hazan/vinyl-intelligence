@@ -8,6 +8,12 @@ type CollectionItemListeningControlsProps = {
    * this control can show a recoverable error without fabricating a local event.
    */
   onMarkPlayed: () => Promise<void>
+  /**
+   * Load phase of the listening-events data. "Never played" / a play count is
+   * only truthful once this is `ready`; while `loading` / `error` the summary is
+   * shown as unknown, never as "Never played".
+   */
+  eventsStatus?: 'loading' | 'ready' | 'error'
 }
 
 function getErrorMessage(error: unknown): string {
@@ -21,6 +27,7 @@ function getErrorMessage(error: unknown): string {
 export function CollectionItemListeningControls({
   summary,
   onMarkPlayed,
+  eventsStatus = 'ready',
 }: CollectionItemListeningControlsProps) {
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,9 +51,16 @@ export function CollectionItemListeningControls({
   }
 
   const countLabel =
-    summary.count === 0
-      ? 'Never played'
-      : `Played ${summary.count} time${summary.count === 1 ? '' : 's'}`
+    eventsStatus === 'loading'
+      ? 'Loading listening history…'
+      : eventsStatus === 'error'
+        ? 'Listening history unavailable'
+        : summary.count === 0
+          ? 'Never played'
+          : `Played ${summary.count} time${summary.count === 1 ? '' : 's'}`
+
+  const showLastListened =
+    eventsStatus === 'ready' && summary.lastListenedAt !== null
 
   return (
     <div className="collection-card-listening">
@@ -54,11 +68,11 @@ export function CollectionItemListeningControls({
         {isPending ? 'Marking...' : 'Mark played'}
       </button>
       <span className="field-hint listening-count">{countLabel}</span>
-      {summary.lastListenedAt ? (
+      {showLastListened ? (
         <span className="field-hint">
           {'Last listened: '}
-          <time dateTime={summary.lastListenedAt}>
-            {formatListenedAt(summary.lastListenedAt)}
+          <time dateTime={summary.lastListenedAt as string}>
+            {formatListenedAt(summary.lastListenedAt as string)}
           </time>
         </span>
       ) : null}

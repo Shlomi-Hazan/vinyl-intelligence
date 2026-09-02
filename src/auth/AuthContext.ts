@@ -21,6 +21,12 @@ export type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   updateDisplayName: (displayName: string) => Promise<void>
+  /**
+   * Re-fetch the authoritative profile row into the shared state. Call after a
+   * mutation the AuthProvider does not own (e.g. an avatar upload/remove) so
+   * the AppShell updates without a page refresh.
+   */
+  refreshProfile: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

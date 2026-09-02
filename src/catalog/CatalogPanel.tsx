@@ -22,6 +22,12 @@ type CatalogPanelProps = {
    * new MusicBrainz request on restore).
    */
   userId?: string
+  /**
+   * The embedded photo-recognition panel. Defaults to `true` for the legacy
+   * single-page shell; the Visual Experience `/discover` route sets it `false`
+   * because photo recognition has its own `/scan` route.
+   */
+  showPhotoPanel?: boolean
 }
 
 function getErrorMessage(error: unknown): string {
@@ -36,6 +42,7 @@ export function CatalogPanel({
   client,
   onCatalogItemAdded,
   userId,
+  showPhotoPanel = true,
 }: CatalogPanelProps) {
   const [restoredDraft] = useState(() =>
     userId ? loadCatalogSearchDraft(userId) : null,
@@ -153,14 +160,16 @@ export function CatalogPanel({
         <h2 id="catalog-title">Search MusicBrainz</h2>
       </div>
 
-      <CatalogPhotoPanel
-        client={client}
-        onUseQuery={(nextQuery) => {
-          handleQueryChange(nextQuery)
-          void runSearch(nextQuery)
-        }}
-        userId={userId}
-      />
+      {showPhotoPanel ? (
+        <CatalogPhotoPanel
+          client={client}
+          onUseQuery={(nextQuery) => {
+            handleQueryChange(nextQuery)
+            void runSearch(nextQuery)
+          }}
+          userId={userId}
+        />
+      ) : null}
 
       <CatalogSearchForm
         isSearching={isSearching}

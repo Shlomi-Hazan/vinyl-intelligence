@@ -127,6 +127,14 @@ public = false
 file_size_limit = "3MiB"
 allowed_mime_types = ["image/webp"]
 
+# Phase D: optional private profile avatars. Also created by the migration
+# 20260904122000_add_profile_avatar_storage.sql so the definition applies to a
+# hosted project during Milestone 11 deployment.
+[storage.buckets.profile-avatars]
+public = false
+file_size_limit = "1MiB"
+allowed_mime_types = ["image/webp"]
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = false

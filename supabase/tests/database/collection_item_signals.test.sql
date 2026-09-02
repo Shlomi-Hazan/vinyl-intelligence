@@ -139,6 +139,30 @@ select ok(not has_column_privilege('authenticated', 'public.collection_items', '
 select ok(not has_column_privilege('authenticated', 'public.collection_items', 'created_at', 'UPDATE'),
   'authenticated cannot UPDATE collection_items.created_at');
 
+-- Phase D (migration 20260904121000): owner-added personal genres, on the
+-- collection item the user owns - the shared releases row is never touched.
+select has_column('public', 'collection_items', 'personal_genres', 'personal_genres exists');
+select col_type_is('public', 'collection_items', 'personal_genres', 'text[]', 'personal_genres is text[]');
+select col_not_null('public', 'collection_items', 'personal_genres', 'personal_genres is NOT NULL');
+select ok(
+  (
+    select pg_get_expr(d.adbin, d.adrelid)
+    from pg_attrdef d join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+    where d.adrelid = 'public.collection_items'::regclass and a.attname = 'personal_genres'
+  ) like '%''{}''%',
+  'personal_genres defaults to an empty array'
+);
+select ok(has_column_privilege('authenticated', 'public.collection_items', 'personal_genres', 'UPDATE'),
+  'Phase D: authenticated can UPDATE collection_items.personal_genres');
+select ok(
+  exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.collection_items'::regclass
+      and conname = 'collection_items_personal_genres_valid'
+  ),
+  'personal_genres has a validity CHECK (reuses public.release_genres_valid)'
+);
+
 -- Exactly the four collection_items policies (3 existing + 1 new UPDATE).
 select is(
   (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'collection_items'),
@@ -189,6 +213,47 @@ select lives_ok(
        where id = 'cccccccc-0000-4000-8000-00000000000b' $$,
   'User A''s UPDATE targeting User B''s item runs without error'
 );
+
+-- Phase D: personal genres - add to own item, cannot touch User B's, and the
+-- shared releases row is never written.
+select lives_ok(
+  $$ update public.collection_items set personal_genres = array['rap','west coast hip hop']
+       where id = 'cccccccc-0000-4000-8000-00000000000a' $$,
+  'User A can set personal_genres on their own item'
+);
+select is(
+  (select personal_genres from public.collection_items where id = 'cccccccc-0000-4000-8000-00000000000a'),
+  array['rap','west coast hip hop'],
+  'personal_genres persisted on User A''s item'
+);
+select throws_ok(
+  $$ update public.collection_items set personal_genres = array['UPPERCASE']
+       where id = 'cccccccc-0000-4000-8000-00000000000a' $$,
+  '23514', null,
+  'an un-normalised personal genre is rejected by the CHECK'
+);
+select lives_ok(
+  $$ update public.collection_items set personal_genres = array['rap']
+       where id = 'cccccccc-0000-4000-8000-00000000000b' $$,
+  'User A''s personal_genres UPDATE targeting User B''s item runs without error (0 rows)'
+);
+reset role;
+select is(
+  (select personal_genres from public.collection_items where id = 'cccccccc-0000-4000-8000-00000000000b'),
+  '{}'::text[],
+  'User B''s personal_genres untouched by User A''s cross-user attempt'
+);
+-- the shared releases row of User A's item still has whatever it had (no write)
+select is(
+  (select array_length(genres, 1) from public.releases
+     where id = (select release_id from public.collection_items where id = 'cccccccc-0000-4000-8000-00000000000a')),
+  null,
+  'the shared release row was not modified by a personal-genre change'
+);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000007a1', true);
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-4000-8000-0000000007a1","role":"authenticated"}', true);
+set local role authenticated;
 
 -- Ownership / release-id mutation is a column-privilege failure (42501),
 -- independent of RLS.

@@ -33,7 +33,7 @@ export async function fetchOwnProfile(
 ): Promise<Profile | null> {
   const { data, error } = await client
     .from('profiles')
-    .select('id, display_name, created_at, updated_at')
+    .select('id, display_name, avatar_path, avatar_updated_at, created_at, updated_at')
     .eq('id', userId)
     .maybeSingle()
 
@@ -60,7 +60,7 @@ export async function updateOwnProfile(
     .from('profiles')
     .update({ display_name: displayName })
     .eq('id', userId)
-    .select('id, display_name, created_at, updated_at')
+    .select('id, display_name, avatar_path, avatar_updated_at, created_at, updated_at')
     .single()
 
   if (error) {

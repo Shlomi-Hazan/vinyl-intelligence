@@ -1,0 +1,262 @@
+/*
+ * Base element styling on the design tokens. Loaded after the legacy
+ * src/styles.css so the whole app adopts the warm/dark ground; legacy panels
+ * (Collection / Catalog / Curator) keep working transitionally until their
+ * pages are rebuilt.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+:root {
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: 1.62;
+}
+
+/* Warm cinematic ground: a top spotlight + fixed grain, both cheap. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(
+      1400px 720px at 50% -12%,
+      rgba(205, 122, 66, 0.12),
+      transparent 62%
+    ),
+    var(--bg);
+  pointer-events: none;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.03;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 1.14;
+  margin: 0;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+
+h1 {
+  font-size: var(--fs-h1);
+}
+h2 {
+  font-size: var(--fs-h2);
+}
+h3 {
+  font-size: var(--fs-h3);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+code,
+kbd,
+samp,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.vi-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.vi-skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: var(--space-3);
+  z-index: var(--z-toast);
+  transform: translateY(-200%);
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.vi-skip-link:focus {
+  transform: translateY(0);
+  text-decoration: none;
+}
+
+/* --- shared eyebrow / hint / status text (readable, not whispered) --- */
+.field-hint,
+.vi-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.eyebrow,
+.vi-eyebrow {
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.notice,
+.vi-notice {
+  color: var(--success);
+  font-size: var(--fs-sm);
+}
+
+.lede {
+  color: var(--text-muted);
+  font-size: 1.08rem;
+}
+
+.account-line {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+}
+
+/* Legacy transitional overrides: keep pre-redesign panels legible on dark. */
+.legacy-host input,
+.legacy-host textarea,
+.legacy-host select {
+  background: var(--bg-inset);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  font-size: var(--fs-body);
+}
+
+/* Transitional styling for the genuinely legacy buttons in the not-yet-rebuilt
+   panels. `:where(:not(.vi-btn))` excludes the design-system button family
+   WITHOUT raising this rule's specificity (`:where()` contributes 0), so it
+   stays (0,1,1): `.vi-btn`/variants (0,1,0) now win, while the compact
+   icon/nav controls keep winning via their own (0,2,0) scoped rules and the
+   `button.vi-chip` starter/suggestion chips are unaffected. */
+.legacy-host button:where(:not(.vi-btn)) {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 1rem;
+  font-size: var(--fs-button);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.legacy-host button:where(:not(.vi-btn)):hover {
+  border-color: var(--border-accent);
+}
+
+.legacy-host .collection-card,
+.legacy-host .catalog-card,
+.legacy-host .curator-recommendation {
+  border-color: var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.legacy-host h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+}
+.legacy-host h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+}
+.legacy-host h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -3,6 +3,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 export type Profile = {
   id: string
   display_name: string | null
+  /**
+   * Canonical avatar object path in the private `profile-avatars` bucket:
+   * `{id}/avatar.webp` (a DB CHECK enforces the exact shape). Null = no
+   * custom avatar -> initials fallback.
+   */
+  avatar_path: string | null
+  avatar_updated_at: string | null
   created_at: string
   updated_at: string
 }
@@ -35,6 +42,18 @@ export type CollectionItem = {
   rating: number | null
   is_favorite: boolean
   notes: string | null
+  /**
+   * Canonical custom-cover object path in the private `collection-covers`
+   * bucket: `{user_id}/{id}/cover.webp` (DB CHECK enforces the exact shape).
+   * Null = no custom cover.
+   */
+  custom_cover_path: string | null
+  custom_cover_updated_at: string | null
+  /**
+   * Phase D: the owner's extra genres for this album, on the item they own
+   * (never on the shared `releases` row). Normalised lowercase, deduped.
+   */
+  personal_genres: string[]
 }
 
 export type ListeningEvent = {
@@ -61,6 +80,9 @@ type Database = {
           rating?: number | null
           is_favorite?: boolean
           notes?: string | null
+          custom_cover_path?: string | null
+          custom_cover_updated_at?: string | null
+          personal_genres?: string[]
         }
         Relationships: [
           {
@@ -84,7 +106,10 @@ type Database = {
         Insert: {
           collection_item_id: string
         }
-        Update: Record<string, never>
+        /* Phase D: the browser may correct ONLY listened_at on its own event. */
+        Update: {
+          listened_at?: string
+        }
         Relationships: [
           {
             foreignKeyName: 'listening_events_user_id_fkey'
@@ -110,8 +135,11 @@ type Database = {
           created_at?: string
           updated_at?: string
         }
+        /* Phase D: display_name (M0) + the optional avatar reference columns. */
         Update: {
           display_name?: string | null
+          avatar_path?: string | null
+          avatar_updated_at?: string | null
         }
         Relationships: [
           {

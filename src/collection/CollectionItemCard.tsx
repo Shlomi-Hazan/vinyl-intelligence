@@ -15,6 +15,8 @@ type CollectionItemCardProps = {
   client: BrowserSupabaseClient
   item: CollectionItemWithRelease
   listeningSummary: ListeningSummary
+  /** Load phase of listening data - gates truthful "Never played" / counts. */
+  eventsStatus?: 'loading' | 'ready' | 'error'
   onEdit: (item: CollectionItemWithRelease) => void
   onRemove: (item: CollectionItemWithRelease) => void
   onMarkPlayed: (itemId: string) => Promise<void>
@@ -41,6 +43,7 @@ export function CollectionItemCard({
   client,
   item,
   listeningSummary,
+  eventsStatus,
   onEdit,
   onRemove,
   onMarkPlayed,
@@ -71,6 +74,7 @@ export function CollectionItemCard({
 
       <CollectionItemListeningControls
         summary={listeningSummary}
+        eventsStatus={eventsStatus}
         onMarkPlayed={() => onMarkPlayed(item.id)}
       />
 

@@ -1,14 +1,29 @@
 # 012 Visual Experience & Product Identity Pass - Implementation Plan
 
-Status: **APPROVED 2026-08-31** (spec section 20, decisions A-K), with the
-mandatory provider-artwork correction (no `releases.cover_url`, no catalog-add
-Cover Art Archive lookup - artwork is a client-side display-time concern) and
-the canonical `cover.webp` custom-cover object. **Phase 0 is implemented** on
-this branch (migration `20260903120000_add_custom_cover_storage.sql` + pgTAP +
-`config.toml` storage). Phases A-E are unstarted and gated on the Phase 0 PR
-merging.
+Status: **APPROVED 2026-08-31** (spec section 20, decisions A-K); art-direction
+addendum approved **2026-09-01** (see spec 0012). Mandatory provider-artwork
+correction stands (no `releases.cover_url`, no catalog-add Cover Art Archive
+lookup - artwork is a client-side display-time concern) plus the canonical
+`cover.webp` custom-cover object.
 
-Date: 2026-08-31
+Progress (current — 2026-09-03):
+
+- **Phase 0** (custom-cover storage): **merged to `main` in PR #12** (merge
+  commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`).
+- **Phases A–E**: **implemented, locally verified, and human-accepted** on
+  branch `claude/visual-experience-product-identity-ui`. `react-router-dom`
+  7.18.3 is the one runtime dependency added. The A–E work is **not yet merged**;
+  the final PR is being opened now. Per-phase detail (with the on-branch
+  implementation notes, corrections, and the final code-review outcome —
+  **0 BLOCKER / 0 HIGH / 0 MEDIUM**) is recorded in the phase sections below and
+  in `docs/verification.md` ("Visual Phase A/B Evidence", "Phase C …",
+  "Phase D", "Phase E").
+- **Milestone 11** (Production Deployment) has **not started**; no hosted
+  Supabase migration has been applied. See the current roadmap:
+  `docs/roadmaps/2026-09-02-complete-project-roadmap.md`.
+
+Date: 2026-08-31 (plan); 2026-09-01 (art-direction addendum); 2026-09-03
+(progress sync)
 
 Branch: `claude/visual-experience-product-identity`
 
@@ -162,33 +177,183 @@ it.
 
 ## 7. Phases A-E
 
-### Phase A - design system + routing + shell
+### Phase A - design system + routing + shell (DONE - branch, not merged)
 
-1. `react-router-dom` added (decision B). `public/_redirects` SPA fallback.
-2. `src/styles/` token/base/font layers; `public/fonts/` woff2; delete
-   `src/styles.css` after every consumer is migrated.
-3. `src/ui/` primitives + `Icon` sprite + `src/brand/Logo` + `AlbumArtwork`
-   (fallback tier only for now) + skeleton/empty/error components.
-4. `src/app/` `AppShell` + `Sidebar` + `BottomNav` + `TopBar` + `RouteView` +
-   route table + auth guards + `CollectionDataProvider`.
-5. Every existing feature mounted at its new route (spec section 15), visually
-   rough but functional. `App.tsx` reduced to composition.
-6. Port every existing Vitest suite to its new host; keep all green. Router /
-   guard / nav tests added.
+1. `react-router-dom` 7.18.3 added (decision B). `public/_redirects` SPA
+   fallback. `BrowserRouter` in the app, `MemoryRouter` in tests. **Done.**
+2. `src/styles/` token / base / fonts / shell / components layers loaded after
+   the legacy `src/styles.css`. `src/styles.css` is **kept for now** (it styles
+   the not-yet-rebuilt Collection / Catalog / Curator panels); `base.css` retints
+   the ground to the warm/dark tokens and a `.legacy-host` wrapper class carries
+   defensive overrides so those panels stay legible. `styles.css` is deleted in
+   Phase C-D as each page is rebuilt. Self-hosted WOFF2 in `public/fonts/`
+   (Fraunces / Inter / IBM Plex Mono, OFL, `public/fonts/README.md`). **Done.**
+3. `src/ui/` primitives (`Button`, `IconButton`, `Field`, `Input`, `Textarea`,
+   `Select`, `SearchInput`, `SegmentedControl`, `Badge`, `Chip`,
+   `RatingControl`, `Container`), `Icon` (original inline sprite),
+   `feedback.tsx` (`EmptyState` / `ErrorState` / `LoadingSkeleton` +
+   `SkeletonStat` / `SkeletonAlbumCard` / `SkeletonRow`), `Dialog` (focus trap +
+   Esc), `ToastProvider` / `useToast`. `src/brand/Logo` (Grooved V-I, 3
+   variants) + `src/brand/VinAvatar` (static foundation - the 5-state system is
+   Phase D). `src/media/AlbumArtwork` **fallback tier only** +
+   `src/media/fallbackCover` (deterministic ramp accent). **Done.**
+4. `src/app/` - `AppShell` (sidebar / collapsible rail / slim top bar / mobile
+   bottom nav + "More" drawer, `aria-current`, skip link, route `aria-live`
+   announce, focus-to-`h1` via `PageHeader`), `AppRoutes` (route table + auth
+   guards), `CollectionDataProvider` (+ context + `useCollectionData`), `nav.ts`,
+   `useClient`, `FullPageState`. `App.tsx` reduced to
+   `AuthProvider > ToastProvider > BrowserRouter > AppRoutes`. **Done.**
+5. Every M2-M10 feature mounted at its route via a transitional page host
+   (`src/pages/*`): `/auth` -> `AuthForm`; `/settings` -> `ProfilePanel`;
+   `/collection` -> `CollectionPanel` (refreshed by the provider's `version`
+   instead of the removed `App`-level `collectionRefreshKey` prop-drill);
+   `/collection/:id` -> `CollectionItemCard` for the owned item (real data
+   only, not-found state for a bad id); `/discover` -> `CatalogPanel` with a new
+   `showPhotoPanel={false}` prop; `/scan` -> `CatalogPhotoPanel` (a chosen query
+   is stashed as the `/discover` search draft, then navigate); `/vin` ->
+   `CuratorPanel` **unchanged**; `/history` -> a flat reverse-chron list from the
+   provider; `/dashboard` -> structural quick-nav host, **no statistics**; `/` ->
+   structural landing; `*` -> branded 404. **Done.**
+6. Ported `src/App.test.tsx` and `src/auth/auth-state.test.tsx` to the router
+   (new `src/test/renderApp.tsx` helper); added
+   `src/app/AppRoutes.test.tsx`, `src/app/AppShell.test.tsx`,
+   `src/app/CollectionDataProvider.test.tsx`, `src/media/AlbumArtwork.test.tsx`,
+   `src/media/fallbackCover.test.ts`. Every M9/M10 curator suite is byte
+   unchanged. **Done.**
 
-Exit: `npm run typecheck|lint|test:run|build` green; every route reachable;
-every M2-M10 feature usable; M9/M10 contract tests unchanged.
+Exit met: `typecheck` / `lint` / `test:run` (initial 35 files / 424; after the
+correction below 36 / 431) / `build` green; `supabase test db` 9 / 433; every
+route reachable; every M2-M10 feature usable; M9/M10 contract tests unchanged.
+The one code review is still reserved for the end of Phase E.
 
-### Phase B - landing + auth + dashboard
+**Phase A correction (2026-09-02, before Phase B).** An independent GitHub audit
+found two MEDIUM findings in the `CollectionDataProvider` integration - the
+initial implementation was **not** actually the single post-auth source
+(`CollectionPanel` still self-loaded and held a competing snapshot), and a
+`Promise.all` partial-load failure could render "not in your collection" for a
+data-load error. Both **fixed on this branch before Phase B**: `CollectionPanel`
+gained a controlled mode (provider-owned data + `onMutated` -> one authoritative
+`invalidate()`; uncontrolled mode unchanged for its own tests); the provider now
+loads collection and listening events in two independent effects with separate
+phases and separate errors; `AlbumDetailPage` / `HistoryPage` distinguish
+loading / collection-error / genuine-not-found / events-error. +1 regression
+test file (`src/app/collection-data-integration.test.tsx`, cases A-G). Full
+detail in `docs/verification.md` "Phase A correction". The transitional
+double-load in the first implementation was a mistake, not an intended design -
+this plan is not being rewritten to suggest otherwise.
 
-`LandingPage` (hero + 5 sections + motion), `AuthPage`/`AuthCard` redesign,
-`DashboardPage` (stats + quick actions + recent activity + quick-VIN + optional
-insight; empty-collection state). All dashboard data from
-`CollectionDataProvider`. Route-level `React.lazy` for landing/auth so they do
-not pull the app bundle.
+**Known Phase A deferrals (LOW / documented):** the client JS bundle is
+~523 KB (149 KB gz) with `react-router-dom`; route-level `React.lazy`
+code-splitting is a Phase B/E task per this plan (Phase E: "route-level code
+splitting finalised + bundle budget check"). `src/styles.css` still present
+(retired page-by-page in C-D). `/history` and `/collection/:id` are transitional
+hosts (full designs in Phase D).
 
-Exit: the three screens match the spec's state matrix; lighthouse-style manual
-check of the landing bundle size.
+### Phase B - landing + auth + dashboard (DONE - branch, not merged)
+
+Delivered on `claude/visual-experience-product-identity-ui`:
+
+- **`LandingPage`** - cinematic public page: sticky brand header, hero with the
+  approved eyebrow/headline/CTAs + `HeroVinyl` (original CSS/SVG turntable
+  composition, slow rotation, reduced-motion static, `aria-hidden`), "See how it
+  works" smooth in-page scroll, five sections (Your collection alive / Ask VIN /
+  Scan / Rediscover) with original branded fallback visuals only, final CTA
+  band. No copyrighted artwork / stock photo / external image.
+- **`AuthPage` + `AuthCard`** - split brand panel / focused card at `>= md`,
+  compact strip at `< md`; accessible two-mode `role="tablist"` switch; one
+  `<h1>`; labelled fields; accessible client validation + verbatim Supabase
+  notice/error. **Supabase auth semantics unchanged** (same `signIn` / `signUp`;
+  session / email-confirmation / profile authority / `profile_missing` /
+  authenticated-`/auth` redirect all untouched).
+- **`DashboardPage`** - all values from `CollectionDataProvider`, no API/model
+  call. Four real stats (definitions in `docs/verification.md` +
+  `insights.test.ts`), `SkeletonStat` while loading, empty-collection
+  onboarding (no zero-heavy analytics), Quick VIN (transient router-state
+  prefill -> `/vin`, no model call, no persistence), quick actions, Recently
+  added / Recently played / Rediscover rails (`AlbumArtwork` fallback,
+  `/collection/:id` links, honest empty states), "Your collection at a glance"
+  pure CSS/SVG decade bars + genre chips (no chart dependency; insufficient-data
+  state), events-only failure does not hide the stats.
+- **`CuratorPanel`** gained one optional additive `initialRequest?: string`
+  (client-only textarea seed for Quick VIN; no submit, no model call; M9/M10
+  contracts unchanged; `src/lib/curator/*` untouched).
+- **Route-level code splitting** - every page `React.lazy` behind one
+  `<Suspense>` with a branded fallback; simple `BrowserRouter` API, no data
+  router, no code-splitting library. Entry chunk 522.95 kB -> 455.13 kB
+  (149.49 -> 131.77 kB gz) + per-route chunks; a landing visit no longer
+  downloads the authenticated pages. (`supabase-js` still in the entry chunk via
+  `AuthProvider` - Phase E bundle-budget task.)
+- `src/lib/dashboard/insights.ts` (pure, `now`-injected, unit-tested);
+  superseded Phase A structural landing/auth CSS removed; new `pages.css`.
+
+Exit met (initial): `typecheck` / `lint` / `test:run` (40 files / 465) /
+`build` green; `supabase test db` 9 / 433 unchanged.
+
+**Phase B correction (2026-09-02, before Phase C).** An independent audit found
+two MEDIUM functional findings and a human visual review found the visual
+implementation short of the approved identity. All addressed on this branch:
+(A) `/auth` now returns the user to the intended internal route after login via
+an allow-listed `safeInternalPath` (no open redirect); (B) the dashboard never
+computes listening analytics from `events === []` during loading/failure -
+`insights.ts` split into `collectionStats` / `listeningStats`, and every
+event-derived value (Played-30d, Never-played, Recently-played, Rediscover) is
+gated on `eventsStatus === 'ready'` with skeleton / `--` + Retry otherwise;
+(C) the unsupported "Free to start." landing copy removed; (D-M) a systemic
+visual pass - stronger responsive type scale + contrast + tactile grooved
+surfaces (tokens), larger buttons/inputs/nav/shell, a redesigned unmistakable
+V-I `Logo`, a first-class `VinAvatar` (grooved head, headphones, chest EQ, an
+`idle`/`thinking` state) + `EmptyCrate`, scroll-reveal + scroll cue + slow
+record rotation + Vinny thinking motion (all `prefers-reduced-motion`-safe), a
+richer landing hero + section demos, a scaled-up split auth, a branded
+dashboard/collection empty state (crate + Vinny; collection-first with manual
+CRUD behind an "Add a record manually" disclosure - no field removed), and a
+focused two-area Ask VIN composition with a 132px Vinny + real collection
+context + a live curator-state line (`CuratorPanel` gained one optional
+`onStatusChange` UI-only signal; no M9/M10 contract change). +4 test files
+(`routing`, `intended-route`, strengthened dashboard event-gating,
+insights split). 42 files / 472 tests. `supabase db reset` was **not** run per
+instruction. Full detail: `docs/verification.md` "Phase B correction".
+
+**Final Phase B visual acceptance (2026-09-02, before Phase C).** A pass against
+a human visual checklist, still on this branch. The V-I mark was re-cut so the
+**V** and **I** are two clearly separated letters (shared `ViGlyph`, reused by
+header / sidebar / auth / `HeroVinyl` label / final CTA / `favicon.svg`); the
+"How it works" link, hero button and scroll cue now all land on Section 01 (a
+dedicated pre-Section-01 anchor with sticky-bar `scroll-margin-top`, deferred
+`preventScroll` focus, Section 01 not reveal-gated, on-mount hash handler); the
+scroll cue is a downward chevron; Section 03 is a new `ScanDemo` (vertical
+photo -> clues -> candidates -> confirm progression) and Section 04 a new
+`RediscoverDemo` (a sleeve pulled forward out of a record crate, four truthful
+chips); `VinAvatar` was rebuilt with better head/body proportions and depth
+(rim-light/core-shadow, padded headphones, EQ, copper hardware); the app-shell
+top-clipping was fixed with a quiet breadcrumb + `preventScroll` h1 focus +
+`scroll-margin-top`; the sidebar collapse control is now a borderless 26px
+utility; the topbar no longer repeats the page name; the Ask VIN aside follows
+the main column on narrow screens. Real screenshots were captured with
+`puppeteer-core` + system Chrome at 1440x900 / 1280x800 / 1024x768 / 390x844
+and visually reviewed. 42 files / **474 tests** (+2 landing regressions).
+`supabase db reset` **not** run. Full detail: `docs/verification.md` "Final
+Phase B visual acceptance".
+
+**Final Phase B asset + micro-polish patch (2026-09-02, before Phase C).** Three
+closing items, still on this branch. (1) Vinny is now the five approved
+3D-rendered image assets (`public/vinny/*.png`, transparent, static, not
+bundled) behind one `Vinny` component with an `idle|thinking|success|no-match|
+empty` state map; the hand-drawn `VinAvatar` and the now-redundant `EmptyCrate`
+are deleted; `CuratorPanel.onStatusChange` emits a semantic `CuratorUiState` so
+Ask VIN shows the right Vinny. (2) The V·I glyph is light bronze via one new
+`--vi-glyph: #d08b48` token inherited everywhere (geometry unchanged). (3) The
+sidebar collapse toggle is now exactly 26x26 with the icon centred in both
+states - it had been inheriting `.legacy-host button` padding + `min-height`.
+43 files / **485 tests**. `supabase db reset` not run. Full detail:
+`docs/verification.md` "Phase B final asset + micro-polish".
+
+**Known deferrals (LOW):** `supabase-js` in the entry chunk;
+`src/styles.css` still present for the C-D hosts; the landing demo SVGs remain
+original project-owned schematic illustrations; the `thinking`/`success`/
+`no-match` Vinny assets are verified as images + unit-tested state mapping but
+not via a live curator run; human pixel-level design sign-off still pending;
+exhaustive responsive/motion passes are Phase E.
 
 ### Phase C - artwork infrastructure + collection / discover / scan
 
@@ -209,6 +374,50 @@ Exit: artwork four-tier + `onError` fall-through tests; custom-cover lifecycle
 tests; discover/scan state tests; Storage pgTAP green; **no real CAA call in
 tests**.
 
+**Phase C implemented (2026-09-02, on-branch, not merged).** `AlbumArtwork` now
+owns the four-tier chain (`media/coverArtUrl.ts` + `media/signedCover.ts` +
+rewritten `AlbumArtwork.tsx`); `lib/collection/customCover.ts` +
+`CustomCoverControl` on `AlbumDetailPage`. `CollectionBrowser` = cover-first
+grid / compact list + URL-synced toolbar over the unchanged `collectionQuery.ts`
++ favourite/log-listen quick actions + a filtered-empty state distinct from the
+empty collection. `DiscoverPanel` / `ScanPanel` wrap the unchanged
+`searchCatalog` / `addCatalogReleaseToCollection` / `recognizeCover` logic with
+polished visual result cards, an owned-state, honest error vs no-result states,
+a four-step scan rail with distinct analysing/searching phases, and
+confirmation-before-save. No migration / schema / RLS change. 50 files /
+**531 tests**. Full detail: `docs/verification.md` "Phase C - Collection /
+Discover / Scan / Artwork".
+
+**Phase C final correction (2026-09-02, on-branch, not merged).** 12 audit +
+human-review fixes, still Phase C: listening-derived UI now branches on
+`eventsStatus` so a loading/failed listening load never becomes fabricated
+"Never played"; the Scan provider-error retry re-runs only `searchCatalog`
+(no second Vision call); Collection quick actions use the toast system for
+success/failure (no silent catch, no optimistic lie); the collapsed-sidebar
+user control is a centred contained avatar; the manual-add form is a contained
+warm panel; Discover gains a "New search" reset + restored result-page spacing;
+Scan gains real drag-and-drop (shared validation) + replace/remove; album-card
+overlay actions are exactly 30x30 with centred glyphs; the set favourite is a
+filled bronze heart. Dashboard `AlbumMini` artwork wired to MBIDs for
+consistency. **History redesign + listening-event edit/delete are deferred to
+Phase D** (they change the Milestone 8 append/read-only listening-events
+contract). 51 files / **553 tests**. Full detail: `docs/verification.md`
+"Phase C - final correction + human-acceptance patch".
+
+**Phase C final global shell micro-correction (2026-09-02, on-branch, not
+merged).** One shared-shell blocker: the AppShell top bar shrank vertically
+(measured 64 -> 37px) on any route whose content overflowed the viewport,
+because `.vi-topbar` had `flex-shrink: 1` inside the fixed-height `.vi-main`
+scroll column. Fixed in `shell.css` only: `.vi-topbar { flex: 0 0
+var(--topbar-h); min-height: var(--topbar-h) }` + `.vi-main > main { flex: 1 0
+auto }` + `.vi-main { min-height: 0 }`. Puppeteer-measured `.vi-topbar` height
+= **64 in all 7 authenticated routes x 4 viewports x {short, tall,
+scrolled}**; all top-bar children vertically centred; no horizontal overflow;
+mobile unchanged. Plus 3 new `DashboardPage` regression tests locking the
+canonical artwork inputs (MBIDs + custom-cover path) in the dashboard rails.
+51 files / **556 tests**. Full detail: `docs/verification.md` "Phase C - final
+global shell micro-correction".
+
 ### Phase D - VIN + history + settings + album detail
 
 `VinPage` redesign + `VINAvatar` (5 states) + `VINThinking`; `HistoryPage`
@@ -217,6 +426,74 @@ listening + cover + edit/remove). M9/M10 curator code unchanged.
 
 Exit: existing curator suites unchanged and green; mascot state tests;
 history grouping tests; detail not-found state.
+
+**Phase D implemented (2026-09-02, on-branch, not merged) - history + album
+detail + settings + profile avatar.** VIN / Ask VIN / Vinny were finished in
+Phase B and are explicitly untouched here (no M9/M10 curator prompt, contract,
+or OpenRouter change).
+
+- **DB (3 forward migrations, applied locally via `supabase migration up`, not
+  `db reset`, not applied to hosted):**
+  - `20260904120000_allow_listening_event_management.sql` - M8 shipped
+    `listening_events` append-only; Phase D product review approved letting a
+    collector fix a wrong play time and delete an accidental play *of their own*.
+    Minimum change: column-scoped `UPDATE (listened_at)` grant + `DELETE` grant +
+    own-row RLS for UPDATE and DELETE; anon gets neither; id / user_id /
+    collection_item_id / created_at stay immutable to the browser.
+  - `20260904121000_add_personal_genres.sql` - fixes finding 8D-2. Catalog
+    releases are `source='catalog'` / `created_by=NULL` and read-only to the
+    browser, so the generic edit form could never save a genre onto them.
+    Rather than weaken `releases` RLS, add `collection_items.personal_genres
+    text[]` (owner-scoped, CHECK reuses `public.release_genres_valid`). Effective
+    genres = union of `release.genres` + `personal_genres`, computed client-side,
+    neither source mutated.
+  - `20260904122000_add_profile_avatar_storage.sql` - human-approved optional
+    avatar. `profiles.avatar_path` / `avatar_updated_at` (nullable, canonical
+    `{userId}/avatar.webp` CHECK, column-scoped grant), `updated_at` trigger
+    recreated to also fire on an avatar change, private `profile-avatars` bucket
+    (webp only, 1 MiB), four owner-isolated `storage.objects` policies modelled
+    on the custom-cover architecture. `config.toml` mirrors the bucket for local
+    dev.
+- **History** rebuilt as a day-grouped listening journal (browser-local Today /
+  Yesterday / full date, newest first), real `AlbumArtwork` thumbnails, each row
+  linking to `/collection/:id`, edit-play-time (native `datetime-local`, local
+  <-> ISO, only `listened_at` written) and delete-play, both through the Dialog
+  primitive with a truthful destructive confirmation. Loading is never an empty
+  state; collection and listening errors stay independent with their own Retry.
+- **Album Detail** rebuilt as the definitive record page: album-focused hero
+  (large canonical artwork, artist, title, only real catalog metadata), personal
+  state (filled-heart favourite, star rating, notes), truthful listening section
+  with recent plays, custom-cover management, "Remove from collection" via a
+  Dialog with wording distinct from deleting a listen. Catalog metadata is
+  READ-ONLY (manual releases keep the edit form; catalog releases show an
+  explanation instead of a form RLS would reject); owners manage their own
+  genres via `personal_genres`. `legacy-host` retired on this page.
+- **Settings** rebuilt to two honest sections - PROFILE (photo, display name,
+  read-only account email) and ACCOUNT (sign out). No invented settings, no
+  password / email-change flows. `legacy-host` retired; the unused `ProfilePanel`
+  removed.
+- **Profile avatar** - one canonical WebP per user, client-side centre-crop +
+  resize (no external service), direct browser Storage calls governed by RLS +
+  bucket config. The signed URL is treated as a bearer credential: memory-only
+  cache with early re-sign, never written to the profile row, `localStorage`,
+  `sessionStorage`, a log, telemetry, or an error message. **Initials are the
+  default AND the fallback** in every state (no photo, URL still resolving,
+  signing failed, `<img>` errored) - a broken-image glyph is never shown. One
+  shared `UserAvatar` component owns photo + initials + circle geometry + failed-
+  image fallback, used in the AppShell topbar, the sidebar account control
+  (expanded + collapsed rail), and the Settings preview. `AuthProvider.refresh
+  Profile()` propagates a profile mutation to every avatar without a reload.
+
+Verification: `typecheck`, `lint` (0 warnings), `test:run` (**60 files /
+619 tests**), `build`, `supabase test db` (**10 files / 507 assertions**,
+including the new `profile_avatar_storage.test.sql` and extended
+`listening_events` / `collection_item_signals` / `catalog_releases_rls`
+suites - no local QA data deleted), `supabase db lint`, `npm audit --omit=dev`
+(0). Full detail: `docs/verification.md` "Phase D".
+
+VIN personal-genres integration is intentionally **deferred** - it would touch
+the `curator-handlers.mts` Netlify function / M9-M10 candidate contract, and
+section 8D-2.F permits deferral rather than accept that risk in this pass.
 
 ### Phase E - motion + responsive + accessibility + performance + final review
 
@@ -228,6 +505,82 @@ code review; page-by-page human visual inspection (desktop/tablet/mobile);
 final browser smoke of every critical flow.
 
 Exit: spec section 19 acceptance criteria all met.
+
+**Phase E implemented (2026-09-02, on-branch, not merged) - polish + a11y +
+performance + the one focused code review.** No migration, no RLS/grant change,
+no model-contract change, no deployment. Design compositions of the human-
+accepted pages are unchanged; this pass only corrected observable issues.
+
+- **Motion:** duration tokens aligned to the approved vocabulary
+  (`--dur-fast 120 / --dur 200 / --dur-slow 320`); a standard `:active`
+  compression (`scale(0.98)` on `.vi-btn`, `scale(0.92)` on the compact icon /
+  glyph controls) that is suppressed under `prefers-reduced-motion`; the
+  route-view transition bumped to an 8px translateY; a transform transition
+  added to the compact controls so the press eases. The album-card hover
+  vocabulary (translateY(-4px) + shadow step + `scale(1.015)` artwork +
+  keyboard-equivalent `:focus-within` quick-action reveal + `@media (hover:
+  none)` always-visible) was already in place and left as-is.
+- **Reduced motion:** measured in a headless browser with
+  `prefers-reduced-motion: reduce` on Landing, Dashboard, Collection, Ask VIN,
+  Scan, History - `getAnimations()` returns **0** on every route (the global
+  `* { animation-duration: .01ms; animation-iteration-count: 1 }` plus the
+  token collapse). No looping decorative animation survives reduced motion.
+- **Responsive:** headless audit of 10 authenticated routes x
+  {1280, 768, 390, 360}: **0 horizontal overflow anywhere**; topbar exactly
+  **64px** on every authenticated route/viewport; exactly one `<h1>` per route;
+  `<main>` present. Nav contract verified: `<768` bottom nav (sidebar
+  `display:none`, `.vi-main` padded by `--bottomnav-h` so content clears it),
+  `768-1120` icon rail, `>=1120` full sidebar (user-collapsible). The 404 is a
+  deliberate standalone branded page with no shell.
+- **Accessibility fixes:** the Collection search box gained a visible focus
+  indicator (`.vi-filterbar__search:focus-within` -> accent border + ring; it
+  previously had a bare `outline:none` input with no replacement); the mobile
+  "More" drawer gained Esc-to-close, focus-in-on-open, focus-return-to-trigger,
+  and a Tab trap; every bottom-nav item is >=44px and the "More" `<button>` is
+  no longer framed by `.legacy-host button`. Keyboard smoke of
+  Collection / Ask VIN / Settings: every focus stop shows a visible ring (the
+  one apparent miss is the search input, whose ring is on its wrapper).
+- **No colour-only meaning:** `RatingControl` (mounted on the Collection
+  grid/list) now renders the canonical SVG star with filled/outline **geometry**
+  instead of a raw `*`; read-only announces "Not rated" / "Rated N of 5".
+  Favourite already uses a filled-heart + `aria-pressed`; VIN "Best match" is a
+  text badge; errors carry `role="alert"` + text; active nav uses
+  `aria-current`.
+- **Contrast** (measured in-app, WCAG): `--text-muted` on surface **8.92:1**,
+  `--text-faint` on bg **5.20:1**, `--accent` eyebrow on surface **5.75:1**,
+  nav / chip muted **7-8:1**, album-meta value **15.9:1**. All pass AA; no
+  palette change needed.
+- **Performance:** every route stays behind route-level `React.lazy`; Landing /
+  Auth do not pull authenticated page code. Final entry JS **465.7 kB raw /
+  135.0 kB gzip** - comfortably below the 200 kB gzip target, so the known
+  `@supabase/supabase-js`-in-entry deferral is left as documented. CSS
+  61.7 kB / 12.2 kB gz. `AlbumArtwork` images `loading="lazy"` +
+  `decoding="async"` + reserved 1:1 aspect box; fonts self-hosted WOFF2 with
+  `font-display: swap`, only the two variable faces preloaded.
+- **LOW findings** (section 22): (A) personal-genres empty copy no longer
+  claims "recommendations" - now "make your collection easier to browse";
+  (B) adding a personal genre already in the catalog genres is refused with a
+  clear message (no duplicate chip; effective filtering unchanged);
+  (C) the mounted `*`-glyph rating (`RatingControl`) is replaced with the SVG
+  star - the `★☆` unicode stars in the accepted `CuratorRecommendationCard`
+  and the unmounted `CollectionItemPersonalControls` are left.
+- **Focused code review** (the one reserved end-of-A-E review): initially
+  **0 BLOCKER, 0 HIGH, 1 MEDIUM, 4 LOW/NOTE**. The MEDIUM
+  (`.legacy-host button` (0,1,1) outranking the bare `.vi-btn` variants (0,1,0),
+  so in-shell primary/danger/ghost buttons rendered with the transitional dark
+  treatment) was then **fixed by commit `8226328`** with the narrow selector
+  `.legacy-host button:where(:not(.vi-btn))` (and its `:hover` pair) - `:where()`
+  keeps the rule at (0,1,1) so it simply stops matching `.vi-btn`; the
+  `button.vi-chip` chips and the circular × / bottom-nav controls are provably
+  unchanged, and the fix was visually human-verified. **Final review status:
+  0 BLOCKER, 0 HIGH, 0 MEDIUM, LOW/NOTE only.** Full detail:
+  `docs/verification.md` "Phase E".
+
+Legacy cleanup (`CollectionPanel`/`CatalogPanel`/`CatalogPhotoPanel`/
+`CollectionItemCard` + their tests) remains **deliberately deferred** - the
+retention was a Phase C decision, each carries test coverage, and bulk deletion
+in a polish pass carries CSS-interdependency risk the task explicitly says to
+avoid.
 
 ## 8. Testing plan
 

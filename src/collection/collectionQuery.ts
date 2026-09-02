@@ -5,7 +5,10 @@
  * request, no LLM, no database write. It is separate from the Milestone 4
  * external MusicBrainz catalog search.
  */
-import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import {
+  effectiveGenres,
+  type CollectionItemWithRelease,
+} from '../lib/supabase/collection.ts'
 
 export type CollectionFilters = {
   /** Free text; case-insensitive substring of artist OR title; trimmed. */
@@ -46,8 +49,13 @@ export function decadeLabel(year: number): string {
   return `${Math.floor(year / 10) * 10}s`
 }
 
-function releaseGenres(item: CollectionItemWithRelease): string[] {
-  return Array.isArray(item.release.genres) ? item.release.genres : []
+/**
+ * The genres a record is browsed / filtered by: the union of catalog genres
+ * and the owner's personal genres (already normalised lowercase, deduped).
+ * Neither source is mutated.
+ */
+function itemGenres(item: CollectionItemWithRelease): string[] {
+  return effectiveGenres(item)
 }
 
 /** Decades actually represented in the loaded collection, ascending. */
@@ -70,7 +78,7 @@ export function availableGenres(items: CollectionItemWithRelease[]): string[] {
   const genres = new Set<string>()
 
   for (const item of items) {
-    for (const raw of releaseGenres(item)) {
+    for (const raw of itemGenres(item)) {
       const genre = raw.trim().toLocaleLowerCase()
 
       if (genre) {
@@ -156,7 +164,7 @@ function matchesGenre(
     return true
   }
 
-  return releaseGenres(item).some(
+  return itemGenres(item).some(
     (value) => value.toLocaleLowerCase() === genre,
   )
 }

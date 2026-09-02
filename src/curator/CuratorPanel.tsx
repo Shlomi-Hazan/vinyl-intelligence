@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
@@ -16,9 +16,35 @@ import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 type CuratorPanelProps = {
   client: BrowserSupabaseClient
+  /**
+   * Optional client-only seed for the request textarea (e.g. the dashboard
+   * "Quick VIN" prefill). It only pre-fills the field - nothing is submitted
+   * and no model call is made until the user explicitly asks. The M9/M10
+   * request/response contracts are unchanged.
+   */
+  initialRequest?: string
+  /**
+   * Optional UI-only signal so a host (e.g. the /vin page) can show a matching
+   * Vinny state. It is derived from the initial-request flow only and does not
+   * change any curator behaviour or contract. A true technical error reports
+   * `idle` (the panel shows its own error UI) - never `no-match`.
+   */
+  onStatusChange?: (state: CuratorUiState) => void
 }
 
 type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
+
+/** Semantic curator state for the host's Vinny character. */
+export type CuratorUiState = 'idle' | 'thinking' | 'success' | 'no-match'
+
+// Client-only starter prompts. Clicking one ONLY sets the request text - it is
+// never auto-submitted and makes no model call. No backend/schema change.
+const STARTER_PROMPTS = [
+  'Something relaxing',
+  'A forgotten favourite',
+  'Something I have not played lately',
+  'Surprise me',
+] as const
 
 type OkResult = Extract<CuratorResult | CuratorRefineResult, { status: 'ok' }>
 
@@ -80,8 +106,12 @@ function OkCards({ result }: { result: OkResult }) {
   )
 }
 
-export function CuratorPanel({ client }: CuratorPanelProps) {
-  const [request, setRequest] = useState('')
+export function CuratorPanel({
+  client,
+  initialRequest,
+  onStatusChange,
+}: CuratorPanelProps) {
+  const [request, setRequest] = useState(() => initialRequest ?? '')
   const [status, setStatus] = useState<PanelStatus>('idle')
   const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
   const [error, setError] = useState<{ code: string; message: string } | null>(null)
@@ -94,6 +124,28 @@ export function CuratorPanel({ client }: CuratorPanelProps) {
 
   const trimmed = request.trim()
   const pending = status === 'loading'
+
+  // Map the internal flow to a semantic Vinny state for the host page.
+  let vinnyState: CuratorUiState = 'idle'
+  if (status === 'loading') {
+    vinnyState = 'thinking'
+  } else if (status === 'done') {
+    if (conversation) {
+      const lastCurator = [...conversation.turns]
+        .reverse()
+        .find((turn) => turn.role === 'curator')
+      vinnyState = lastCurator?.kind === 'no_match' ? 'no-match' : 'success'
+    } else if (initialResult?.status === 'ok') {
+      vinnyState = 'success'
+    } else if (initialResult?.status === 'no_match') {
+      vinnyState = 'no-match'
+    }
+  }
+  // status 'error' deliberately stays 'idle' - the panel renders the error.
+
+  useEffect(() => {
+    onStatusChange?.(vinnyState)
+  }, [vinnyState, onStatusChange])
 
   function resetConversation() {
     setConversation(null)
@@ -207,30 +259,47 @@ export function CuratorPanel({ client }: CuratorPanelProps) {
   }
 
   return (
-    <section className="curator-panel" aria-labelledby="curator-title">
-      <div>
-        <p className="eyebrow">AI Curator</p>
+    <section className="curator-panel vi-curator" aria-labelledby="curator-title">
+      <div className="vi-curator__intro">
+        <p className="vi-eyebrow">Ask VIN</p>
         <h2 id="curator-title">What should I play?</h2>
-        <p className="field-hint">Recommends only from records you own.</p>
+        <p className="vi-hint">VIN recommends only from records you own.</p>
       </div>
 
       {conversation === null ? (
-        <form onSubmit={handleSubmit}>
-          <label className="curator-request">
-            Your request
+        <form className="vi-curator__form" onSubmit={handleSubmit}>
+          <div className="vi-curator__starters" aria-label="Prompt suggestions">
+            {STARTER_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="vi-chip"
+                onClick={() => setRequest(prompt)}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+          <label className="vi-field vi-curator__request">
+            <span className="vi-label">Your request</span>
             <textarea
+              className="vi-textarea"
               maxLength={MAX_REQUEST_LENGTH}
               onChange={(e) => setRequest(e.target.value)}
               placeholder="I had a stressful day. Give me something relaxing but not sleepy."
-              rows={3}
+              rows={4}
               value={request}
             />
           </label>
-          <div className="collection-personal-row">
-            <button disabled={pending || trimmed.length === 0} type="submit">
+          <div className="vi-curator__submit">
+            <button
+              className="vi-btn vi-btn--primary vi-btn--lg"
+              disabled={pending || trimmed.length === 0}
+              type="submit"
+            >
               {pending ? 'Thinking...' : 'Recommend'}
             </button>
-            <span aria-live="polite" className="field-hint">
+            <span aria-live="polite" className="vi-hint">
               {request.length} / {MAX_REQUEST_LENGTH}
             </span>
           </div>
