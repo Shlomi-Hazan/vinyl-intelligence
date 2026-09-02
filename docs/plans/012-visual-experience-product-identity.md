@@ -382,6 +382,22 @@ confirmation-before-save. No migration / schema / RLS change. 50 files /
 **531 tests**. Full detail: `docs/verification.md` "Phase C - Collection /
 Discover / Scan / Artwork".
 
+**Phase C final correction (2026-09-02, on-branch, not merged).** 12 audit +
+human-review fixes, still Phase C: listening-derived UI now branches on
+`eventsStatus` so a loading/failed listening load never becomes fabricated
+"Never played"; the Scan provider-error retry re-runs only `searchCatalog`
+(no second Vision call); Collection quick actions use the toast system for
+success/failure (no silent catch, no optimistic lie); the collapsed-sidebar
+user control is a centred contained avatar; the manual-add form is a contained
+warm panel; Discover gains a "New search" reset + restored result-page spacing;
+Scan gains real drag-and-drop (shared validation) + replace/remove; album-card
+overlay actions are exactly 30x30 with centred glyphs; the set favourite is a
+filled bronze heart. Dashboard `AlbumMini` artwork wired to MBIDs for
+consistency. **History redesign + listening-event edit/delete are deferred to
+Phase D** (they change the Milestone 8 append/read-only listening-events
+contract). 51 files / **553 tests**. Full detail: `docs/verification.md`
+"Phase C - final correction + human-acceptance patch".
+
 ### Phase D - VIN + history + settings + album detail
 
 `VinPage` redesign + `VINAvatar` (5 states) + `VINThinking`; `HistoryPage`

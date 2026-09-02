@@ -3741,3 +3741,104 @@ OpenRouter/MB calls for QA).
 - The live "results" / "analysing" / "candidates" / "success" screens depend on
   a provider response and were verified via unit tests, not the browser.
 - Human pixel-level design sign-off for Phase C still pending.
+
+## Phase C - final correction + human-acceptance patch (2026-09-02)
+
+Starting HEAD `f0059cd`; `origin/main` unchanged at `945ed3d`. **No migration,
+no schema / RLS / bucket / grant change**, no hosted action, no deployment, no
+`supabase db reset`.
+
+### Fixes
+
+| # | Fix | How |
+| --- | --- | --- |
+| 1 | No fabricated "Never played" while listening events are loading/failed | Listening-derived UI now branches on `eventsStatus`: `ready` -> real count / "Never played"; `loading` -> "Plays loading…" (list) / "Loading listening history…" (detail); `error` -> "Plays unavailable" / "Listening history unavailable" + stale last-listened hidden. Threaded `CollectionPage -> CollectionBrowser` and `AlbumDetailPage -> CollectionItemCard -> CollectionItemListeningControls`. The collection stays browsable when history fails. |
+| 2 | Scan provider retry re-ran Vision | `provider_error` now carries the `CoverRecognition` + query. "Retry catalogue search" calls a `doCatalogSearch(query, recognition)` helper that runs **only** `searchCatalog` - `recognizeCover` / `downscaleImageToDataUrl` are not called again. `model_error` stays distinct (its recovery restarts the flow). |
+| 3 | Quick actions swallowed failures | `toggleFavorite` / `logListen` in `CollectionBrowser` use `useToast()`: success -> "Added to favourites." / "Added to listening history."; failure -> the error message, recoverable. No optimistic mutation, so a failure never lies; nothing is fabricated locally. |
+| 4 | Collapsed-sidebar user control broken | `.vi-app[data-rail='true'] .vi-sidebar__account` (and the responsive icon-rail block): `width:auto; justify-content:center; gap:0; padding:space-1; border-color:transparent`, `.vi-sidebar` rail padding reduced, `.vi-sidebar__foot` centred. The button gains `aria-label` + `title` for icon-only mode; the expanded-card text is `aria-hidden` in rail mode. Expanded mode unchanged. |
+| 5 | Manual-add felt legacy | `.vi-manual-add` is now a contained warm grooved panel (border, shadow, generous spacing) with a "Back to collection" affordance. CollectionForm logic untouched. |
+| 6 | Discover "stuck" on old results | A "New search" button (shown once a search has run) clears query + results/error + the persisted draft (`clearCatalogSearchDraft`) and focuses the input. The restored query can still be re-run with Enter; a "Showing results for … · press Enter to run it again" line makes the restore explicit. |
+| 7 | Discover upper area compressed after results | Dedicated `.vi-discover__searchrow`, larger responsive `.vi-discover` gap, `padding-top`, and `margin-top` air above the result list / empty / error blocks. `SearchInput` gained an optional `inputRef`. |
+| 8 | Scan had no drag & drop | The drop zone handles dragenter/over/leave/drop, shows a copper drag-over state + "Drop the cover here", and routes a dropped file through the **same** `validateImageFile` path (invalid -> existing validation error). Native picker + `capture="environment"` unchanged. A selected image can be replaced / removed before analysis. |
+| 9 | Album-card action icons off-centre | The buttons were inheriting `.legacy-host button` padding + min-height from the app-shell root. Scoped `:is(.vi-albumcard,.vi-albumrow) .vi-albumcard__act` (0,2,0) with a full reset (`appearance:none; padding:0; min-height:0; line-height:0; flex centre; svg{display:block}`) -> measured exactly **30x30** with the glyph centred (`offL=offR=offT=offB`) on both heart and play. |
+| 10 | Favourite state too subtle | New `Icon filled` prop. Not-favourite = outlined heart; favourite = **filled bronze heart** in a bronze-bordered, bronze-tinted button. `aria-pressed` + "Add/Remove favourite" label unchanged; transition respects reduced motion. |
+| 11 | Mark Played no success feedback | The grid quick action toasts "Added to listening history."; the detail control's "Played N times" / last-listened updates on the authoritative reload. |
+| 12 | Mark Played no error feedback | Failure toasts a recoverable message (grid) / shows the existing `role="alert"` (detail); no local history mutation on failure. Same for the favourite quick action. |
+
+Extra (Phase C artwork consistency, not a regression): Dashboard `AlbumMini`
+now passes the release MBIDs + custom-cover path to `AlbumArtwork`, so
+Dashboard covers match the Collection grid.
+
+### History - explicitly deferred
+
+Human Phase C review requested richer History + listening-event management
+(artwork per row, edit the listening timestamp, delete an accidental event).
+**Deferred intentionally to Phase D** because it changes both the UX and the
+listening-events mutation contract - Milestone 8 made listening events
+append/read-only for the user, so edit/delete needs deliberate DB / RLS / grant
+work that is out of scope for a Phase C correction.
+
+### Automated gate (2026-09-02; `supabase db reset` NOT run)
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed (0 / 0) |
+| `npm run test:run` | Passed: **51 files, 553 tests** (was 50 / 531) |
+| `npm run build` | Passed - entry JS 459.60 kB (133.0 kB gz); no chunk advisory |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests |
+| `npx supabase db lint` | Passed |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New / expanded tests: `CollectionItemListeningControls.test.tsx` (new - the four
+truthfulness states + no fabricated count on failure); `CollectionBrowser.test.tsx`
+(+list-view truthfulness, +quick-action success/error toast + no-lie, +filled-heart
+render); `ScanPanel.test.tsx` (+provider retry re-runs catalogue not Vision,
++drag-over state, +valid/invalid drop through the shared validation, +replace/remove);
+`DiscoverPanel.test.tsx` (+New-search clears query/results/draft, +restore & re-run);
+`AppShell.test.tsx` (+collapsed vs expanded user control).
+
+**Local DB note:** `npx supabase test db` again failed two pgTAP subtests at the
+start of this pass (`catalog_releases_rls` #22 and `listening_events` #51),
+caused by test data the human added during their Phase C browser review (a
+"Kendrick Lamar - good kid, m.A.A.d city" catalog record + 2 listening events
+for the `m10-runtime` user). Those specific rows were removed (a targeted
+cleanup, not `db reset`); the suite then passed. The QA-fixture rows this pass
+seeded for screenshots were also removed afterwards - local `releases` /
+`collection_items` / `listening_events` are back to empty. Phase C makes no
+schema/RLS/migration change.
+
+### Real provider calls
+
+- **Automated tests:** 0 OpenRouter, 0 MusicBrainz, 0 Cover Art Archive.
+- **Browser QA:** 2 real MusicBrainz searches typed into the live dev server
+  (both returned the rate-limit response - captured as the honest
+  provider-error state; no Vision call was made to prove the retry UI, which is
+  unit-tested instead). 0 OpenRouter, 0 backend CAA. Grid `<img>` tiles hotlink
+  `coverartarchive.org` from the browser by design when a record has MBIDs.
+
+### Browser verification performed (1440-scaled / 1280x900 / 1024x768 / 390x844)
+
+Logged in as the local QA user with 4 seeded records (2 real MBIDs, 2 manual;
+2 favourited) - **removed after**. Reviewed: Collection populated grid (real
+CAA covers + fallbacks; **30x30 circular action buttons with centred glyphs**;
+outlined vs **filled bronze** heart; "Added to listening history." toast on
+log-listen); Collection list (truthful "Never played" with events ready);
+Collection 1024 / mobile (no overflow); Discover initial (spacious) + a real
+search (New-search button + generous spacing, honest provider-error);
+Scan initial (drag copy) + **drag-over copper highlight + "Drop the cover
+here"**; Album detail (real hero cover, `CustomCoverControl`, truthful
+"Played 1 time / Last listened …"); collapsed sidebar (**avatar-only, centred,
+contained**). Provider "results / analysing / candidates" screens that need a
+mocked provider were verified by the unit suites.
+
+### Remaining LOW / NOTE
+
+- `RatingControl` still renders `*` glyphs (Phase A primitive; Phase E polish).
+- `CollectionPanel` / `CatalogPanel` / `CatalogPhotoPanel` retained + tested but
+  unmounted.
+- `AlbumDetailPage` keeps its Phase-A structural layout (Phase D redesign);
+  only the listening truthfulness + cover/edit management are wired.
+- History redesign + listening-event edit/delete: **Phase D** (see above).
+- Human pixel-level design acceptance for Phase C still pending.
