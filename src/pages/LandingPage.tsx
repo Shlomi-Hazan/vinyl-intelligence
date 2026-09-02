@@ -1,13 +1,58 @@
-import { useCallback } from 'react'
+import { useCallback, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Logo } from '../brand/Logo.tsx'
 import { VinAvatar } from '../brand/VinAvatar.tsx'
 import { HeroVinyl } from '../brand/HeroVinyl.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { Icon } from '../ui/Icon.tsx'
+import { useReveal } from '../app/useReveal.ts'
 import { useAuth } from '../auth/useAuth.ts'
 
 const HOW_ID = 'how-it-works'
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+function scrollToId(id: string) {
+  const target = document.getElementById(id)
+  target?.scrollIntoView({
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    block: 'start',
+  })
+  target?.focus?.()
+}
+
+function RevealSection({
+  num,
+  title,
+  children,
+  visual,
+}: {
+  num: string
+  title: string
+  children: ReactNode
+  visual: ReactNode
+}) {
+  const { ref, revealed } = useReveal<HTMLElement>()
+  return (
+    <section
+      ref={ref}
+      className="vi-lsection vi-reveal"
+      data-revealed={revealed}
+    >
+      <div className="vi-lsection__text">
+        <span className="vi-lsection__num">{num}</span>
+        <h2>{title}</h2>
+        {children}
+      </div>
+      <div className="vi-lsection__visual">{visual}</div>
+    </section>
+  )
+}
 
 /*
  * Phase B: the full cinematic public landing. Reuses the Phase A tokens,
@@ -22,14 +67,7 @@ export function LandingPage() {
 
   const scrollToHow = useCallback((event: React.MouseEvent) => {
     event.preventDefault()
-    const target = document.getElementById(HOW_ID)
-    target?.scrollIntoView({
-      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-        ? 'auto'
-        : 'smooth',
-      block: 'start',
-    })
-    target?.focus?.()
+    scrollToId(HOW_ID)
   }, [])
 
   return (
@@ -65,29 +103,28 @@ export function LandingPage() {
             and choose what to play, without translating a feeling into filters.
           </p>
           <div className="vi-hero__cta">
-            <Link to={primaryTo} className="vi-btn vi-btn--primary">
+            <Link to={primaryTo} className="vi-btn vi-btn--primary vi-btn--lg">
               {primaryLabel}
             </Link>
-            <a href={`#${HOW_ID}`} className="vi-btn vi-btn--secondary" onClick={scrollToHow}>
+            <a href={`#${HOW_ID}`} className="vi-btn vi-btn--secondary vi-btn--lg" onClick={scrollToHow}>
               See how it works
             </a>
           </div>
         </div>
         <HeroVinyl />
+        <a href={`#${HOW_ID}`} className="vi-scrollcue" onClick={scrollToHow} aria-label="Scroll to how it works">
+          <span>Discover</span>
+          <span className="vi-scrollcue__chevron" aria-hidden="true">
+            <Icon name="chevron-right" size={18} />
+          </span>
+        </a>
       </section>
 
       <div className="vi-landing__sections" id={HOW_ID} tabIndex={-1}>
-        <section className="vi-lsection">
-          <div className="vi-lsection__text">
-            <span className="vi-lsection__num">01</span>
-            <h2>Your collection, alive</h2>
-            <p>
-              Every record you add becomes a card in a warm, browsable shelf.
-              Search by artist or title, filter by genre and decade, sort by
-              rating, or surface what you have not played in a while.
-            </p>
-          </div>
-          <div className="vi-lsection__visual">
+        <RevealSection
+          num="01"
+          title="Your collection, alive"
+          visual={
             <div className="vi-mini-grid">
               {[
                 ['Nightfall', 'Kora Vale'],
@@ -100,44 +137,40 @@ export function LandingPage() {
                 <AlbumArtwork key={title} artist={artist} title={title} seedId={title} size="grid" />
               ))}
             </div>
-          </div>
-        </section>
+          }
+        >
+          <p>
+            Every record you add becomes a card in a warm, browsable shelf.
+            Search by artist or title, filter by genre and decade, sort by
+            rating, or surface what you have not played in a while.
+          </p>
+        </RevealSection>
 
-        <section className="vi-lsection">
-          <div className="vi-lsection__text">
-            <span className="vi-lsection__num">02</span>
-            <h2>Ask VIN</h2>
-            <p>
-              VIN - the Vinyl Intelligence Navigator - reads a plain-language
-              mood ("something warm, older, that I have not played lately") and
-              recommends only from records you actually own, with a short reason
-              grounded in your ratings and listening history.
-            </p>
-          </div>
-          <div className="vi-lsection__visual">
+        <RevealSection
+          num="02"
+          title="Ask VIN"
+          visual={
             <div className="vi-vin-quote">
-              <VinAvatar size={72} />
+              <VinAvatar size={110} />
               <blockquote>
                 "I had a long day. Give me something mellow from the 70s I have
                 not heard recently."
               </blockquote>
               <p className="vi-hint">Recommends only from your collection.</p>
             </div>
-          </div>
-        </section>
+          }
+        >
+          <p>
+            VIN - the Vinyl Intelligence Navigator - reads a plain-language mood
+            and recommends only from records you actually own, with a short
+            reason grounded in your ratings and listening history.
+          </p>
+        </RevealSection>
 
-        <section className="vi-lsection">
-          <div className="vi-lsection__text">
-            <span className="vi-lsection__num">03</span>
-            <h2>Scan a cover</h2>
-            <p>
-              Photograph a sleeve. VIN reads the cover for clues, a real music
-              catalog returns candidate releases, and <strong>you confirm the
-              match</strong> before anything is saved. An uncertain guess is
-              never silently added.
-            </p>
-          </div>
-          <div className="vi-lsection__visual">
+        <RevealSection
+          num="03"
+          title="Scan a cover"
+          visual={
             <div className="vi-steps">
               {[
                 ['1', 'Photo of the cover'],
@@ -151,21 +184,20 @@ export function LandingPage() {
                 </div>
               ))}
             </div>
-          </div>
-        </section>
+          }
+        >
+          <p>
+            Photograph a sleeve. VIN reads the cover for clues, a real music
+            catalog returns candidate releases, and <strong>you confirm the
+            match</strong> before anything is saved. An uncertain guess is never
+            silently added.
+          </p>
+        </RevealSection>
 
-        <section className="vi-lsection">
-          <div className="vi-lsection__text">
-            <span className="vi-lsection__num">04</span>
-            <h2>Rediscover</h2>
-            <p>
-              Favourites, ratings, notes, and every "mark played" build a picture
-              of your listening. Vinyl Intelligence uses it to resurface the
-              records you own but keep forgetting - the least-recently-played
-              favourite, the album you have never spun.
-            </p>
-          </div>
-          <div className="vi-lsection__visual">
+        <RevealSection
+          num="04"
+          title="Rediscover"
+          visual={
             <div className="vi-mini-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
               {[
                 ['Forgotten favourite', 'star'],
@@ -175,23 +207,27 @@ export function LandingPage() {
               ].map(([label, icon]) => (
                 <div className="vi-step" key={label}>
                   <span className="vi-step__dot">
-                    <Icon name={icon as 'star'} size={13} />
+                    <Icon name={icon as 'star'} size={14} />
                   </span>
                   {label}
                 </div>
               ))}
             </div>
-          </div>
-        </section>
+          }
+        >
+          <p>
+            Favourites, ratings, notes, and every "mark played" build a picture
+            of your listening. Vinyl Intelligence uses it to resurface the
+            records you own but keep forgetting.
+          </p>
+        </RevealSection>
       </div>
 
       <section className="vi-landing__final">
-        <Logo variant="mark" size={44} />
+        <Logo variant="mark" size={64} />
         <h2>Bring your shelf to life.</h2>
-        <p className="vi-hint">
-          Free to start. Your collection, your data, your next record.
-        </p>
-        <Link to={primaryTo} className="vi-btn vi-btn--primary">
+        <p className="vi-hint">Your collection. Your data. Your next record.</p>
+        <Link to={primaryTo} className="vi-btn vi-btn--primary vi-btn--lg">
           {primaryLabel}
         </Link>
       </section>

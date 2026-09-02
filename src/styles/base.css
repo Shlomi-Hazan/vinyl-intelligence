@@ -2,7 +2,7 @@
  * Base element styling on the design tokens. Loaded after the legacy
  * src/styles.css so the whole app adopts the warm/dark ground; legacy panels
  * (Collection / Catalog / Curator) keep working transitionally until their
- * pages are rebuilt in Phases C-D.
+ * pages are rebuilt.
  */
 
 *,
@@ -31,11 +31,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: var(--fs-body);
+  line-height: 1.62;
 }
 
-/* Warm cinematic ground: a faint top spotlight + fixed grain, both cheap. */
+/* Warm cinematic ground: a top spotlight + fixed grain, both cheap. */
 body::before {
   content: '';
   position: fixed;
@@ -43,9 +43,9 @@ body::before {
   z-index: -2;
   background:
     radial-gradient(
-      1200px 600px at 50% -10%,
-      rgba(198, 116, 62, 0.1),
-      transparent 60%
+      1400px 720px at 50% -12%,
+      rgba(205, 122, 66, 0.12),
+      transparent 62%
     ),
     var(--bg);
   pointer-events: none;
@@ -56,7 +56,7 @@ body::after {
   position: fixed;
   inset: 0;
   z-index: -1;
-  opacity: 0.025;
+  opacity: 0.03;
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -67,9 +67,20 @@ h3,
 h4 {
   font-family: var(--font-display);
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.14;
   margin: 0;
   color: var(--text);
+  letter-spacing: -0.005em;
+}
+
+h1 {
+  font-size: var(--fs-h1);
+}
+h2 {
+  font-size: var(--fs-h2);
+}
+h3 {
+  font-size: var(--fs-h3);
 }
 
 p {
@@ -103,13 +114,13 @@ kbd,
 samp,
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.85em;
+  font-size: 0.9em;
 }
 
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 [hidden] {
@@ -147,16 +158,19 @@ samp,
   text-decoration: none;
 }
 
-/* Legacy transitional overrides: keep pre-redesign panels legible on dark. */
-.field-hint {
+/* --- shared eyebrow / hint / status text (readable, not whispered) --- */
+.field-hint,
+.vi-hint {
   color: var(--text-muted);
+  font-size: var(--fs-sm);
 }
 
-.eyebrow {
+.eyebrow,
+.vi-eyebrow {
   color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
+  letter-spacing: 0.11em;
+  font-size: var(--fs-label);
   font-weight: 600;
 }
 
@@ -170,14 +184,16 @@ samp,
 
 .lede {
   color: var(--text-muted);
+  font-size: 1.08rem;
 }
 
 .account-line {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--fs-meta);
 }
 
+/* Legacy transitional overrides: keep pre-redesign panels legible on dark. */
 .legacy-host input,
 .legacy-host textarea,
 .legacy-host select {
@@ -185,15 +201,18 @@ samp,
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  padding: 0.6rem 0.75rem;
+  font-size: var(--fs-body);
 }
 
 .legacy-host button {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 1rem;
+  font-size: var(--fs-button);
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -207,11 +226,20 @@ samp,
   border-color: var(--border);
   background: var(--surface);
   border-radius: var(--radius-md);
+  padding: var(--space-4);
 }
 
-.legacy-host h1,
+.legacy-host h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+}
 .legacy-host h2 {
   font-family: var(--font-display);
+  font-size: var(--fs-h2);
+}
+.legacy-host h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
 }
 
 @media (prefers-reduced-motion: reduce) {

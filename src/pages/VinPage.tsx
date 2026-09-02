@@ -1,33 +1,69 @@
+import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { VinAvatar } from '../brand/VinAvatar.tsx'
 import { CuratorPanel } from '../curator/CuratorPanel.tsx'
 import { useClient } from '../app/useClient.ts'
+import { useCollectionData } from '../app/useCollectionData.ts'
+
+type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
 
 /*
  * Phase A/B: hosts the M9 single-turn recommendation + M10 bounded refinement
  * exactly as-is. NO change to the curator client, contracts, prompts, schemas,
  * models, rate limits, telemetry, or owned-ID invariant.
  *
- * Phase B: accepts a client-only `prefill` from router state (the dashboard
- * "Quick VIN" jump). It only pre-fills the textarea - no submit, no model call.
- * The premium curator conversation redesign + 5-state Vinny are Phase D.
+ * Phase B correction: a focused two-area curator composition - the request
+ * lives on the left, VIN + real collection context + the current curator state
+ * on the right. `prefill` (dashboard Quick VIN) is a client-only textarea seed;
+ * no submit, no model call. `onStatusChange` is a UI-only signal used to give
+ * VIN a "digging through your crate" thinking state.
  */
 export function VinPage() {
   const { client } = useClient()
   const location = useLocation()
+  const { items, status: collectionStatus } = useCollectionData()
+  const [panelStatus, setPanelStatus] = useState<PanelStatus>('idle')
+
   const state = location.state as { prefill?: unknown } | null
   const prefill =
     typeof state?.prefill === 'string' ? state.prefill.slice(0, 800) : undefined
 
+  const thinking = panelStatus === 'loading'
+  const ownedCount = collectionStatus === 'ready' ? items.length : null
+
+  const stateCopy = thinking
+    ? 'VIN is digging through your crate...'
+    : panelStatus === 'error'
+      ? 'That did not work - try again.'
+      : panelStatus === 'done'
+        ? "VIN's pick is ready."
+        : 'Describe a mood and VIN will choose.'
+
   return (
-    <div className="vi-page legacy-host">
-      <PageHeader
-        eyebrow="AI curator"
-        title="Ask VIN"
-        actions={<VinAvatar size={40} />}
-      />
-      <CuratorPanel client={client} initialRequest={prefill} />
+    <div className="vi-page vi-page--wide legacy-host">
+      <PageHeader eyebrow="AI curator" title="Ask VIN" />
+
+      <div className="vi-vinpage">
+        <div className="vi-vinpage__main">
+          <CuratorPanel
+            client={client}
+            initialRequest={prefill}
+            onStatusChange={setPanelStatus}
+          />
+        </div>
+
+        <aside className="vi-vinpage__aside" aria-live="polite">
+          <VinAvatar size={132} state={thinking ? 'thinking' : 'idle'} />
+          <strong>VIN</strong>
+          <p>
+            Your Vinyl Intelligence Navigator. VIN recommends only from records
+            you own
+            {ownedCount !== null ? ` - ${ownedCount} in your collection` : ''}.
+          </p>
+          <p className="vi-vinpage__state">{stateCopy}</p>
+        </aside>
+      </div>
     </div>
   )
 }

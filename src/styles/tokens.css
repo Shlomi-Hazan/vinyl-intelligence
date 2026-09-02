@@ -1,7 +1,8 @@
 /*
  * Vinyl Intelligence design tokens - Visual Experience pass.
- * Human-approved 2026-09-01. One warm/dark theme with selective cream surfaces.
- * See docs/specs/0012-visual-experience-product-identity.md section 5.
+ * Human-approved 2026-09-01; Phase B visual correction 2026-09-02
+ * (stronger type scale + contrast + tactile surfaces).
+ * One warm/dark theme with selective cream surfaces.
  */
 
 :root {
@@ -10,38 +11,49 @@
   /* --- surfaces --- */
   --bg: #141210;
   --bg-inset: #100e0c;
-  --surface: #1e1b18;
-  --surface-2: #272320;
+  --surface: #1f1b18;
+  --surface-2: #2a2521;
+  --surface-3: #332d28;
   --surface-cream: #f4ede1;
 
-  /* --- text --- */
-  --text: #f2e9dc;
-  --text-muted: #a79d8e;
-  --text-faint: #776e60;
+  /* --- text (contrast raised for legibility on the dark ground) --- */
+  --text: #f4ecdf;
+  --text-muted: #bcb2a2;
+  --text-faint: #8f8676;
   --text-on-cream: #241e16;
 
   /* --- accents --- */
-  --accent: #c6743e;
-  --accent-hover: #d8854b;
-  --accent-ink: #1b0f07;
-  --accent-2: #2f5d50;
-  --gold: #c9a34e;
+  --accent: #cd7a42;
+  --accent-hover: #e08b4e;
+  --accent-ink: #17100a;
+  --accent-2: #3a6f60;
+  --accent-2-hover: #47836f;
+  --gold: #d3ac57;
 
   /* --- status --- */
-  --success: #5ca37e;
-  --warning: #c9a34e;
-  --danger: #d06a60;
-  --danger-surface: #3a211e;
+  --success: #66b088;
+  --warning: #d3ac57;
+  --danger: #e0776b;
+  --danger-surface: #40231f;
 
   /* --- warm translucent ivory borders (never cold grey) --- */
-  --border: rgba(242, 233, 220, 0.1);
-  --border-strong: rgba(242, 233, 220, 0.2);
-  --border-accent: rgba(198, 116, 62, 0.5);
+  --border: rgba(244, 236, 223, 0.12);
+  --border-strong: rgba(244, 236, 223, 0.24);
+  --border-accent: rgba(205, 122, 66, 0.55);
 
   /* --- shadows (warm black, layered) --- */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.3);
-  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 36px rgba(0, 0, 0, 0.36);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.5), 0 22px 50px rgba(0, 0, 0, 0.44);
+  --shadow-modal: 0 28px 72px rgba(0, 0, 0, 0.6);
+
+  /* --- vinyl-groove surface texture (subtle, tactile) --- */
+  --groove:
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(244, 236, 223, 0.028) 0 1px,
+      transparent 1px 3px
+    );
 
   /* --- typography --- */
   --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman',
@@ -50,6 +62,17 @@
     Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo,
     Consolas, monospace;
+
+  /* --- type scale (desktop-comfortable, responsive) --- */
+  --fs-display: clamp(2.9rem, 2rem + 4vw, 5rem);
+  --fs-h1: clamp(1.95rem, 1.5rem + 1.7vw, 2.7rem);
+  --fs-h2: clamp(1.35rem, 1.1rem + 0.9vw, 1.8rem);
+  --fs-h3: clamp(1.08rem, 1rem + 0.35vw, 1.25rem);
+  --fs-body: clamp(1rem, 0.96rem + 0.2vw, 1.075rem);
+  --fs-sm: 0.9375rem;
+  --fs-label: 0.8125rem;
+  --fs-meta: 0.875rem;
+  --fs-button: 0.98rem;
 
   /* --- spacing (4px base) --- */
   --space-1: 0.25rem;
@@ -60,27 +83,29 @@
   --space-6: 2rem;
   --space-7: 3rem;
   --space-8: 4rem;
+  --space-9: 6rem;
 
   /* --- radius --- */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
   --radius-full: 999px;
 
   /* --- layout --- */
-  --width-prose: 40rem;
-  --width-content: 72rem;
-  --width-wide: 88rem;
-  --page-gutter: clamp(1rem, 4vw, 2.5rem);
-  --sidebar-w: 240px;
-  --sidebar-rail-w: 64px;
-  --topbar-h: 60px;
-  --bottomnav-h: 60px;
+  --width-prose: 42rem;
+  --width-content: 74rem;
+  --width-wide: 90rem;
+  --page-gutter: clamp(1.1rem, 4vw, 3rem);
+  --sidebar-w: 264px;
+  --sidebar-rail-w: 72px;
+  --topbar-h: 68px;
+  --bottomnav-h: 62px;
 
-  /* --- motion (foundation; full pass is Phase E) --- */
-  --dur-fast: 120ms;
-  --dur: 200ms;
-  --dur-slow: 320ms;
+  /* --- motion --- */
+  --dur-fast: 130ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 

@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
@@ -179,18 +179,26 @@ describe('auth and profile workflow (routed)', () => {
     expect(screen.getByLabelText('Display name')).toBeInTheDocument()
   })
 
-  it('shows the collection host at /collection for an authenticated user', async () => {
+  it('shows a collection-first empty state at /collection (not the CRUD form)', async () => {
+    const user = userEvent.setup()
     renderApp({
       client: createFakeClient({ session: sessionA, profile: profileA }),
       route: '/collection',
     })
 
-    expect(await screen.findByText('Your records')).toBeInTheDocument()
+    // collection-first: an empty shelf with truthful actions, no big form
+    expect(await screen.findByText('Your shelf is empty')).toBeInTheDocument()
+    const onboard = screen
+      .getByText('Your shelf is empty')
+      .closest('.vi-onboard') as HTMLElement
     expect(
-      await screen.findByText(
-        'Your collection is empty. Add a record manually to start the shelf.',
-      ),
-    ).toBeInTheDocument()
+      within(onboard).getByRole('link', { name: 'Add a record' }),
+    ).toHaveAttribute('href', '/discover')
+    expect(screen.queryByLabelText('Artist')).not.toBeInTheDocument()
+
+    // manual CRUD is still available, behind a disclosure
+    await user.click(screen.getByRole('button', { name: 'Add a record manually' }))
+    expect(await screen.findByLabelText('Artist')).toBeInTheDocument()
   })
 
   it('shows the catalog search host at /discover', async () => {
@@ -288,7 +296,7 @@ describe('auth and profile workflow (routed)', () => {
 
     renderApp({ client, route: '/collection' })
 
-    expect(await screen.findByText('Your records')).toBeInTheDocument()
+    expect(await screen.findByText('Your shelf is empty')).toBeInTheDocument()
 
     act(() => {
       client.__emitAuthStateChange(null)
@@ -297,7 +305,7 @@ describe('auth and profile workflow (routed)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
-    expect(screen.queryByText('Your records')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your shelf is empty')).not.toBeInTheDocument()
   })
 
   it('keeps the profile visible after a failed sign-out and allows retry', async () => {
@@ -401,6 +409,9 @@ describe('auth and profile workflow (routed)', () => {
 
     renderApp({ client, route: '/collection' })
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Add a record manually' }),
+    )
     await user.type(await screen.findByLabelText('Artist'), 'Draft by user A')
     expect(screen.getByLabelText('Artist')).toHaveValue('Draft by user A')
 
@@ -408,9 +419,14 @@ describe('auth and profile workflow (routed)', () => {
       client.__emitAuthStateChange(sessionB)
     })
 
+    // the whole user-scoped subtree remounts: the manual disclosure resets and
+    // user A's draft is not shown to user B
     await waitFor(() => {
-      expect(screen.getByLabelText('Artist')).toHaveValue('')
+      expect(
+        screen.getByRole('button', { name: 'Add a record manually' }),
+      ).toBeInTheDocument()
     })
+    expect(screen.queryByLabelText('Artist')).not.toBeInTheDocument()
     expect(
       consoleError.mock.calls.some((call) =>
         String(call[0]).includes('same key'),

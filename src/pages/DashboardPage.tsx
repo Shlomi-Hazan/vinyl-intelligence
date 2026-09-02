@@ -3,14 +3,16 @@ import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { VinAvatar } from '../brand/VinAvatar.tsx'
+import { EmptyCrate } from '../brand/EmptyCrate.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { Button, Input } from '../ui/primitives.tsx'
 import { ErrorState, SkeletonAlbumCard, SkeletonStat } from '../ui/feedback.tsx'
 import { useAuth } from '../auth/useAuth.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
 import {
-  dashboardStats,
+  collectionStats,
   decadeDistribution,
+  listeningStats,
   recentlyAdded,
   recentlyPlayed,
   rediscover,
@@ -40,62 +42,66 @@ function AlbumMini({ item }: { item: CollectionItemWithRelease }) {
   )
 }
 
-function AlbumRail({
-  title,
-  items,
-  emptyText,
-  viewAllTo,
+function Stat({
+  label,
+  value,
+  muted,
 }: {
-  title: string
-  items: CollectionItemWithRelease[]
-  emptyText: string
-  viewAllTo?: string
+  label: string
+  value: string | number
+  muted?: boolean
 }) {
   return (
-    <section className="vi-dash__section">
-      <div className="vi-dash__section-head">
-        <h2>{title}</h2>
-        {viewAllTo && items.length > 0 ? <Link to={viewAllTo}>View all</Link> : null}
+    <div className="vi-stat">
+      <div className={muted ? 'vi-stat__value vi-stat__value--muted' : 'vi-stat__value'}>
+        {value}
       </div>
-      {items.length === 0 ? (
-        <p className="vi-hint">{emptyText}</p>
-      ) : (
-        <div className="vi-dash-albumrow">
-          {items.map((item) => (
-            <AlbumMini key={item.id} item={item} />
-          ))}
-        </div>
-      )}
-    </section>
+      <div className="vi-stat__label">{label}</div>
+    </div>
   )
 }
 
 export function DashboardPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const { items, events, status, error, eventsStatus, eventsError, reload } =
-    useCollectionData()
+  const {
+    items,
+    events,
+    status,
+    error,
+    eventsStatus,
+    eventsError,
+    reload,
+    reloadEvents,
+  } = useCollectionData()
   const [quickVin, setQuickVin] = useState('')
 
   const name = profile?.display_name?.trim()
   // Fixed at mount: the stats do not need to tick, and this keeps render pure.
   const [now] = useState(() => Date.now())
 
-  const stats = useMemo(
-    () => dashboardStats(items, events, now),
-    [items, events, now],
-  )
+  const collStats = useMemo(() => collectionStats(items), [items])
   const added = useMemo(() => recentlyAdded(items, 6), [items])
-  const played = useMemo(
-    () => recentlyPlayed(items, events, 6).map((e) => e.item),
-    [items, events],
-  )
-  const forgotten = useMemo(
-    () => rediscover(items, events, now, 4),
-    [items, events, now],
-  )
   const decades = useMemo(() => decadeDistribution(items), [items])
   const genres = useMemo(() => topGenres(items, 5), [items])
+
+  // ---- listening-derived values: ONLY computed when events are truly loaded.
+  // Absence of loaded event data is NOT evidence that nothing was ever played,
+  // so we never turn `events === []` (loading / failure) into analytics.
+  const eventsReady = eventsStatus === 'ready'
+  const listenStats = useMemo(
+    () => (eventsReady ? listeningStats(items, events, now) : null),
+    [eventsReady, items, events, now],
+  )
+  const played = useMemo(
+    () =>
+      eventsReady ? recentlyPlayed(items, events, 6).map((e) => e.item) : [],
+    [eventsReady, items, events],
+  )
+  const forgotten = useMemo(
+    () => (eventsReady ? rediscover(items, events, now, 4) : []),
+    [eventsReady, items, events, now],
+  )
 
   function submitQuickVin(event: FormEvent) {
     event.preventDefault()
@@ -125,18 +131,21 @@ export function DashboardPage() {
 
       {emptyCollection ? (
         <div className="vi-onboard">
-          <VinAvatar size={64} />
-          <h2>Start your library</h2>
+          <div className="vi-onboard__figure">
+            <EmptyCrate size={300} />
+            <VinAvatar size={130} />
+          </div>
+          <h2>Your crate is empty</h2>
           <p>
             Add the records you own - by catalog search or by scanning a cover -
-            and your dashboard fills with your collection, your listening, and
-            VIN's picks.
+            and this page fills with your collection, your listening, and VIN's
+            picks.
           </p>
           <div className="vi-onboard__cta">
-            <Link to="/discover" className="vi-btn vi-btn--primary">
+            <Link to="/discover" className="vi-btn vi-btn--primary vi-btn--lg">
               Add a record
             </Link>
-            <Link to="/scan" className="vi-btn vi-btn--secondary">
+            <Link to="/scan" className="vi-btn vi-btn--secondary vi-btn--lg">
               Scan a cover
             </Link>
           </div>
@@ -155,26 +164,52 @@ export function DashboardPage() {
               </>
             ) : (
               <>
-                <Stat label="Records" value={stats.collectionSize} />
-                <Stat label="Favorites" value={stats.favorites} />
-                <Stat label="Played (30 days)" value={stats.playedInWindow} />
-                <Stat label="Never played" value={stats.neverPlayed} />
+                <Stat label="Records" value={collStats.collectionSize} />
+                <Stat label="Favorites" value={collStats.favorites} />
+                {listenStats ? (
+                  <>
+                    <Stat label="Played (30 days)" value={listenStats.playedInWindow} />
+                    <Stat label="Never played" value={listenStats.neverPlayed} />
+                  </>
+                ) : eventsStatus === 'error' ? (
+                  <>
+                    <Stat label="Played (30 days)" value="--" muted />
+                    <Stat label="Never played" value="--" muted />
+                  </>
+                ) : (
+                  <>
+                    <SkeletonStat />
+                    <SkeletonStat />
+                  </>
+                )}
               </>
             )}
           </section>
+
+          {eventsStatus === 'error' && populated ? (
+            <p className="vi-error-text" role="alert">
+              Listening history is unavailable, so play counts are hidden.{' '}
+              <button
+                type="button"
+                className="vi-btn vi-btn--ghost vi-btn--sm"
+                onClick={reloadEvents}
+              >
+                Retry
+              </button>
+            </p>
+          ) : null}
 
           {populated ? (
             <div className="vi-dash__grid">
               <div className="vi-dash__col">
                 <div className="vi-quickvin">
                   <div className="vi-quickvin__head">
-                    <VinAvatar size={36} />
+                    <VinAvatar size={56} />
                     <div>
-                      <strong style={{ fontFamily: 'var(--font-display)' }}>
-                        Quick VIN
-                      </strong>
+                      <strong>Quick VIN</strong>
                       <p className="vi-hint" style={{ margin: 0 }}>
-                        What are you in the mood for?
+                        What are you in the mood for? VIN picks from your own
+                        collection.
                       </p>
                     </div>
                   </div>
@@ -203,22 +238,34 @@ export function DashboardPage() {
                   </form>
                 </div>
 
-                <AlbumRail
-                  title="Recently added"
-                  items={added}
-                  emptyText="Nothing added yet."
-                  viewAllTo="/collection"
-                />
+                <section className="vi-dash__section">
+                  <div className="vi-dash__section-head">
+                    <h2>Recently added</h2>
+                    {added.length > 0 ? <Link to="/collection">View all</Link> : null}
+                  </div>
+                  {added.length === 0 ? (
+                    <p className="vi-hint">Nothing added yet.</p>
+                  ) : (
+                    <div className="vi-dash-albumrow">
+                      {added.map((item) => (
+                        <AlbumMini key={item.id} item={item} />
+                      ))}
+                    </div>
+                  )}
+                </section>
 
                 <section className="vi-dash__section">
                   <div className="vi-dash__section-head">
                     <h2>Recently played</h2>
-                    {played.length > 0 ? <Link to="/history">History</Link> : null}
+                    {eventsReady && played.length > 0 ? (
+                      <Link to="/history">History</Link>
+                    ) : null}
                   </div>
                   {eventsStatus === 'error' ? (
-                    <p className="vi-error-text" role="alert">
-                      {eventsError ?? 'Could not load your listening history.'}
-                    </p>
+                    <ErrorState
+                      message={eventsError ?? 'Could not load your listening history.'}
+                      onRetry={reloadEvents}
+                    />
                   ) : eventsStatus === 'loading' ? (
                     <div className="vi-dash-albumrow">
                       <SkeletonAlbumCard />
@@ -245,36 +292,56 @@ export function DashboardPage() {
                   <h2>Quick actions</h2>
                   <div className="vi-quickactions">
                     <Link to="/discover" className="vi-quickaction">
-                      <Icon name="plus" size={18} />
+                      <Icon name="plus" size={20} />
                       <strong>Add record</strong>
                       <span>Catalog search</span>
                     </Link>
                     <Link to="/scan" className="vi-quickaction">
-                      <Icon name="scan" size={18} />
+                      <Icon name="scan" size={20} />
                       <strong>Scan cover</strong>
                       <span>Photo identify</span>
                     </Link>
                     <Link to="/vin" className="vi-quickaction">
-                      <Icon name="vin" size={18} />
+                      <Icon name="vin" size={20} />
                       <strong>Ask VIN</strong>
                       <span>From your own</span>
                     </Link>
                   </div>
                 </section>
 
-                <AlbumRail
-                  title="Rediscover"
-                  items={forgotten}
-                  emptyText="Play a few more records and VIN will resurface the ones you forget."
-                />
+                <section className="vi-dash__section">
+                  <h2>Rediscover</h2>
+                  {eventsStatus === 'error' ? (
+                    <ErrorState
+                      message="Rediscover needs your listening history, which is unavailable."
+                      onRetry={reloadEvents}
+                    />
+                  ) : eventsStatus === 'loading' ? (
+                    <div className="vi-dash-albumrow">
+                      <SkeletonAlbumCard />
+                      <SkeletonAlbumCard />
+                    </div>
+                  ) : forgotten.length === 0 ? (
+                    <p className="vi-hint">
+                      Play a few more records and VIN will resurface the ones you
+                      forget.
+                    </p>
+                  ) : (
+                    <div className="vi-dash-albumrow">
+                      {forgotten.map((item) => (
+                        <AlbumMini key={item.id} item={item} />
+                      ))}
+                    </div>
+                  )}
+                </section>
 
-                {decades.length > 0 || genres.length > 0 ? (
-                  <section className="vi-dash__section">
-                    <h2>Your collection at a glance</h2>
+                <section className="vi-dash__section">
+                  <h2>Your collection at a glance</h2>
+                  {decades.length > 0 || genres.length > 0 ? (
                     <div className="vi-insight">
                       {decades.length > 0 ? (
                         <div>
-                          <p className="vi-hint" style={{ marginBottom: 'var(--space-2)' }}>
+                          <p className="vi-hint" style={{ marginBottom: 'var(--space-3)' }}>
                             By decade
                           </p>
                           <div className="vi-bars">
@@ -295,7 +362,7 @@ export function DashboardPage() {
                       ) : null}
                       {genres.length > 0 ? (
                         <div>
-                          <p className="vi-hint" style={{ marginBottom: 'var(--space-2)' }}>
+                          <p className="vi-hint" style={{ marginBottom: 'var(--space-3)' }}>
                             Top genres
                           </p>
                           <div className="vi-genre-tags">
@@ -308,30 +375,18 @@ export function DashboardPage() {
                         </div>
                       ) : null}
                     </div>
-                  </section>
-                ) : (
-                  <section className="vi-dash__section">
-                    <h2>Your collection at a glance</h2>
+                  ) : (
                     <p className="vi-hint">
                       Add a few more records with release years and genres to see
                       your collection's shape.
                     </p>
-                  </section>
-                )}
+                  )}
+                </section>
               </div>
             </div>
           ) : null}
         </div>
       ) : null}
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="vi-stat">
-      <div className="vi-stat__value">{value}</div>
-      <div className="vi-stat__label">{label}</div>
     </div>
   )
 }

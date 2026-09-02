@@ -74,24 +74,25 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
 
       <nav className="vi-sidebar" aria-label="Primary">
-        <div className="vi-sidebar__brand">
-          <Logo variant="mark" size={32} />
+        <NavLink to="/dashboard" className="vi-sidebar__brand" aria-label="Vinyl Intelligence, dashboard">
+          <Logo variant="mark" size={38} />
           <span
             className="vi-sidebar__brand-text"
-            style={{ fontFamily: 'var(--font-display)', fontWeight: 500 }}
+            style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: '1.05rem' }}
           >
             Vinyl Intelligence
           </span>
-        </div>
+        </NavLink>
 
         <button
           type="button"
           className="vi-collapse-btn"
           aria-pressed={rail}
-          aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={rail ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
           onClick={() => setRail((r) => !r)}
         >
-          <Icon name="panel-left" size={16} />
+          <Icon name="panel-left" size={15} />
+          <span className="vi-collapse-btn__label">{rail ? 'Expand' : 'Collapse'}</span>
         </button>
 
         <div className="vi-sidebar__nav">
@@ -102,7 +103,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button type="button" className="vi-sidebar__account" onClick={() => void signOut()}>
             <span className="vi-avatar">{initials(profile?.display_name ?? null, user?.email ?? null)}</span>
             <span className="vi-sidebar__account-text">
-              {profile?.display_name ?? user?.email ?? 'Account'}
+              <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+                {profile?.display_name ?? user?.email ?? 'Account'}
+              </span>
               <br />
               <span style={{ color: 'var(--text-faint)' }}>Sign out</span>
             </span>
@@ -115,8 +118,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="vi-topbar__context">{title}</span>
           <span className="vi-topbar__spacer" />
           <NavLink to="/discover" className="vi-btn vi-btn--secondary vi-btn--sm">
-            <Icon name="plus" size={15} />
-            Add
+            <Icon name="plus" size={16} />
+            Add a record
           </NavLink>
           <div className="vi-topbar__user">
             <span className="vi-avatar" aria-hidden="true">

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
@@ -23,6 +23,12 @@ type CuratorPanelProps = {
    * request/response contracts are unchanged.
    */
   initialRequest?: string
+  /**
+   * Optional UI-only signal so a host (e.g. the /vin page) can show a matching
+   * mascot state. It reports the initial-request panel status only; it does not
+   * change any curator behaviour or contract.
+   */
+  onStatusChange?: (status: PanelStatus) => void
 }
 
 type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
@@ -87,7 +93,11 @@ function OkCards({ result }: { result: OkResult }) {
   )
 }
 
-export function CuratorPanel({ client, initialRequest }: CuratorPanelProps) {
+export function CuratorPanel({
+  client,
+  initialRequest,
+  onStatusChange,
+}: CuratorPanelProps) {
   const [request, setRequest] = useState(() => initialRequest ?? '')
   const [status, setStatus] = useState<PanelStatus>('idle')
   const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
@@ -101,6 +111,10 @@ export function CuratorPanel({ client, initialRequest }: CuratorPanelProps) {
 
   const trimmed = request.trim()
   const pending = status === 'loading'
+
+  useEffect(() => {
+    onStatusChange?.(status)
+  }, [status, onStatusChange])
 
   function resetConversation() {
     setConversation(null)

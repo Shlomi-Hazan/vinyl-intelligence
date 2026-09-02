@@ -21,9 +21,8 @@ export function AuthPage() {
           className="vi-authpage__brand-line"
           style={{
             fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(1.8rem, 3vw, 2.6rem)',
-            lineHeight: 1.1,
-            color: 'var(--text)',
+            fontSize: 'clamp(2rem, 3.2vw, 3rem)',
+            lineHeight: 1.08,
           }}
         >
           Your collection, made intelligent.
@@ -32,8 +31,8 @@ export function AuthPage() {
           Sign in to browse your shelf, scan a cover to add a record, and ask
           VIN what to play - always from music you own.
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <VinAvatar size={40} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+          <VinAvatar size={72} />
           <p className="vi-hint" style={{ margin: 0 }}>
             VIN is ready the moment you are in.
           </p>
@@ -41,8 +40,8 @@ export function AuthPage() {
       </div>
 
       <div className="vi-authpage__mobilebar">
-        <Logo variant="mark" size={30} />
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500 }}>
+        <Logo variant="mark" size={34} />
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: '1.05rem' }}>
           Vinyl Intelligence
         </span>
       </div>

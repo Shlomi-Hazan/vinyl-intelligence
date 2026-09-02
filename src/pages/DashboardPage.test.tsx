@@ -102,8 +102,14 @@ describe('DashboardPage', () => {
     loadListeningEvents.mockResolvedValue([])
     renderApp({ client: authedClient(), route: '/dashboard' })
 
-    expect(await screen.findByText('Start your library')).toBeInTheDocument()
+    expect(await screen.findByText('Your crate is empty')).toBeInTheDocument()
+    const onboard = screen.getByText('Your crate is empty').closest('.vi-onboard') as HTMLElement
+    expect(
+      within(onboard).getByRole('link', { name: 'Add a record' }),
+    ).toHaveAttribute('href', '/discover')
+    // no zero-heavy analytics for an established-looking library
     expect(screen.queryByText('Records')).not.toBeInTheDocument()
+    expect(screen.queryByText('Never played')).not.toBeInTheDocument()
   })
 
   it('renders exact stats from fixed fixtures', async () => {
@@ -238,21 +244,68 @@ describe('DashboardPage', () => {
     expect(requestCuratorRecommendation).not.toHaveBeenCalled()
   })
 
+  it('never fabricates listening analytics while events are still loading', async () => {
+    loadCollection.mockResolvedValue([makeItem('01'), makeItem('02'), makeItem('03')])
+    // events promise that never resolves within the test
+    loadListeningEvents.mockImplementation(() => new Promise(() => {}))
+    renderApp({ client: authedClient(), route: '/dashboard' })
+
+    // collection-only stats render...
+    const records = await screen.findByText('Records')
+    expect(
+      within(records.closest('.vi-stat') as HTMLElement).getByText('3'),
+    ).toBeInTheDocument()
+    // ...but Played / Never-played show NO number yet (would be a fabricated
+    // "0 played, 3 never played" if computed from events === []).
+    expect(screen.queryByText('Never played')).not.toBeInTheDocument()
+    expect(screen.queryByText('Played (30 days)')).not.toBeInTheDocument()
+    // Rediscover does not run as though everything were never-played
+    const rediscover = screen
+      .getByRole('heading', { name: 'Rediscover' })
+      .closest('section') as HTMLElement
+    expect(within(rediscover).queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('keeps collection stats but hides listening analytics when events fail', async () => {
+    loadCollection.mockResolvedValue([
+      makeItem('01', { is_favorite: true }),
+      makeItem('02'),
+    ])
+    loadListeningEvents.mockRejectedValue(new Error('events boom'))
+    renderApp({ client: authedClient(), route: '/dashboard' })
+
+    // real collection-only stats survive
+    const records = await screen.findByText('Records')
+    expect(
+      within(records.closest('.vi-stat') as HTMLElement).getByText('2'),
+    ).toBeInTheDocument()
+    expect(
+      within(
+        screen.getByText('Favorites').closest('.vi-stat') as HTMLElement,
+      ).getByText('1'),
+    ).toBeInTheDocument()
+
+    // listening analytics are explicitly unavailable - never a false zero
+    const neverPlayed = screen
+      .getByText('Never played')
+      .closest('.vi-stat') as HTMLElement
+    expect(within(neverPlayed).getByText('--')).toBeInTheDocument()
+    expect(within(neverPlayed).queryByText('0')).not.toBeInTheDocument()
+
+    // and a retry is offered
+    expect(screen.getAllByText('events boom').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0)
+  })
+
   it('surfaces a collection load error with retry', async () => {
+    // (kept from Phase B; collection failure is a full error state, not a
+    // false "empty collection")
     loadCollection.mockRejectedValue(new Error('dash boom'))
     loadListeningEvents.mockResolvedValue([])
     renderApp({ client: authedClient(), route: '/dashboard' })
 
     expect(await screen.findByText('dash boom')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
-  })
-
-  it('keeps the collection stats when only listening events fail', async () => {
-    loadCollection.mockResolvedValue([makeItem('01'), makeItem('02')])
-    loadListeningEvents.mockRejectedValue(new Error('events boom'))
-    renderApp({ client: authedClient(), route: '/dashboard' })
-
-    expect(await screen.findByText('Records')).toBeInTheDocument()
-    expect(await screen.findByText('events boom')).toBeInTheDocument()
+    expect(screen.queryByText('Your crate is empty')).not.toBeInTheDocument()
   })
 })
