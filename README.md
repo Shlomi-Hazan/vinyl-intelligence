@@ -81,11 +81,16 @@ fallback), and a motion/responsive/accessibility pass.
   shell + transitional page hosts for every M2-M10 feature + fallback
   `AlbumArtwork` + `CollectionDataProvider`) is **implemented and locally
   verified on branch `claude/visual-experience-product-identity-ui`, not
-  merged** (`docs/verification.md` "Visual Phase A Evidence"). This is the only
-  new runtime dependency in the whole pass.
-- **Phases B-E** (landing/auth/dashboard; artwork infra + visual collection/
-  discover/scan; VIN/history/settings/album-detail; motion/responsive/a11y/perf)
-  are not started.
+  merged** - independently audited and corrected (`docs/verification.md`
+  "Visual Phase A Evidence" + "Phase A correction"). `react-router-dom` is the
+  only new runtime dependency in the whole pass.
+- **Phase B** (the full cinematic landing, the redesigned split-layout auth, the
+  real data-driven dashboard, and route-level code splitting) is **implemented
+  and locally verified on the same branch, not merged**
+  (`docs/verification.md` "Visual Phase B Evidence").
+- **Phases C-E** (artwork infra + visual collection/discover/scan;
+  VIN/history/settings/album-detail; motion/responsive/a11y/perf) are not
+  started.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 

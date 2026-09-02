@@ -243,16 +243,52 @@ splitting finalised + bundle budget check"). `src/styles.css` still present
 (retired page-by-page in C-D). `/history` and `/collection/:id` are transitional
 hosts (full designs in Phase D).
 
-### Phase B - landing + auth + dashboard
+### Phase B - landing + auth + dashboard (DONE - branch, not merged)
 
-`LandingPage` (hero + 5 sections + motion), `AuthPage`/`AuthCard` redesign,
-`DashboardPage` (stats + quick actions + recent activity + quick-VIN + optional
-insight; empty-collection state). All dashboard data from
-`CollectionDataProvider`. Route-level `React.lazy` for landing/auth so they do
-not pull the app bundle.
+Delivered on `claude/visual-experience-product-identity-ui`:
 
-Exit: the three screens match the spec's state matrix; lighthouse-style manual
-check of the landing bundle size.
+- **`LandingPage`** - cinematic public page: sticky brand header, hero with the
+  approved eyebrow/headline/CTAs + `HeroVinyl` (original CSS/SVG turntable
+  composition, slow rotation, reduced-motion static, `aria-hidden`), "See how it
+  works" smooth in-page scroll, five sections (Your collection alive / Ask VIN /
+  Scan / Rediscover) with original branded fallback visuals only, final CTA
+  band. No copyrighted artwork / stock photo / external image.
+- **`AuthPage` + `AuthCard`** - split brand panel / focused card at `>= md`,
+  compact strip at `< md`; accessible two-mode `role="tablist"` switch; one
+  `<h1>`; labelled fields; accessible client validation + verbatim Supabase
+  notice/error. **Supabase auth semantics unchanged** (same `signIn` / `signUp`;
+  session / email-confirmation / profile authority / `profile_missing` /
+  authenticated-`/auth` redirect all untouched).
+- **`DashboardPage`** - all values from `CollectionDataProvider`, no API/model
+  call. Four real stats (definitions in `docs/verification.md` +
+  `insights.test.ts`), `SkeletonStat` while loading, empty-collection
+  onboarding (no zero-heavy analytics), Quick VIN (transient router-state
+  prefill -> `/vin`, no model call, no persistence), quick actions, Recently
+  added / Recently played / Rediscover rails (`AlbumArtwork` fallback,
+  `/collection/:id` links, honest empty states), "Your collection at a glance"
+  pure CSS/SVG decade bars + genre chips (no chart dependency; insufficient-data
+  state), events-only failure does not hide the stats.
+- **`CuratorPanel`** gained one optional additive `initialRequest?: string`
+  (client-only textarea seed for Quick VIN; no submit, no model call; M9/M10
+  contracts unchanged; `src/lib/curator/*` untouched).
+- **Route-level code splitting** - every page `React.lazy` behind one
+  `<Suspense>` with a branded fallback; simple `BrowserRouter` API, no data
+  router, no code-splitting library. Entry chunk 522.95 kB -> 455.13 kB
+  (149.49 -> 131.77 kB gz) + per-route chunks; a landing visit no longer
+  downloads the authenticated pages. (`supabase-js` still in the entry chunk via
+  `AuthProvider` - Phase E bundle-budget task.)
+- `src/lib/dashboard/insights.ts` (pure, `now`-injected, unit-tested);
+  superseded Phase A structural landing/auth CSS removed; new `pages.css`.
+
+Exit met: `typecheck` / `lint` / `test:run` (40 files / 465) / `build` (no
+advisory) green; `supabase test db` 9 / 433 unchanged; the three screens cover
+the spec's state matrix (see the Phase B state-matrix tests). Human visual
+review not yet performed. The one code review remains at the end of Phase E.
+
+**Known Phase B deferrals (LOW):** `supabase-js` in the entry chunk;
+`src/styles.css` still present for the C-D hosts; landing section visuals are
+structural placeholders relative to the Phase E polish; exhaustive
+responsive/motion passes are Phase E.
 
 ### Phase C - artwork infrastructure + collection / discover / scan
 

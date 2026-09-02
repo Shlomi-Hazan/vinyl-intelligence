@@ -2959,3 +2959,225 @@ not started.
 
 No production or hosted verification of Phase A has been performed. No human
 visual review has occurred yet.
+
+## Visual Experience Pass - Phase B Evidence (landing + auth + dashboard)
+
+Date: 2026-09-02
+
+Branch: `claude/visual-experience-product-identity-ui`
+
+Baseline: continues from the Phase A branch state
+(`072083ea9fd8eb8836dbdcc196cf13eb109db142`).
+
+Status: implemented and **locally verified on branch, not merged**. Automated
+gate below all green; implementation self-check only (the pass reserves its one
+focused code review for the end of Phase E; no `/ultrareview`). **No human
+visual verification has been performed yet** - that happens after the human
+opens the pages. Phases C-E not started.
+
+Scope delivered: the full `LandingPage`, the redesigned `AuthPage` /
+`AuthCard`, the full `DashboardPage`, and route-level code splitting for all
+pages. Collection / Discover / Scan / VIN / History / Settings / Album Detail
+were **not** redesigned (still their Phase A transitional hosts). No provider
+artwork / custom-cover UI (Phase C). No 5-state Vinny (Phase D).
+
+### Implemented
+
+- **Landing (`/`)** - cinematic public page. Sticky brand header (Grooved V-I
+  wordmark + "How it works" + Sign in / Go to dashboard by auth state; the
+  authenticated sidebar is **not** shown). Hero: eyebrow "Your collection, made
+  intelligent", headline "Your collection. / Your mood. / Your next record.",
+  supporting copy, primary CTA "Start your library" -> `/auth` (or "Go to your
+  dashboard" -> `/dashboard` when authenticated), secondary "See how it works"
+  -> smooth in-page scroll to `#how-it-works` (`auto` under reduced motion) with
+  focus moved to the target. `HeroVinyl` - an **original** CSS/SVG turntable +
+  grooved record + tonearm + sleeve composition with a warm spotlight; slow
+  26 s rotation, `aria-hidden`, fully static under `prefers-reduced-motion`. Five
+  sections (Your collection alive / Ask VIN / Scan a cover / Rediscover) using
+  original branded `AlbumArtwork` fallbacks and CSS/SVG step diagrams - **no
+  copyrighted artwork, no stock photo, no external image**. Final CTA band +
+  footer.
+- **Auth (`/auth`)** - `AuthPage` split layout: left brand panel (wordmark,
+  display line, small `VinAvatar`, warm gradient + grain) / right focused
+  `AuthCard`; on `< 768 px` the brand panel is replaced by a compact branded
+  strip. `AuthCard`: an accessible two-mode switch (`role="tablist"` /
+  `role="tab"`, `aria-selected`), one `<h1>` ("Welcome back" / "Create your
+  account"), labelled email + password fields, a mode-aware submit ("Sign in" /
+  "Create account"), accessible client validation (`role="alert"`), and a
+  verbatim `aria-live` area for the real Supabase notice / error. **Supabase
+  auth semantics unchanged**: `AuthCard` calls the same `useAuth().signIn` /
+  `signUp`; session handling, email-confirmation behaviour, profile-creation
+  authority, the `profile_missing` boundary, and the AppRoutes
+  authenticated-`/auth` -> `/dashboard` redirect are all untouched.
+- **Dashboard (`/dashboard`)** - real personal home, **every value derived from
+  `CollectionDataProvider`** (`collection_items` + `listening_events`); no API
+  or model call. Welcome header; four stat cards (definitions in section
+  "Dashboard statistic definitions" below) with `SkeletonStat` while loading;
+  an **onboarding state** for an empty collection (no zero-heavy analytics);
+  Quick VIN card (chips + free-text -> navigates to `/vin` with a **transient
+  router-state prefill**, never a model call, never persisted); Quick actions
+  (Add -> `/discover`, Scan -> `/scan`, Ask VIN -> `/vin`); Recently added /
+  Recently played / Rediscover album rails (`AlbumArtwork` fallback only, cards
+  link to `/collection/:id`) with honest empty states; "Your collection at a
+  glance" - pure CSS/SVG decade bars + top-genre chips (**no chart
+  dependency**), shown only when >= 4 owned items carry a year / a genre, else
+  an insufficient-data note. A listening-events failure shows on its own and
+  does **not** hide the collection stats (Milestone 8 principle, carried from
+  the Phase A correction).
+- **`CuratorPanel`** gained one optional additive prop `initialRequest?: string`
+  - a client-only textarea seed for Quick VIN. Nothing is submitted and **no
+  model call is made**; the M9/M10 request/response contracts, prompts,
+  schemas, models, rate limits, and telemetry are unchanged. `src/lib/curator/*`
+  and `netlify/functions/curator-*.mts` are untouched.
+- **Route-level code splitting** - every page is `React.lazy` (named exports
+  adapted to the default-export contract inline) behind one `<Suspense>` with a
+  branded spinning-mark fallback (`role="status"`, static under reduced motion).
+  Simple `BrowserRouter` API only; no data router, no code-splitting library.
+- **`src/lib/dashboard/insights.ts`** - pure, `now`-injected, dependency-free
+  derivations, fully unit-tested.
+- Superseded Phase A structural CSS (`.vi-landing*`, `.vi-auth*`, `.vi-quicknav`)
+  removed from `components.css`; the new page styling lives in
+  `src/styles/pages.css`. One design system, no second competing set.
+
+### Dashboard statistic definitions (deterministic; see `insights.test.ts`)
+
+- **Records** = `items.length`.
+- **Favorites** = owned items with `is_favorite === true`.
+- **Played (30 days)** = count of **distinct** owned items that have >= 1
+  `listening_event` whose `listened_at` is within the trailing 30 * 24 h window
+  from page-load time. Counts records, not events; an item with only older plays
+  is not counted.
+- **Never played** = owned items with **zero** listening events. (An item with
+  only old plays is neither "played in 30 days" nor "never played".)
+- **Recently added** = owned items ordered by `added_at` desc, then `id` desc
+  (identical to the collection display order), capped at 6.
+- **Recently played** = one entry per owned item that has any listening event,
+  keyed by its most recent `listened_at`, newest first, capped at 6.
+- **Rediscover** = owned items that are never played **or** last played >= 60
+  days ago, ranked: favourite first, then higher rating, then older
+  last-listened (never-played sorts oldest), then earlier `added_at`; capped
+  at 4.
+- **Decade distribution / Top genres** = only when >= 4 owned items carry a
+  release year / at least one genre respectively; percentages are rounded
+  integers; genres are lower-cased and counted across items.
+
+### Quick VIN prefill design
+
+The dashboard "Quick VIN" input/chips call `navigate('/vin', { state: {
+prefill: <trimmed text> } })`. `VinPage` reads `location.state.prefill` (string,
+sliced to 800 chars for safety) and passes it to `CuratorPanel` as
+`initialRequest`, which seeds `useState`. It is **client-only transient state**
+(router history state) - not `sessionStorage`, not the database, not a curator
+call. The user still has to press the curator's own submit for any model call,
+exactly as before.
+
+### Route-level code splitting - build chunks
+
+`npm run build`, before -> after Phase B:
+
+| | Before (Phase A) | After (Phase B) |
+| --- | --- | --- |
+| entry JS | one `index-*.js` 522.95 kB (149.49 kB gz) | `index-*.js` 455.13 kB (131.77 kB gz) - shared vendor + shell |
+| CSS | 26.33 kB (6.17 kB gz) | 33.63 kB (7.45 kB gz) |
+| per-route chunks | none (all eager) | `LandingPage` 8.95 kB, `AuthPage` 3.19 kB, `DashboardPage` 9.48 kB, `CollectionPage` 13.47 kB, `VinPage` 12.95 kB, `DiscoverPage` 5.75 kB, `HistoryPage` 1.80 kB, `SettingsPage` 2.07 kB, `AlbumDetailPage` 2.46 kB, `NotFoundPage` 0.59 kB, `ScanPage` 0.75 kB + small shared chunks (`AlbumArtwork`, `VinAvatar`, `CollectionItemCard`, `catalogSearchDraft`, ...) |
+
+A public landing visit now loads the entry chunk + `LandingPage` (+ a couple of
+tiny shared chunks) and **does not** download `DashboardPage`, `CollectionPage`,
+`VinPage`, `DiscoverPage`, etc. Known remaining item: `@supabase/supabase-js` is
+in the entry chunk (AuthProvider wraps the whole tree, including landing);
+moving it behind a lazy boundary is a Phase E bundle-budget task. Build still
+emits only the generic "chunk larger than 500 kB" advisory for the entry chunk
+(now under 500 kB gz-uncompressed... 455 kB, so the advisory is gone).
+
+### Automated Verification (agent-run / local; no provider calls)
+
+Run on the Phase B branch state, clean database, 2026-09-02:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm run test:run` | Passed: **40 Vitest files, 465 tests** (was 36 / 431) |
+| `npm run build` | Passed (no chunk advisory) |
+| `npx supabase db reset` | Passed: 10 migrations (unchanged; no Phase B migration) |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests (unchanged) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+Local dev smoke (Vite + Netlify plugin, no OpenRouter / MusicBrainz / Cover Art
+Archive call): `GET /`, `/auth`, `/dashboard`, `/nope` all `200`; no errors in
+the dev-server log.
+
+New / updated tests:
+
+- `src/lib/dashboard/insights.test.ts` (12) - every stat / rail / rediscover /
+  distribution rule with fixed fixtures, including boundary and
+  insufficient-data cases.
+- `src/pages/DashboardPage.test.tsx` (10) - empty-collection onboarding (no
+  zero-heavy analytics); **exact** Records / Favorites / Played-30d /
+  Never-played from a fixed fixture; recently-added ordering + album-detail
+  links; recently-played derivation; deterministic rediscover; decade/genre
+  insight when data is sufficient; insufficient-data note; **Quick VIN
+  navigates to `/vin` with the prefill and never calls
+  `requestCuratorRecommendation`**; collection-load error + Retry;
+  events-only failure keeps the stats.
+- `src/pages/LandingPage.test.tsx` (6) - unauth CTA -> `/auth`; authed CTA ->
+  `/dashboard`; "See how it works" -> existing `#how-it-works`; exactly one
+  `<h1>` and **no `<img>`** (fallback artwork only); hero composition
+  `aria-hidden`; "Ask VIN" section states owned-collection-only.
+- `src/auth/AuthCard.test.tsx` (6) - accessible two-mode tab switch; `onSignIn`
+  / `onSignUp` called with identical semantics; mode-switched sign-up; client
+  validation is accessible and does not call the service; a real provider error
+  is shown verbatim.
+- `src/App.test.tsx` + `src/auth/auth-state.test.tsx` - updated for the routed
+  redesign (landing headline, `AuthCard` h1, the "Create account" tab step for
+  sign-up flows). Every M9/M10 curator suite and every Phase A regression test
+  (incl. `collection-data-integration.test.tsx` A-G) unchanged and green.
+
+### Accessibility work (Phase B)
+
+One `<h1>` per page (landing hero headline; `AuthCard` heading; dashboard
+welcome). Landmarks: landing `<header>` + `<nav aria-label="Landing">` +
+sections; auth split panels; dashboard within the shell's `<main>`. Visible
+focus preserved (token `:focus-visible`). Auth mode switch is keyboard-operable
+`role="tab"` with `aria-selected`; inputs are labelled via `Field`/`useId`;
+validation and provider errors use `role="alert"` / `aria-live`. All decorative
+SVGs (`HeroVinyl`, `Logo` marks, `VinAvatar`, step dots, insight bars) are
+`aria-hidden` / `focusable="false"`. `AlbumArtwork` keeps its `role="img"`
+accessible name. Suspense fallback is `role="status"`. Reduced motion: hero
+rotation, quick-action lift, and the suspense spinner all stop; "See how it
+works" scroll becomes `auto`. Insight percentages are shown as text, not
+colour-only.
+
+### Responsive (Phase B)
+
+Landing: 2-col cinematic hero at `>= lg`, recomposed to a centred single column
+with the vinyl composition on top at `< lg`, vinyl shrinks at `< md`; sections
+go single-column at `< lg`. Auth: split at `>= md`, brand panel replaced by a
+compact strip at `< md`. Dashboard: 2-col (`2fr / 1fr`) at `>= lg`, single
+column below; stat grid `auto-fit minmax(140px)`; quick actions 3-up -> 1-up at
+`< 560 px`; album rails `auto-fill minmax(110px)`. No horizontal overflow at
+320 px (checked in the responsive CSS; the exhaustive pass is Phase E).
+
+### Known LOW / deferred (Phase B)
+
+- `@supabase/supabase-js` still ships in the entry chunk (landing loads it via
+  `AuthProvider`). Lazily isolating it is a Phase E bundle-budget task.
+- `src/styles.css` (legacy) still present for the not-yet-rebuilt Collection /
+  Discover / Scan / VIN / History / Settings / Album-detail hosts; retired
+  page-by-page in Phases C-D.
+- Landing section visuals are deliberately simple placeholders relative to the
+  final Phase E polish; the structure and copy are in place.
+- Full exhaustive responsive + motion passes remain Phase E.
+
+### External Provider / Hosted Actions
+
+OpenRouter completions: 0. MusicBrainz calls: 0. Cover Art Archive calls: 0.
+Hosted Supabase: untouched. No schema / migration change. Not deployed.
+Milestone 11 not started.
+
+### Production / Hosted Status
+
+No production or hosted verification of Phase B has been performed. No human
+visual review has occurred yet.

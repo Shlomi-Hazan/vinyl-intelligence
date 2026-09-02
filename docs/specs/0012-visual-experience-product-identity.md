@@ -10,9 +10,12 @@ no catalog-add Cover Art Archive lookup); custom covers are one canonical
 **Phase 0** (custom-cover storage) is **merged to `main` in PR #12** (merge
 commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`). **Phase A** (design system +
 routing + app shell + transitional page hosts + fallback `AlbumArtwork` +
-`CollectionDataProvider`) is **implemented and locally verified on branch
+`CollectionDataProvider`; independently audited and corrected) and **Phase B**
+(the full landing, the redesigned auth, the real dashboard, route-level code
+splitting) are **implemented and locally verified on branch
 `claude/visual-experience-product-identity-ui`, not merged** (see
-`docs/verification.md` "Visual Phase A Evidence"). **Phases B-E are unstarted.**
+`docs/verification.md` "Visual Phase A / Phase B Evidence"). **Phases C-E are
+unstarted.**
 
 ### Art-direction approval addendum - 2026-09-01
 
