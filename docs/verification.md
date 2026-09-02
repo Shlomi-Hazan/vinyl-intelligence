@@ -3358,3 +3358,77 @@ branch is pushed.
   polish; the composition, scale, and motion are in place.
 - Vinny's full 5-state system (success / no-match / empty-crate) is Phase D;
   Phase B ships only `idle` / `thinking`.
+
+## Visual Experience Pass - Final Phase B visual acceptance (2026-09-02)
+
+A dedicated acceptance pass against a human-supplied visual checklist. Starting
+HEAD `77bba8d`; `origin/main` unchanged at `945ed3d`. No Phase C work, no
+schema / migration / hosted / deploy action, no external AI calls, no
+copyrighted album-cover assets, `supabase db reset` not run.
+
+### Acceptance blockers addressed
+
+| # | Blocker | Resolution |
+| --- | --- | --- |
+| 1 | Canonical VI mark read as one embedded letterform | `ViGlyph` re-cut so the wedge **V** (`M15 23 L22 41 L29 23`) and the serifed **I** bar (`M42.5 23 L42.5 41` + serifs) sit with a ~5-unit clear gap; stroke 4.6 -> 4, ivory label r17 -> 18.5. One source of truth (`Disc` + `ViGlyph` in `Logo.tsx`) reused by header, sidebar (`wordmark`), auth, hero record label (`HeroVinyl` imports `ViGlyph`), landing final CTA, `public/favicon.svg`. |
+| 2 | Landing header brand too small | `.vi-landing__bar` height 76px, wordmark 1.4rem (set in Phase B correction; verified). |
+| 3 | "How it works" landed on Section 02 | Dedicated zero-height `#how-it-works` anchor placed immediately before Section 01 with `scroll-margin-top` for the sticky bar; `goToHow()` does `scrollIntoView({block:'start'})` + deferred `focus({preventScroll:true})`; Section 01 is NOT reveal-gated; on-mount hash handler re-runs `goToHow` for deep links. All three entry points (top link, hero button, scroll cue) + `/#how-it-works` verified landing on "Your collection, alive". New regression test asserts anchor precedes Section 01 in DOM order. |
+| 4 | Scroll cue was a right-facing chevron | `Icon name="chevron-down"` in `.vi-scrollcue__chevron`; new test asserts the cue targets `#how-it-works` and renders the chevron svg. |
+| 5 | Section 03 "Scan a cover" not demonstrative | New `ScanDemo` - vertical progression: scan-frame photo -> down-chevron -> recognition-clue chips -> candidate cards (best highlighted) -> green "You confirm the match" -> "then it is saved". Reduced-motion static. No album art. |
+| 6 | Section 04 "Rediscover" was generic boxes | New `RediscoverDemo` - a record crate with fanned coloured sleeves and one sleeve pulled up/forward with a disc sliding out, copper highlight ring, small face; the four truthful ideas (Forgotten favourite / Never played / Not in months / Highly rated) remain as chips, not buttons. Reduced-motion static. |
+| 7 | Vinny too flat / head-heavy | `VinAvatar` rebuilt on a 240x300 grid: smaller head vs a wider/taller torso, padded copper headphone band, large ear cups with bottle-green cushions, chest EQ panel, copper collar/arms/feet, brows + catchlights + soft smile + copper spindle nose, offset radial gradients + rim-light / core-shadow strokes for depth, ground shadow + warm glow. `idle` / `thinking` states preserved; static under `prefers-reduced-motion`. The reference raster could not be ingested in this environment; this remains a project-owned vector interpretation. |
+| 8 | Application shell top clipping | Quiet breadcrumb (`.vi-crumb`) instead of a second bold page title; `PageHeader` focuses the `<h1>` with `preventScroll`; `.vi-main :is(h1,h2,[id])` `scroll-margin-top`; `.vi-page` top padding reduced against `--topbar-h`. Dashboard title area verified un-clipped at all four viewports. |
+| 9 | Viewport QA | Screenshots captured with `puppeteer-core` + system Chrome at 1440x900, 1280x800, 1024x768, 390x844 for landing (all sections), auth, dashboard, collection, ask-vin, settings. No clipping, no horizontal scroll, topbar/sidebar fully visible, buttons intact, empty-state cards fit. |
+| 10 | Collapse control too dominant | `.vi-collapse-btn` 26px, borderless + 0.6 opacity at rest, border/background only on hover/focus; `aria-pressed` + `title` + `aria-label` retained; hidden entirely on the icon rail. |
+| 11 | Topbar repeated the page name | Breadcrumb is `home-icon / PAGE` in `--text-muted` `--fs-label`; the page `<h1>` is the strong title. Breadcrumb hidden on mobile (the `<h1>` carries it). |
+| 12-15 | Dashboard / Collection / Auth / Ask VIN | Not rebuilt. Dashboard keeps the analytics-state gating and collection-only Records/Favorites; Collection keeps the collection-first empty state with the secondary "Add a record manually" disclosure (verified visible, not clipped); Auth unchanged except the shared mark + avatar; Ask VIN keeps the two-area layout, starter chips, honest empty-collection state. Ask VIN aside now follows the main column on narrow screens (was `order:-1`) so the request / empty-state action comes first. |
+
+### Automated verification (2026-09-02; `supabase db reset` NOT run)
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed (0 errors, 0 warnings) |
+| `npm run test:run` | Passed: **42 Vitest files, 474 tests** (was 472; +2 landing anchor / scroll-cue regressions) |
+| `npm run build` | Passed - entry JS 456.77 kB (132.20 kB gz); `LandingPage` chunk 15.67 kB (4.37 kB gz); no chunk advisory |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests (unchanged; no schema change) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+No new / changed logic tests were required - the changes are brand SVG,
+layout CSS, and two additive landing regressions. All prior regression suites
+(intended-route login return, no fabricated dashboard analytics, collection-first
+empty state, auth behaviour, every M9/M10 curator suite) stay green unmodified.
+
+### Visual verification actually performed
+
+Real rendered output was inspected this pass. `puppeteer-core@23` (dev
+dependency, ~12 MB, drives the already-installed system Chrome - no bundled
+browser, not shipped to production) captured PNG screenshots of every primary
+surface at the four required viewports, plus scroll captures of landing
+Sections 03 and 04 and the "how it works" landing target; each screenshot was
+visually reviewed. Verified: the VI mark reads as a separate **V** and **I**
+in the header, sidebar, auth, hero record label and favicon with no embedded-I
+mark surviving; "How it works" lands on Section 01 from all entry points; the
+scroll cue points down; Sections 03/04 are demonstrative compositions; Vinny
+renders as a full-body curator robot (head + headphones + torso + EQ + arms +
+legs, warm gradients) at 190px, 120px and 72px; no clipping or horizontal
+overflow at any viewport; primary buttons fully visible; the sidebar collapse
+control is visually secondary. The screenshot script (`qa-shots.mjs`) is
+git-ignored; the local QA Supabase user is local-only.
+
+Human pixel-level design sign-off is still the next step after this branch is
+pushed - the agent's screenshot review is not a substitute for it.
+
+### Known limitations remaining
+
+- Human visual design sign-off still pending.
+- Vinny remains a project-owned vector interpretation, not a render of the
+  supplied raster reference (which could not be ingested as a repo asset here).
+- The `EmptyCrate` and demo SVGs are original schematic illustrations; a
+  higher-fidelity illustration pass could still be taken in Phase E.
+- `@supabase/supabase-js` still in the entry chunk (Phase E bundle budget).
+- Collection / Discover / Scan / History / Settings / Album-detail keep their
+  transitional hosts (full redesigns are Phases C-D).
+- Vinny's full 5-state system (success / no-match) is Phase D.

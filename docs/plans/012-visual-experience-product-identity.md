@@ -308,11 +308,33 @@ context + a live curator-state line (`CuratorPanel` gained one optional
 insights split). 42 files / 472 tests. `supabase db reset` was **not** run per
 instruction. Full detail: `docs/verification.md` "Phase B correction".
 
+**Final Phase B visual acceptance (2026-09-02, before Phase C).** A pass against
+a human visual checklist, still on this branch. The V-I mark was re-cut so the
+**V** and **I** are two clearly separated letters (shared `ViGlyph`, reused by
+header / sidebar / auth / `HeroVinyl` label / final CTA / `favicon.svg`); the
+"How it works" link, hero button and scroll cue now all land on Section 01 (a
+dedicated pre-Section-01 anchor with sticky-bar `scroll-margin-top`, deferred
+`preventScroll` focus, Section 01 not reveal-gated, on-mount hash handler); the
+scroll cue is a downward chevron; Section 03 is a new `ScanDemo` (vertical
+photo -> clues -> candidates -> confirm progression) and Section 04 a new
+`RediscoverDemo` (a sleeve pulled forward out of a record crate, four truthful
+chips); `VinAvatar` was rebuilt with better head/body proportions and depth
+(rim-light/core-shadow, padded headphones, EQ, copper hardware); the app-shell
+top-clipping was fixed with a quiet breadcrumb + `preventScroll` h1 focus +
+`scroll-margin-top`; the sidebar collapse control is now a borderless 26px
+utility; the topbar no longer repeats the page name; the Ask VIN aside follows
+the main column on narrow screens. Real screenshots were captured with
+`puppeteer-core` + system Chrome at 1440x900 / 1280x800 / 1024x768 / 390x844
+and visually reviewed. 42 files / **474 tests** (+2 landing regressions).
+`supabase db reset` **not** run. Full detail: `docs/verification.md` "Final
+Phase B visual acceptance".
+
 **Known deferrals (LOW):** `supabase-js` in the entry chunk;
-`src/styles.css` still present for the C-D hosts; landing section demo visuals
-are still schematic relative to the Phase E polish; Vinny's full 5-state system
-is Phase D; pixel-level human visual QA of the corrected pages still pending;
-exhaustive responsive/motion passes are Phase E.
+`src/styles.css` still present for the C-D hosts; the `EmptyCrate` / demo SVGs
+and Vinny are original project-owned schematic illustrations (a higher-fidelity
+illustration pass and Vinny's full 5-state system are Phase D-E); human
+pixel-level design sign-off still pending; exhaustive responsive/motion passes
+are Phase E.
 
 ### Phase C - artwork infrastructure + collection / discover / scan
 
