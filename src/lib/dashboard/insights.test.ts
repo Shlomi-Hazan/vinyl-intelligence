@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  dashboardStats,
+  collectionStats,
   decadeDistribution,
+  listeningStats,
   recentlyAdded,
   recentlyPlayed,
   rediscover,
@@ -54,41 +55,40 @@ function ev(id: string, itemId: string, listenedAt: string): ListeningEventRecor
   }
 }
 
-describe('dashboardStats', () => {
-  const items = [
-    item('01', { is_favorite: true }),
-    item('02', { is_favorite: true }),
-    item('03'),
-    item('04'),
-  ]
+describe('collectionStats (collection-only, always safe)', () => {
+  it('counts size and favorites without any listening data', () => {
+    const items = [
+      item('01', { is_favorite: true }),
+      item('02', { is_favorite: true }),
+      item('03'),
+    ]
+    expect(collectionStats(items)).toEqual({ collectionSize: 3, favorites: 2 })
+  })
+
+  it('empty collection is zero', () => {
+    expect(collectionStats([])).toEqual({ collectionSize: 0, favorites: 0 })
+  })
+})
+
+describe('listeningStats (only valid when events are loaded)', () => {
+  const items = [item('01'), item('02'), item('03'), item('04')]
   const events = [
     ev('e1', '01', daysAgo(2)), // in window
     ev('e2', '01', daysAgo(40)), // older, same item
-    ev('e3', '02', daysAgo(29)), // in window (boundary-ish)
+    ev('e3', '02', daysAgo(29)), // in window
     ev('e4', '03', daysAgo(45)), // outside window, but played
   ]
 
-  it('counts collection size, favorites, played-in-30d (distinct records), never-played', () => {
-    const s = dashboardStats(items, events, NOW)
-    expect(s.collectionSize).toBe(4)
-    expect(s.favorites).toBe(2)
+  it('counts played-in-30d (distinct records) and never-played', () => {
+    const s = listeningStats(items, events, NOW)
     expect(s.playedInWindow).toBe(2) // items 01 and 02
     expect(s.neverPlayed).toBe(1) // item 04
   })
 
   it('an item with only old plays is neither in-window nor never-played', () => {
-    const s = dashboardStats([item('03')], [ev('e', '03', daysAgo(90))], NOW)
+    const s = listeningStats([item('03')], [ev('e', '03', daysAgo(90))], NOW)
     expect(s.playedInWindow).toBe(0)
     expect(s.neverPlayed).toBe(0)
-  })
-
-  it('empty collection is all zeros', () => {
-    expect(dashboardStats([], [], NOW)).toEqual({
-      collectionSize: 0,
-      favorites: 0,
-      playedInWindow: 0,
-      neverPlayed: 0,
-    })
   })
 })
 

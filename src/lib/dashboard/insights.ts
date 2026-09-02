@@ -59,29 +59,49 @@ function decadeOf(year: number | null): string | null {
   return `${Math.floor(year / 10) * 10}s`
 }
 
-export type DashboardStats = {
+export type CollectionStats = {
   collectionSize: number
   favorites: number
-  playedInWindow: number
-  neverPlayed: number
 }
 
-export function dashboardStats(
+/**
+ * Collection-only stats - safe to show whenever the COLLECTION load succeeded,
+ * regardless of the listening-events state.
+ */
+export function collectionStats(
   items: readonly CollectionItemWithRelease[],
-  events: readonly ListeningEventRecord[],
-  now: number,
-  windowDays: number = PLAYED_WINDOW_DAYS,
-): DashboardStats {
-  const play = buildPlayFacts(events)
-  const cutoff = now - windowDays * DAY_MS
+): CollectionStats {
   let favorites = 0
-  let playedInWindow = 0
-  let neverPlayed = 0
-
   for (const item of items) {
     if (item.is_favorite) {
       favorites += 1
     }
+  }
+  return { collectionSize: items.length, favorites }
+}
+
+export type ListeningStats = {
+  playedInWindow: number
+  neverPlayed: number
+}
+
+/**
+ * Listening-derived stats. ONLY call this when `eventsStatus === 'ready'` - an
+ * empty `events` array during loading/failure would fabricate
+ * "0 played / everything never played". The dashboard gates every call site.
+ */
+export function listeningStats(
+  items: readonly CollectionItemWithRelease[],
+  events: readonly ListeningEventRecord[],
+  now: number,
+  windowDays: number = PLAYED_WINDOW_DAYS,
+): ListeningStats {
+  const play = buildPlayFacts(events)
+  const cutoff = now - windowDays * DAY_MS
+  let playedInWindow = 0
+  let neverPlayed = 0
+
+  for (const item of items) {
     const facts = play.get(item.id)
     if (!facts || facts.count === 0) {
       neverPlayed += 1
@@ -92,12 +112,7 @@ export function dashboardStats(
     }
   }
 
-  return {
-    collectionSize: items.length,
-    favorites,
-    playedInWindow,
-    neverPlayed,
-  }
+  return { playedInWindow, neverPlayed }
 }
 
 export function recentlyAdded(
