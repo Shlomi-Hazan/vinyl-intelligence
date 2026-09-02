@@ -46,6 +46,8 @@ const sessionB = {
 const profileA: Profile = {
   id: userA.id,
   display_name: 'Alice',
+  avatar_path: null,
+  avatar_updated_at: null,
   created_at: '2026-08-18T00:00:00.000Z',
   updated_at: '2026-08-18T00:00:00.000Z',
 }

@@ -18,6 +18,7 @@ function wrap(route: string, ui: React.ReactNode) {
     signIn: vi.fn(),
     signOut: vi.fn(),
     updateDisplayName: vi.fn(),
+    refreshProfile: vi.fn(),
   } as unknown as AuthContextValue
 
   return render(

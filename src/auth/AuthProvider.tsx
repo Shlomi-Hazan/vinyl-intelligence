@@ -226,6 +226,21 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
     setStatus('unauthenticated')
   }, [client])
 
+  const refreshProfile = useCallback(async () => {
+    if (!client || !session?.user) {
+      return
+    }
+    try {
+      const next = await fetchOwnProfile(client, session.user.id)
+      setProfile(next)
+      if (next) {
+        setStatus('authenticated')
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    }
+  }, [client, session])
+
   const updateDisplayName = useCallback(
     async (displayName: string) => {
       if (!client || !session?.user) {
@@ -266,6 +281,7 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
       signIn,
       signOut,
       updateDisplayName,
+      refreshProfile,
     }),
     [
       status,
@@ -278,6 +294,7 @@ export function AuthProvider({ children, client: injectedClient }: AuthProviderP
       signIn,
       signOut,
       updateDisplayName,
+      refreshProfile,
       clientState.configErrorMessage,
     ],
   )

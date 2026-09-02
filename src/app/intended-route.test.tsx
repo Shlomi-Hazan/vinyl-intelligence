@@ -18,7 +18,7 @@ vi.mock('../lib/supabase/listeningEvents.ts', async (importOriginal) => {
 
 const user = { id: 'u-1', email: 'a@example.test' } as User
 const session = { user, access_token: 't', refresh_token: 'r' } as Session
-const profile: Profile = { id: 'u-1', display_name: 'Ana', created_at: '', updated_at: '' }
+const profile: Profile = { id: 'u-1', display_name: 'Ana', avatar_path: null, avatar_updated_at: null, created_at: '', updated_at: '' }
 
 type AuthCb = (event: AuthChangeEvent, s: Session | null) => void
 

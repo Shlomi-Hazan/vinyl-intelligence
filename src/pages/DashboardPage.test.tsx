@@ -73,7 +73,7 @@ function ev(id: string, itemId: string, at: string): ListeningEventRecord {
 
 const user = { id: 'u-1', email: 'a@example.test' } as User
 const session = { user, access_token: 't' } as Session
-const profile: Profile = { id: 'u-1', display_name: 'Ana', created_at: '', updated_at: '' }
+const profile: Profile = { id: 'u-1', display_name: 'Ana', avatar_path: null, avatar_updated_at: null, created_at: '', updated_at: '' }
 
 function authedClient(): BrowserSupabaseClient {
   const unsubscribe = vi.fn()

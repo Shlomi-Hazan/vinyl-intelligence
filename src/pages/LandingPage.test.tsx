@@ -17,6 +17,7 @@ function renderLanding(status: AuthContextValue['status']) {
     signIn: vi.fn(),
     signOut: vi.fn(),
     updateDisplayName: vi.fn(),
+    refreshProfile: vi.fn(),
   } as unknown as AuthContextValue
 
   return render(
