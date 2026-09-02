@@ -1,0 +1,3 @@
+# Netlify SPA fallback: every non-asset path is served index.html so client-side
+# routes (e.g. /collection/:id) resolve on deep-link and refresh.
+/*  /index.html  200
