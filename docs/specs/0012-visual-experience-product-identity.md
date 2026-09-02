@@ -17,10 +17,15 @@ Collection / Discover / Scan, plus a shared-shell top-bar fix), and **Phase D**
 (History as a day-grouped journal with owner-scoped play-time correction + play
 deletion; Album Detail with read-only catalog metadata + user-owned
 `personal_genres`; Settings; an optional private-bucket profile avatar with
-initials as the permanent fallback - ADR 0006) are **implemented and locally
-verified on branch `claude/visual-experience-product-identity-ui`, not merged**
-(see `docs/verification.md` "Visual Phase A/B Evidence", "Phase C ...",
-"Phase D"). **Phase E is unstarted.**
+initials as the permanent fallback - ADR 0006), and **Phase E** (motion
+vocabulary + reduced-motion audit, responsive pass, accessibility corrections,
+contrast re-verification, bundle budget - entry 135 kB gzip - and the one
+reserved end-of-pass focused code review: 0 blocker / 0 high / 1 deferred
+medium / 4 low) are **implemented and locally verified on branch
+`claude/visual-experience-product-identity-ui`, not merged** (see
+`docs/verification.md` "Visual Phase A/B Evidence", "Phase C ...", "Phase D",
+"Phase E"). The A-E visual pass is complete on the branch; the final A-E PR is
+**not opened**, nothing is merged or deployed.
 
 ### Art-direction approval addendum - 2026-09-01
 

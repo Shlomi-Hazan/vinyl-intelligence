@@ -4095,3 +4095,276 @@ imported by their own unmounted tests) - broad legacy cleanup is Phase E.
   Phase E.
 - `RatingControl` `*` glyphs; `AlbumDetailPage` rating uses the new star Icon,
   but the shared `RatingControl` primitive used elsewhere is still Phase E.
+
+## Phase E - motion + responsive + a11y + performance + final review (2026-09-02)
+
+Starting HEAD `2b1ff66` (after the two Phase E fix commits); `origin/main`
+unchanged at `945ed3d`. **No migration, no RLS / grant / Storage-policy
+change, no model-contract change, no deployment, no `supabase db reset`.** The
+human-accepted page compositions (Phases A-D) are unchanged; Phase E corrected
+only observable issues.
+
+### Commands run (this pass)
+
+| Command | Result |
+| --- | --- |
+| `git diff --check` | clean |
+| `npm run typecheck` | pass |
+| `npm run lint` | pass, 0 warnings |
+| `npm run test:run` | **60 files / 621 tests pass** (+2 vs Phase D: catalog-duplicate genre guard, More-drawer keyboard) |
+| `npm run build` | pass |
+| `npx supabase test db` | **10 files / 507 assertions PASS** (unchanged; no DB change) |
+| `npx supabase db lint` | `No schema errors found` |
+| `npm audit --omit=dev` | `0 vulnerabilities` |
+
+### Bundle / performance (final)
+
+`npm run build` chunk table (raw / gzip):
+
+| Chunk | raw | gzip |
+| --- | --- | --- |
+| `index-*.js` (entry) | 465.7 kB | **135.0 kB** |
+| `index-*.css` | 61.7 kB | 12.2 kB |
+| `LandingPage` | 15.66 kB | 4.37 kB |
+| `VinPage` | 15.01 kB | 4.63 kB |
+| `ScanPage` | 12.71 kB | 4.15 kB |
+| `AlbumDetailPage` | 12.66 kB | 4.12 kB |
+| `CollectionPage` | 11.33 kB | 3.78 kB |
+| `DashboardPage` | 10.75 kB | 3.35 kB |
+| `HistoryPage` | 6.64 kB | 2.45 kB |
+| `DiscoverPage` | 5.79 kB | 2.22 kB |
+| `SettingsPage` | 4.35 kB | 1.64 kB |
+| `AuthPage` | 3.19 kB | 1.33 kB |
+| `NotFoundPage` | 0.59 kB | 0.36 kB |
+
+- **Initial route JS = 135.0 kB gzip < 200 kB target.** PASS. The known
+  `@supabase/supabase-js`-via-`AuthProvider`-in-entry deferral is left as
+  documented (section 17: "if entry gzip is comfortably below target, document
+  and leave it"). No risky architecture rewrite.
+- Route code splitting is material: every page is its own `React.lazy` chunk;
+  the Landing/Auth path does not eagerly pull authenticated page code.
+- `AlbumArtwork`: `loading="lazy"` + `decoding="async"` on the `<img>`, a fixed
+  `aspect-ratio: 1 / 1` box reserving layout, four-tier failover with no loop
+  (Phase C), no signed-URL persistence, no backend CAA call.
+- Fonts: self-hosted WOFF2, `font-display: swap`, real fallback stacks; only
+  `Inter-Variable` and `Fraunces-Variable` preloaded. Vinny assets are
+  `public/vinny/*.png` (~100-130 kB each), rendered with explicit width/height
+  (no CLS) and `decoding="async"`; not preloaded, not all loaded at once.
+
+### Motion
+
+- Duration tokens aligned to the approved vocabulary: `--dur-fast: 120ms`,
+  `--dur: 200ms`, `--dur-slow: 320ms` (were 130 / 220 / 420). Ease functions
+  unchanged and already matched the spec.
+- Standard `:active` compression: `.vi-btn` -> `scale(0.98)` (was
+  `translateY(1px) scale(0.99)`); the compact icon / glyph controls (dialog
+  close, chip ×, album quick action, rating star, favourite, hero star) ->
+  `scale(0.92)`. Never applied to a disabled control; explicitly set to
+  `transform: none` under `prefers-reduced-motion`.
+- A `transform` transition added to the compact controls so press/release eases
+  at `--dur-fast`.
+- Route-view transition: `vi-route-in` translateY 6px -> 8px (spec section 6).
+  It runs as a CSS animation on `.vi-page` mount - each route renders its own
+  `.vi-page`, so there is no provider remount, no duplicated fetch, no Suspense
+  interference, and `PageHeader` still moves focus to the `<h1>`.
+- The album-card hover vocabulary was already spec-compliant
+  (`translateY(-4px)` + `--shadow-lift` + `scale(1.015)` artwork,
+  `:focus-within` reveals the quick actions for keyboard users,
+  `@media (hover: none)` keeps them visible for touch, `prefers-reduced-motion`
+  zeroes the transforms) and was left unchanged.
+
+### Reduced motion (measured)
+
+Headless Chrome with `prefers-reduced-motion: reduce`, `document.getAnimations()`
+after load:
+
+| Route | total animations | running |
+| --- | --- | --- |
+| Landing | 0 | 0 |
+| Dashboard | 0 | 0 |
+| Collection | 0 | 0 |
+| Ask VIN | 0 | 0 |
+| Scan | 0 | 0 |
+| History | 0 | 0 |
+
+The global `@media (prefers-reduced-motion: reduce) { *, *::before, *::after {
+animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+transition-duration: .01ms !important } }` plus the `--dur*` token collapse means
+every animation completes instantly at its end state and is released. **No
+looping decorative animation (hero disc, Vinny bob, scan line, rediscover lift,
+skeleton shimmer) survives reduced motion.** Useful state changes (skeleton ->
+content, dialog open/close, route change) still occur, just instantly.
+
+### Responsive (measured)
+
+Headless audit, 10 authenticated routes x {1280x800, 768x1024, 390x844,
+360x780} = 40 combinations:
+
+- **Horizontal overflow: 0 px on every combination** (checked
+  `documentElement.scrollWidth - clientWidth` and scanned every element in
+  `main` / topbar / bottom-nav for a right edge past the viewport).
+- **Topbar height = 64.0 px on every authenticated route x viewport.**
+- Exactly one `<h1>` per route; `<main>` present on every authenticated route.
+- Navigation contract:
+
+  | width | sidebar | bottom nav | verified |
+  | --- | --- | --- | --- |
+  | 360 / 390 | `display: none` | `display: flex` | content cleared by `.vi-main { padding-bottom: var(--bottomnav-h) }` |
+  | 768 | icon rail (`--sidebar-rail-w`, labels + collapse button hidden) | none | |
+  | 1280 | full 240px sidebar, `data-rail` user toggle | none | |
+
+- The 404 renders as a deliberate standalone branded page outside the shell
+  (no topbar, no sidebar) - correct, not a regression.
+- Page-by-page screenshots (390 + 768) reviewed for Dashboard, Collection,
+  Album Detail (catalog + manual), Discover, Scan, Ask VIN, History, Settings:
+  filter bars wrap rather than overflow; album grid is a usable 2-up with
+  square artwork and deliberate title/artist ellipsis; the History journal
+  stacks the row actions under the entry on narrow widths; the Settings avatar
+  and forms fit; the Quick VIN panel and stat cards reflow coherently.
+
+### 200% / 400% zoom
+
+Assessed by the narrow-viewport proxy (360 px CSS width approximates ~400%
+zoom on a 1280 screen; ~640 px approximates 200%). At 360 px: no overflow, text
+reflows, all controls reachable, no fixed-height text clipping observed. The
+type scale is `clamp()`-based and layout uses flex/grid with relative units
+throughout, so reflow is continuous between breakpoints. Usability holds;
+pixel-perfect layout at 400% was not chased (per section 15).
+
+### Accessibility
+
+- **Structural:** every authenticated route has a `<main>`, exactly one `<h1>`
+  (focused on mount via `PageHeader`, `tabIndex=-1`, no visible ring - a
+  scripted AT target, standard practice), `<nav aria-label="Primary">`
+  landmarks (sidebar + bottom bar), a skip-to-content link, and
+  `aria-current="page"` on the active nav item. Route change announced via a
+  visually-hidden `role="status" aria-live="polite"` region in AppShell.
+- **`outline: none` audit:** 4 occurrences, each reviewed -
+  `.vi-input/.vi-textarea/.vi-select:focus` (replaced by accent border +
+  3px box-shadow ring), the scripted `<h1 tabindex=-1>` target, the
+  zero-height landing scroll anchor, and the Collection search input
+  (**fixed** - the ring now lives on the `.vi-filterbar__search` wrapper via
+  `:focus-within`).
+- **Keyboard smoke** (Collection / Ask VIN / Settings, ~25 Tab stops each):
+  every focus stop shows a visible indicator (outline or box-shadow). Tab
+  order follows visual order; links stay links, buttons stay buttons.
+- **Mobile "More" drawer:** was `role="dialog" aria-modal="true"` with no
+  keyboard handling. **Fixed** - Esc closes, focus enters on open, focus
+  returns to the trigger on close, Tab is trapped inside (mirrors the `Dialog`
+  primitive). New `AppShell` test locks Esc + focus-return.
+- **Dialogs** (`Dialog` primitive - Edit listening time, Remove play, Remove
+  from collection): already trap Tab, close on Esc, restore focus, close on
+  backdrop click (unchanged).
+- **Labels / images:** icon-only controls have `aria-label`; `AlbumArtwork` is
+  `role="img"` with `"<artist> - <title>"` / `"... (no cover art)"`;
+  decorative SVGs / the hero composition are `aria-hidden`; timestamps use
+  `<time dateTime>`; the avatar renders initials text or a labelled `<img>` and
+  never exposes the signed URL as accessible text.
+- **Colour-only meaning:** `RatingControl` now uses filled/outline star
+  **geometry** (not just the gold colour) and announces the value; favourite is
+  a filled heart + `aria-pressed`; "Best match" is a text badge; errors are
+  `role="alert"` + text + icon; active nav is `aria-current` + structure.
+- **Contrast** (measured against the actual rendered background):
+
+  | usage | ratio | verdict |
+  | --- | --- | --- |
+  | `--text-muted` on `--surface` (album meta, hints) | 8.92:1 | AA/AAA |
+  | `--text-faint` on `--bg` (meta labels, genre labels) | 5.20:1 | AA |
+  | `--accent` eyebrow (13px) on `--surface` | 5.75:1 | AA |
+  | nav item muted on `--surface-2` | 8.16:1 | AA/AAA |
+  | catalog chip muted on `--surface-2` | 7.24:1 | AA/AAA |
+  | `--text` meta value on `--surface` | 15.9:1 | AAA |
+
+  No combination failed; no palette or token change was made.
+
+### Focused code review (the one reserved end-of-A-E review)
+
+Reviewed the full branch diff `945ed3d..HEAD` (141 files, +18,840 / -528; 39
+test files). Confirmed: no `netlify/`, `src/lib/curator/`, `src/lib/vision/`, or
+`supabase/functions/` file is changed - **M9/M10 and M5 model contracts are
+byte-for-byte unchanged**. `CuratorPanel` gained a client-only prefill +
+Vinny-state signal, explicitly no request/response change. No `localStorage` /
+`sessionStorage` write carries a signed URL or secret (only view-mode, sidebar-
+rail, and the documented form-draft keys). pgTAP (507 assertions) covers custom-
+cover, avatar, personal-genres, and listening-event owner isolation.
+
+| Severity | Count |
+| --- | --- |
+| BLOCKER | 0 |
+| HIGH | 0 |
+| MEDIUM | 1 |
+| LOW / NOTE | 4 |
+
+**MEDIUM - `.legacy-host button` outranks the design-system `.vi-btn` variants
+inside the shell.** `.legacy-host button` (specificity 0,1,1) is on the
+`.vi-app` root; `.vi-btn` / `.vi-btn--primary` / `--secondary` / `--ghost` /
+`--danger` / `--sm` are single-class (0,1,0), so inside every authenticated
+route the buttons render with the transitional treatment (surface-2 fill,
+`0.6rem 1rem` padding) instead of the design system's bronze-gradient primary,
+danger-surface danger, transparent ghost, and compact `--sm`. `.vi-btn--secondary`
+happens to match the transitional look, so the common case is visually
+unaffected; primary CTAs (e.g. VIN "Recommend") and ghost buttons (e.g.
+History "Edit time") are the visible cases. This has been true since Phase A and
+Phases A-D were human-accepted with it. **Disposition: deferred.** A clean fix
+(`.legacy-host button:not([class*="vi-"])`) was prototyped and measured - it
+also un-frames the `<button class="vi-chip">` starter/suggestion chips on
+Dashboard / Discover / Ask VIN and visibly resizes many controls across
+human-accepted pages, which section 29 forbids without design confirmation. The
+compact icon / nav controls that *must* win are each individually scoped at
+(0,2,0) (the × buttons in Phase D, the bottom-nav "More" button in this pass). A
+`base.css` NOTE points here.
+
+**LOW / NOTE:**
+1. **Rating primitive** - the mounted `RatingControl` `*` glyph is fixed;
+   `CuratorRecommendationCard` uses `★ / ☆` unicode stars (geometry + aria
+   label, on a human-accepted page) and `CollectionItemPersonalControls` uses
+   `★ / ☆` (unmounted). Both intentionally left.
+2. **Avatar re-sign on `<img>` error** - `UserAvatar` falls straight back to
+   initials on an image load error rather than re-signing once first. Current
+   behaviour is safe and avoids a retry flash; the spec's "re-sign once" is a
+   nicety, deferred.
+3. **Legacy component subtree** (`CollectionPanel`, `CatalogPanel`,
+   `CatalogPhotoPanel`, `CollectionItemCard` + tests) unmounted but retained -
+   deferred bulk cleanup (Phase C decision, test coverage, CSS-interdependency
+   risk).
+4. **`Vinny` `<img>`** has no `loading="lazy"` - fine where it sits (above the
+   fold on empty states / VIN idle); lazy-loading risks a pop-in. Left.
+
+No finding requires a schema / model / security change.
+
+### Security regression check (not a new review)
+
+Confirmed the existing boundaries hold via the unchanged pgTAP suites and a
+diff scan: custom-cover / profile-avatar / personal-genres owner isolation,
+listening-event owner-only UPDATE(`listened_at`)/DELETE, catalog releases
+shared + read-only to the browser, no `service_role` in any browser path, no
+signed URL persisted or logged, no secret in the client bundle or logs.
+
+### Provider call counts
+
+- **Automated tests:** OpenRouter 0, MusicBrainz 0, Cover Art Archive 0.
+- **Browser QA:** OpenRouter 0, MusicBrainz 0. Cover Art Archive: the
+  Collection / Album Detail / Dashboard / History `<img>` tiles hotlink
+  `coverartarchive.org` from the browser for records that have stored MBIDs -
+  this is the established display-time architecture, not a new backend call.
+  No model/provider POST was made for QA state generation (seeded fixture data
+  was used).
+
+### Database / hosted actions
+
+- No schema / RLS / grant / policy change; no new migration.
+- A dedicated local QA user + 5 fixture collection items were seeded for the
+  browser pass and **removed afterwards**; the human's local review data
+  (`m10-runtime`, 2 items) was never touched. pgTAP re-run after cleanup: PASS.
+- No `supabase db reset`. No migration applied to hosted Supabase. No
+  deployment. No PR. No merge.
+
+### Remaining LOW / NOTE technical debt
+
+- `.legacy-host button` vs `.vi-btn` cascade (MEDIUM above) - needs a human
+  design call before the broad fix.
+- Legacy unmounted component subtree + tests - dedicated cleanup pass.
+- `CuratorRecommendationCard` / `CollectionItemPersonalControls` `★☆` glyphs.
+- `UserAvatar` image-error re-sign nicety.
+- `Vinny` `loading="lazy"`.
+- Human pixel-level visual acceptance of Phases C-E still pending.

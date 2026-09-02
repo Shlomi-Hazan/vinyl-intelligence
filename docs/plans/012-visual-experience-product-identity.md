@@ -500,6 +500,79 @@ final browser smoke of every critical flow.
 
 Exit: spec section 19 acceptance criteria all met.
 
+**Phase E implemented (2026-09-02, on-branch, not merged) - polish + a11y +
+performance + the one focused code review.** No migration, no RLS/grant change,
+no model-contract change, no deployment. Design compositions of the human-
+accepted pages are unchanged; this pass only corrected observable issues.
+
+- **Motion:** duration tokens aligned to the approved vocabulary
+  (`--dur-fast 120 / --dur 200 / --dur-slow 320`); a standard `:active`
+  compression (`scale(0.98)` on `.vi-btn`, `scale(0.92)` on the compact icon /
+  glyph controls) that is suppressed under `prefers-reduced-motion`; the
+  route-view transition bumped to an 8px translateY; a transform transition
+  added to the compact controls so the press eases. The album-card hover
+  vocabulary (translateY(-4px) + shadow step + `scale(1.015)` artwork +
+  keyboard-equivalent `:focus-within` quick-action reveal + `@media (hover:
+  none)` always-visible) was already in place and left as-is.
+- **Reduced motion:** measured in a headless browser with
+  `prefers-reduced-motion: reduce` on Landing, Dashboard, Collection, Ask VIN,
+  Scan, History - `getAnimations()` returns **0** on every route (the global
+  `* { animation-duration: .01ms; animation-iteration-count: 1 }` plus the
+  token collapse). No looping decorative animation survives reduced motion.
+- **Responsive:** headless audit of 10 authenticated routes x
+  {1280, 768, 390, 360}: **0 horizontal overflow anywhere**; topbar exactly
+  **64px** on every authenticated route/viewport; exactly one `<h1>` per route;
+  `<main>` present. Nav contract verified: `<768` bottom nav (sidebar
+  `display:none`, `.vi-main` padded by `--bottomnav-h` so content clears it),
+  `768-1120` icon rail, `>=1120` full sidebar (user-collapsible). The 404 is a
+  deliberate standalone branded page with no shell.
+- **Accessibility fixes:** the Collection search box gained a visible focus
+  indicator (`.vi-filterbar__search:focus-within` -> accent border + ring; it
+  previously had a bare `outline:none` input with no replacement); the mobile
+  "More" drawer gained Esc-to-close, focus-in-on-open, focus-return-to-trigger,
+  and a Tab trap; every bottom-nav item is >=44px and the "More" `<button>` is
+  no longer framed by `.legacy-host button`. Keyboard smoke of
+  Collection / Ask VIN / Settings: every focus stop shows a visible ring (the
+  one apparent miss is the search input, whose ring is on its wrapper).
+- **No colour-only meaning:** `RatingControl` (mounted on the Collection
+  grid/list) now renders the canonical SVG star with filled/outline **geometry**
+  instead of a raw `*`; read-only announces "Not rated" / "Rated N of 5".
+  Favourite already uses a filled-heart + `aria-pressed`; VIN "Best match" is a
+  text badge; errors carry `role="alert"` + text; active nav uses
+  `aria-current`.
+- **Contrast** (measured in-app, WCAG): `--text-muted` on surface **8.92:1**,
+  `--text-faint` on bg **5.20:1**, `--accent` eyebrow on surface **5.75:1**,
+  nav / chip muted **7-8:1**, album-meta value **15.9:1**. All pass AA; no
+  palette change needed.
+- **Performance:** every route stays behind route-level `React.lazy`; Landing /
+  Auth do not pull authenticated page code. Final entry JS **465.7 kB raw /
+  135.0 kB gzip** - comfortably below the 200 kB gzip target, so the known
+  `@supabase/supabase-js`-in-entry deferral is left as documented. CSS
+  61.7 kB / 12.2 kB gz. `AlbumArtwork` images `loading="lazy"` +
+  `decoding="async"` + reserved 1:1 aspect box; fonts self-hosted WOFF2 with
+  `font-display: swap`, only the two variable faces preloaded.
+- **LOW findings** (section 22): (A) personal-genres empty copy no longer
+  claims "recommendations" - now "make your collection easier to browse";
+  (B) adding a personal genre already in the catalog genres is refused with a
+  clear message (no duplicate chip; effective filtering unchanged);
+  (C) the mounted `*`-glyph rating (`RatingControl`) is replaced with the SVG
+  star - the `★☆` unicode stars in the accepted `CuratorRecommendationCard`
+  and the unmounted `CollectionItemPersonalControls` are left.
+- **Focused code review** (the one reserved end-of-A-E review): **0 BLOCKER,
+  0 HIGH, 1 MEDIUM, 4 LOW/NOTE.** MEDIUM: `.legacy-host button` (0,1,1) on the
+  shell root outranks the bare `.vi-btn` variants (0,1,0), so in-shell buttons
+  render with the transitional dark treatment rather than the design-system
+  bronze primary / tinted danger / transparent ghost. A fix visibly changes
+  many human-accepted pages, so it is **deferred** pending human design
+  confirmation and recorded (with a `base.css` NOTE). Full detail:
+  `docs/verification.md` "Phase E".
+
+Legacy cleanup (`CollectionPanel`/`CatalogPanel`/`CatalogPhotoPanel`/
+`CollectionItemCard` + their tests) remains **deliberately deferred** - the
+retention was a Phase C decision, each carries test coverage, and bulk deletion
+in a polish pass carries CSS-interdependency risk the task explicitly says to
+avoid.
+
 ## 8. Testing plan
 
 - **Framework:** existing Vitest + Testing Library + jsdom. Optionally add

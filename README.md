@@ -103,11 +103,20 @@ fallback), and a motion/responsive/accessibility pass.
   `docs/decisions/0006-listening-event-mutability-and-profile-avatar.md`). Three
   forward migrations applied locally only. VIN / Ask VIN and all M9/M10 curator
   behaviour are unchanged.
-- **Phase E** (motion vocabulary, responsive + accessibility audit, route
-  code-split finalisation + bundle budget, the single end-of-pass code review)
-  is not started.
+- **Phase E** (motion vocabulary + `prefers-reduced-motion` audit, responsive
+  pass across 1280/768/390/360, accessibility corrections - Collection search
+  focus ring, mobile "More" drawer keyboard trap, bottom-nav touch targets,
+  SVG rating stars for no-colour-only-meaning - contrast re-verification,
+  bundle budget check, and the one reserved end-of-pass focused code review) is
+  **implemented and locally verified on the same branch, not merged**
+  (`docs/verification.md` "Phase E"). Entry JS is 135 kB gzip (< 200 kB
+  target). The code review found 0 blocker / 0 high / 1 deferred medium (a
+  `.legacy-host button` cascade that needs a human design call) / 4 low. No
+  migration, no model-contract change.
 
-Milestone pull-request and merge state are tracked in GitHub history.
+The A-E visual pass is complete on the branch but **not merged, not deployed**;
+the final A-E pull request has not been opened. Milestone pull-request and
+merge state are tracked in GitHub history.
 
 Implemented:
 
