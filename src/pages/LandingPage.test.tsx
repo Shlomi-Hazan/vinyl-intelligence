@@ -56,6 +56,39 @@ describe('LandingPage', () => {
     expect(document.getElementById('how-it-works')).not.toBeNull()
   })
 
+  it('the "how it works" anchor sits immediately before Section 01, not Section 02', () => {
+    renderLanding('unauthenticated')
+    const anchor = document.getElementById('how-it-works') as HTMLElement
+    const section01 = screen
+      .getByRole('heading', { name: 'Your collection, alive' })
+      .closest('section') as HTMLElement
+    const section02 = screen
+      .getByRole('heading', { name: 'Ask VIN' })
+      .closest('section') as HTMLElement
+
+    // anchor precedes Section 01 ...
+    expect(
+      anchor.compareDocumentPosition(section01) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // ... and Section 01 precedes Section 02 (so the anchor lands on 01)
+    expect(
+      section01.compareDocumentPosition(section02) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // the anchor is not nested inside a later section
+    expect(section02.contains(anchor)).toBe(false)
+  })
+
+  it('the hero scroll cue points down and targets the how-it-works section', () => {
+    const { container } = renderLanding('unauthenticated')
+    const cue = container.querySelector('.vi-scrollcue') as HTMLElement
+    expect(cue).not.toBeNull()
+    expect(cue).toHaveAttribute('href', '#how-it-works')
+    // a downward affordance, not a right-facing chevron
+    expect(cue.querySelector('.vi-scrollcue__chevron svg')).not.toBeNull()
+  })
+
   it('has exactly one h1 and uses only the branded fallback artwork (no <img>)', () => {
     const { container } = renderLanding('unauthenticated')
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)

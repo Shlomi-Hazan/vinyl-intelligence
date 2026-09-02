@@ -1,8 +1,10 @@
-import { useCallback, type ReactNode } from 'react'
+import { useCallback, useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Logo } from '../brand/Logo.tsx'
 import { VinAvatar } from '../brand/VinAvatar.tsx'
 import { HeroVinyl } from '../brand/HeroVinyl.tsx'
+import { ScanDemo } from '../brand/ScanDemo.tsx'
+import { RediscoverDemo } from '../brand/RediscoverDemo.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { useReveal } from '../app/useReveal.ts'
@@ -17,13 +19,18 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-function scrollToId(id: string) {
-  const target = document.getElementById(id)
-  target?.scrollIntoView({
+function goToHow() {
+  const target = document.getElementById(HOW_ID)
+  if (!target) {
+    return
+  }
+  target.scrollIntoView({
     behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     block: 'start',
   })
-  target?.focus?.()
+  // Move focus for keyboard users WITHOUT letting the browser re-scroll (which
+  // was landing the viewport past Section 01).
+  window.setTimeout(() => target.focus({ preventScroll: true }), 0)
 }
 
 function RevealSection({
@@ -39,11 +46,7 @@ function RevealSection({
 }) {
   const { ref, revealed } = useReveal<HTMLElement>()
   return (
-    <section
-      ref={ref}
-      className="vi-lsection vi-reveal"
-      data-revealed={revealed}
-    >
+    <section ref={ref} className="vi-lsection vi-reveal" data-revealed={revealed}>
       <div className="vi-lsection__text">
         <span className="vi-lsection__num">{num}</span>
         <h2>{title}</h2>
@@ -54,30 +57,34 @@ function RevealSection({
   )
 }
 
-/*
- * Phase B: the full cinematic public landing. Reuses the Phase A tokens,
- * fonts, logo, and motion foundation. No copyrighted artwork, no stock photo,
- * no external image - the hero and section visuals are original CSS/SVG.
- */
 export function LandingPage() {
   const { status } = useAuth()
   const authed = status === 'authenticated'
   const primaryTo = authed ? '/dashboard' : '/auth'
   const primaryLabel = authed ? 'Go to your dashboard' : 'Start your library'
 
-  const scrollToHow = useCallback((event: React.MouseEvent) => {
+  const onHowClick = useCallback((event: React.MouseEvent) => {
     event.preventDefault()
-    scrollToId(HOW_ID)
+    goToHow()
+  }, [])
+
+  // Deep link to /#how-it-works (or a hash set before the lazy page mounted):
+  // the native on-load jump misses the not-yet-rendered anchor, so do it here.
+  useEffect(() => {
+    if (window.location.hash === `#${HOW_ID}`) {
+      const id = window.setTimeout(goToHow, 60)
+      return () => window.clearTimeout(id)
+    }
   }, [])
 
   return (
     <div className="vi-landing">
       <header className="vi-landing__bar">
-        <Link to="/" aria-label="Vinyl Intelligence home">
+        <Link to="/" aria-label="Vinyl Intelligence home" className="vi-landing__brand">
           <Logo variant="wordmark" />
         </Link>
         <nav className="vi-landing__bar-links" aria-label="Landing">
-          <a href={`#${HOW_ID}`} className="vi-landing__section-link" onClick={scrollToHow}>
+          <a href={`#${HOW_ID}`} className="vi-landing__section-link" onClick={onHowClick}>
             How it works
           </a>
           <Link
@@ -106,25 +113,38 @@ export function LandingPage() {
             <Link to={primaryTo} className="vi-btn vi-btn--primary vi-btn--lg">
               {primaryLabel}
             </Link>
-            <a href={`#${HOW_ID}`} className="vi-btn vi-btn--secondary vi-btn--lg" onClick={scrollToHow}>
+            <a href={`#${HOW_ID}`} className="vi-btn vi-btn--secondary vi-btn--lg" onClick={onHowClick}>
               See how it works
             </a>
           </div>
         </div>
         <HeroVinyl />
-        <a href={`#${HOW_ID}`} className="vi-scrollcue" onClick={scrollToHow} aria-label="Scroll to how it works">
-          <span>Discover</span>
+        <a href={`#${HOW_ID}`} className="vi-scrollcue" onClick={onHowClick} aria-label="Scroll to how it works">
+          <span>Scroll</span>
           <span className="vi-scrollcue__chevron" aria-hidden="true">
-            <Icon name="chevron-right" size={18} />
+            <Icon name="chevron-down" size={20} />
           </span>
         </a>
       </section>
 
-      <div className="vi-landing__sections" id={HOW_ID} tabIndex={-1}>
-        <RevealSection
-          num="01"
-          title="Your collection, alive"
-          visual={
+      {/* dedicated scroll anchor immediately before Section 01, with
+          scroll-margin-top for the sticky header (see pages.css) */}
+      <div id={HOW_ID} className="vi-landing__anchor" tabIndex={-1} aria-label="How it works" />
+
+      <div className="vi-landing__sections">
+        {/* Section 01 is NOT reveal-gated: it is the "How it works" landing
+            target and must be fully present the instant the user arrives. */}
+        <section className="vi-lsection">
+          <div className="vi-lsection__text">
+            <span className="vi-lsection__num">01</span>
+            <h2>Your collection, alive</h2>
+            <p>
+              Every record you add becomes a card in a warm, browsable shelf.
+              Search by artist or title, filter by genre and decade, sort by
+              rating, or surface what you have not played in a while.
+            </p>
+          </div>
+          <div className="vi-lsection__visual">
             <div className="vi-mini-grid">
               {[
                 ['Nightfall', 'Kora Vale'],
@@ -137,21 +157,15 @@ export function LandingPage() {
                 <AlbumArtwork key={title} artist={artist} title={title} seedId={title} size="grid" />
               ))}
             </div>
-          }
-        >
-          <p>
-            Every record you add becomes a card in a warm, browsable shelf.
-            Search by artist or title, filter by genre and decade, sort by
-            rating, or surface what you have not played in a while.
-          </p>
-        </RevealSection>
+          </div>
+        </section>
 
         <RevealSection
           num="02"
           title="Ask VIN"
           visual={
             <div className="vi-vin-quote">
-              <VinAvatar size={110} />
+              <VinAvatar size={168} />
               <blockquote>
                 "I had a long day. Give me something mellow from the 70s I have
                 not heard recently."
@@ -167,25 +181,7 @@ export function LandingPage() {
           </p>
         </RevealSection>
 
-        <RevealSection
-          num="03"
-          title="Scan a cover"
-          visual={
-            <div className="vi-steps">
-              {[
-                ['1', 'Photo of the cover'],
-                ['2', 'Recognition clues'],
-                ['3', 'Catalog candidates'],
-                ['4', 'You confirm, then it is saved'],
-              ].map(([n, label]) => (
-                <div className="vi-step" key={n}>
-                  <span className="vi-step__dot">{n}</span>
-                  {label}
-                </div>
-              ))}
-            </div>
-          }
-        >
+        <RevealSection num="03" title="Scan a cover" visual={<ScanDemo />}>
           <p>
             Photograph a sleeve. VIN reads the cover for clues, a real music
             catalog returns candidate releases, and <strong>you confirm the
@@ -194,37 +190,18 @@ export function LandingPage() {
           </p>
         </RevealSection>
 
-        <RevealSection
-          num="04"
-          title="Rediscover"
-          visual={
-            <div className="vi-mini-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-              {[
-                ['Forgotten favourite', 'star'],
-                ['Never played', 'play'],
-                ['Not in months', 'history'],
-                ['Highly rated', 'heart'],
-              ].map(([label, icon]) => (
-                <div className="vi-step" key={label}>
-                  <span className="vi-step__dot">
-                    <Icon name={icon as 'star'} size={14} />
-                  </span>
-                  {label}
-                </div>
-              ))}
-            </div>
-          }
-        >
+        <RevealSection num="04" title="Rediscover" visual={<RediscoverDemo />}>
           <p>
             Favourites, ratings, notes, and every "mark played" build a picture
             of your listening. Vinyl Intelligence uses it to resurface the
-            records you own but keep forgetting.
+            records you own but keep forgetting - the forgotten favourite, the
+            album you have never spun.
           </p>
         </RevealSection>
       </div>
 
       <section className="vi-landing__final">
-        <Logo variant="mark" size={64} />
+        <Logo variant="mark" size={72} />
         <h2>Bring your shelf to life.</h2>
         <p className="vi-hint">Your collection. Your data. Your next record.</p>
         <Link to={primaryTo} className="vi-btn vi-btn--primary vi-btn--lg">
