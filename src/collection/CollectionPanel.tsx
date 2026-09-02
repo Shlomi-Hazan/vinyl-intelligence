@@ -30,6 +30,24 @@ import {
   type ListeningEventRecord,
 } from '../lib/supabase/listeningEvents.ts'
 
+/**
+ * Provider-supplied data. When present the panel is CONTROLLED: it never issues
+ * its own `loadCollection` / `loadListeningEvents`, and after every successful
+ * mutation it calls `onMutated` so the single `CollectionDataProvider` reloads
+ * authoritatively and every other route stays consistent.
+ *
+ * When absent (the pre-router single-page shell and this component's own unit
+ * tests) the panel self-loads exactly as before.
+ */
+export type CollectionPanelData = {
+  items: CollectionItemWithRelease[]
+  events: ListeningEventRecord[]
+  isLoading: boolean
+  loadError: string | null
+  eventsLoading: boolean
+  eventsError: string | null
+}
+
 type CollectionPanelProps = {
   client: BrowserSupabaseClient
   refreshKey?: number
@@ -39,6 +57,14 @@ type CollectionPanelProps = {
    * the database).
    */
   userId?: string
+  /** Controlled data from CollectionDataProvider (see CollectionPanelData). */
+  data?: CollectionPanelData
+  /** Reload BOTH collection + events (controlled retry). */
+  onReload?: () => void
+  /** Reload ONLY the listening events (controlled history retry). */
+  onReloadEvents?: () => void
+  /** Called after any successful mutation in controlled mode. */
+  onMutated?: () => void
 }
 
 function getErrorMessage(error: unknown): string {
@@ -67,10 +93,21 @@ export function CollectionPanel({
   client,
   refreshKey = 0,
   userId,
+  data,
+  onReload,
+  onReloadEvents,
+  onMutated,
 }: CollectionPanelProps) {
-  const [items, setItems] = useState<CollectionItemWithRelease[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const controlled = data !== undefined
+
+  // --- self-loaded state (uncontrolled mode only) ---
+  const [localItems, setLocalItems] = useState<CollectionItemWithRelease[]>([])
+  const [localIsLoading, setLocalIsLoading] = useState(true)
+  const [localLoadError, setLocalLoadError] = useState<string | null>(null)
+  const [localEvents, setLocalEvents] = useState<ListeningEventRecord[]>([])
+  const [localEventsLoading, setLocalEventsLoading] = useState(true)
+  const [localEventsError, setLocalEventsError] = useState<string | null>(null)
+
   const [actionError, setActionError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<CollectionItemWithRelease | null>(
@@ -78,41 +115,52 @@ export function CollectionPanel({
   )
   const [filters, setFilters] = useState<CollectionFilters>(EMPTY_FILTERS)
   const [sort, setSort] = useState<CollectionSort>(DEFAULT_SORT)
-  // Milestone 8: the immutable listening_events rows. Listening count and
-  // last-listened time are derived from these in the browser - no denormalized
-  // column, no trigger. An events-load failure is surfaced on its own without
-  // hiding the collection.
-  const [events, setEvents] = useState<ListeningEventRecord[]>([])
-  const [eventsLoading, setEventsLoading] = useState(true)
-  const [eventsError, setEventsError] = useState<string | null>(null)
+
+  // --- effective values (provider data wins when controlled) ---
+  const items = controlled ? data.items : localItems
+  const events = controlled ? data.events : localEvents
+  const isLoading = controlled ? data.isLoading : localIsLoading
+  const loadError = controlled ? data.loadError : localLoadError
+  const eventsLoading = controlled ? data.eventsLoading : localEventsLoading
+  const eventsError = controlled ? data.eventsError : localEventsError
 
   const fetchCollection = useCallback(async () => {
-    setIsLoading(true)
-    setLoadError(null)
-
-    try {
-      setItems(await loadCollection(client))
-    } catch (error) {
-      setLoadError(getErrorMessage(error))
-    } finally {
-      setIsLoading(false)
+    if (controlled) {
+      onReload?.()
+      return
     }
-  }, [client])
+    setLocalIsLoading(true)
+    setLocalLoadError(null)
+    try {
+      setLocalItems(await loadCollection(client))
+    } catch (error) {
+      setLocalLoadError(getErrorMessage(error))
+    } finally {
+      setLocalIsLoading(false)
+    }
+  }, [client, controlled, onReload])
 
   const fetchListeningEvents = useCallback(async () => {
-    setEventsLoading(true)
-    setEventsError(null)
-
-    try {
-      setEvents(await loadListeningEvents(client))
-    } catch (error) {
-      setEventsError(getErrorMessage(error))
-    } finally {
-      setEventsLoading(false)
+    if (controlled) {
+      onReloadEvents?.()
+      return
     }
-  }, [client])
+    setLocalEventsLoading(true)
+    setLocalEventsError(null)
+    try {
+      setLocalEvents(await loadListeningEvents(client))
+    } catch (error) {
+      setLocalEventsError(getErrorMessage(error))
+    } finally {
+      setLocalEventsLoading(false)
+    }
+  }, [client, controlled, onReloadEvents])
 
   useEffect(() => {
+    if (controlled) {
+      return
+    }
+
     let isActive = true
 
     // The collection and the listening events load in parallel. A failure of
@@ -122,23 +170,19 @@ export function CollectionPanel({
         if (!isActive) {
           return
         }
-
-        setItems(nextItems)
-        setLoadError(null)
+        setLocalItems(nextItems)
+        setLocalLoadError(null)
       })
       .catch((error: unknown) => {
         if (!isActive) {
           return
         }
-
-        setLoadError(getErrorMessage(error))
+        setLocalLoadError(getErrorMessage(error))
       })
       .finally(() => {
-        if (!isActive) {
-          return
+        if (isActive) {
+          setLocalIsLoading(false)
         }
-
-        setIsLoading(false)
       })
 
     loadListeningEvents(client)
@@ -146,29 +190,25 @@ export function CollectionPanel({
         if (!isActive) {
           return
         }
-
-        setEvents(nextEvents)
-        setEventsError(null)
+        setLocalEvents(nextEvents)
+        setLocalEventsError(null)
       })
       .catch((error: unknown) => {
         if (!isActive) {
           return
         }
-
-        setEventsError(getErrorMessage(error))
+        setLocalEventsError(getErrorMessage(error))
       })
       .finally(() => {
-        if (!isActive) {
-          return
+        if (isActive) {
+          setLocalEventsLoading(false)
         }
-
-        setEventsLoading(false)
       })
 
     return () => {
       isActive = false
     }
-  }, [client, refreshKey])
+  }, [client, controlled, refreshKey])
 
   const sortedItems = useMemo(() => sortCollection(items), [items])
   const decades = useMemo(() => availableDecades(sortedItems), [sortedItems])
@@ -186,7 +226,11 @@ export function CollectionPanel({
 
     try {
       const createdItem = await addManualCollectionItem(client, input)
-      setItems((current) => sortCollection([createdItem, ...current]))
+      if (controlled) {
+        onMutated?.()
+      } else {
+        setLocalItems((current) => sortCollection([createdItem, ...current]))
+      }
       setNotice('Record added.')
     } catch (error) {
       const message = getErrorMessage(error)
@@ -208,13 +252,17 @@ export function CollectionPanel({
         editingItem.release.id,
         input,
       )
-      setItems((current) =>
-        current.map((item) =>
-          item.release.id === updatedRelease.id
-            ? { ...item, release: updatedRelease }
-            : item,
-        ),
-      )
+      if (controlled) {
+        onMutated?.()
+      } else {
+        setLocalItems((current) =>
+          current.map((item) =>
+            item.release.id === updatedRelease.id
+              ? { ...item, release: updatedRelease }
+              : item,
+          ),
+        )
+      }
       setEditingItem(null)
       setNotice('Record saved.')
     } catch (error) {
@@ -227,7 +275,11 @@ export function CollectionPanel({
     itemId: string,
     saved: CollectionItemPersonalSignals & { id: string },
   ) {
-    setItems((current) =>
+    if (controlled) {
+      onMutated?.()
+      return
+    }
+    setLocalItems((current) =>
       current.map((currentItem) =>
         currentItem.id === itemId
           ? {
@@ -245,12 +297,16 @@ export function CollectionPanel({
     async (itemId: string) => {
       // The DB sets user_id / listened_at; we send only collection_item_id.
       const saved = await addListeningEvent(client, itemId)
+      if (controlled) {
+        onMutated?.()
+        return
+      }
       // Keep local order identical to the load query: listened_at DESC, id DESC.
-      setEvents((current) =>
+      setLocalEvents((current) =>
         [saved, ...current].sort(compareListeningEventsNewestFirst),
       )
     },
-    [client],
+    [client, controlled, onMutated],
   )
 
   async function handleRemove(item: CollectionItemWithRelease) {
@@ -267,14 +323,18 @@ export function CollectionPanel({
 
     try {
       await deleteCollectionItem(client, item.id)
-      setItems((current) =>
-        current.filter((currentItem) => currentItem.id !== item.id),
-      )
-      // The DB cascades listening_events on the collection-item delete; mirror
-      // that in local state so derived counts and the history list stay honest.
-      setEvents((current) =>
-        current.filter((event) => event.collection_item_id !== item.id),
-      )
+      if (controlled) {
+        onMutated?.()
+      } else {
+        setLocalItems((current) =>
+          current.filter((currentItem) => currentItem.id !== item.id),
+        )
+        // The DB cascades listening_events on the collection-item delete; mirror
+        // that in local state so derived counts and the history stay honest.
+        setLocalEvents((current) =>
+          current.filter((event) => event.collection_item_id !== item.id),
+        )
+      }
       setNotice('Record removed.')
     } catch (error) {
       setActionError(getErrorMessage(error))
@@ -302,7 +362,7 @@ export function CollectionPanel({
       ) : loadError ? (
         <div className="collection-state" role="alert">
           <p className="error">{loadError}</p>
-          <button onClick={fetchCollection} type="button">
+          <button onClick={() => void fetchCollection()} type="button">
             Retry
           </button>
         </div>

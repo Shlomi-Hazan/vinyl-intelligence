@@ -8,6 +8,7 @@ import {
 import {
   CollectionDataContext,
   type CollectionData,
+  type LoadPhase,
 } from './collection-data-context.ts'
 import { loadCollection } from '../lib/supabase/collection.ts'
 import { loadListeningEvents } from '../lib/supabase/listeningEvents.ts'
@@ -22,40 +23,45 @@ type Props = {
   children: ReactNode
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : 'Could not load your collection. Please try again.'
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
 }
 
 /**
- * One authenticated source for the owned collection + listening events.
+ * The single authenticated source for the owned collection + listening events.
  *
  * - Lives below AuthProvider. AppRoutes mounts it with `key={user.id}`, so a
  *   user change discards this instance entirely - no previous-user data can
  *   render, and no authorization decision lives in React state (`items` /
  *   `events` are only a cache of what RLS already returned).
- * - An in-flight response is dropped on unmount via the `cancelled` flag.
+ * - Collection and listening events load INDEPENDENTLY (two effects, two
+ *   phases). A failure of one never blanks the other's data (Milestone 8).
+ * - Route hosts read from here and never issue their own initial load; after a
+ *   successful mutation a route calls `invalidate()` for one authoritative
+ *   reload, so every provider-backed route stays consistent.
+ * - In-flight responses are dropped on unmount via the `cancelled` flag.
  * - RLS stays authoritative for every read. No service-role usage.
  */
 export function CollectionDataProvider({ client, userId, children }: Props) {
   const [items, setItems] = useState<CollectionItemWithRelease[]>([])
   const [events, setEvents] = useState<ListeningEventRecord[]>([])
-  const [status, setStatus] = useState<CollectionData['status']>('loading')
+  const [status, setStatus] = useState<LoadPhase>('loading')
+  const [eventsStatus, setEventsStatus] = useState<LoadPhase>('loading')
   const [error, setError] = useState<string | null>(null)
+  const [eventsError, setEventsError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
-  const [nonce, setNonce] = useState(0)
+  const [collNonce, setCollNonce] = useState(0)
+  const [eventsNonce, setEventsNonce] = useState(0)
 
   useEffect(() => {
     let cancelled = false
 
-    Promise.all([loadCollection(client), loadListeningEvents(client)])
-      .then(([nextItems, nextEvents]) => {
+    loadCollection(client)
+      .then((next) => {
         if (cancelled) {
           return
         }
-        setItems(nextItems)
-        setEvents(nextEvents)
+        setItems(next)
         setError(null)
         setStatus('ready')
         setVersion((v) => v + 1)
@@ -64,36 +70,84 @@ export function CollectionDataProvider({ client, userId, children }: Props) {
         if (cancelled) {
           return
         }
-        setItems([])
-        setEvents([])
-        setError(getErrorMessage(caught))
+        // Do NOT clear `items` on a reload failure - a stale list is better
+        // than a false "empty collection". `status === 'error'` is the signal.
+        setError(getErrorMessage(caught, 'Could not load your collection.'))
         setStatus('error')
       })
 
     return () => {
       cancelled = true
     }
-    // `userId` is in the deps so a (defensive) same-instance user change also
-    // reloads; the `key` remount is the primary isolation guarantee.
-  }, [client, userId, nonce])
+  }, [client, userId, collNonce])
 
-  const refresh = useCallback(() => {
+  useEffect(() => {
+    let cancelled = false
+
+    loadListeningEvents(client)
+      .then((next) => {
+        if (cancelled) {
+          return
+        }
+        setEvents(next)
+        setEventsError(null)
+        setEventsStatus('ready')
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) {
+          return
+        }
+        // Independent of the collection: never touches `items` / `status`.
+        setEventsError(
+          getErrorMessage(caught, 'Could not load your listening history.'),
+        )
+        setEventsStatus('error')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [client, userId, eventsNonce])
+
+  const reload = useCallback(() => {
     setStatus('loading')
     setError(null)
-    setNonce((n) => n + 1)
+    setEventsStatus('loading')
+    setEventsError(null)
+    setCollNonce((n) => n + 1)
+    setEventsNonce((n) => n + 1)
+  }, [])
+
+  const reloadEvents = useCallback(() => {
+    setEventsStatus('loading')
+    setEventsError(null)
+    setEventsNonce((n) => n + 1)
   }, [])
 
   const value = useMemo<CollectionData>(
     () => ({
-      status,
       items,
       events,
+      status,
       error,
+      eventsStatus,
+      eventsError,
       version,
-      reload: refresh,
-      invalidate: refresh,
+      reload,
+      invalidate: reload,
+      reloadEvents,
     }),
-    [status, items, events, error, version, refresh],
+    [
+      items,
+      events,
+      status,
+      error,
+      eventsStatus,
+      eventsError,
+      version,
+      reload,
+      reloadEvents,
+    ],
   )
 
   return (

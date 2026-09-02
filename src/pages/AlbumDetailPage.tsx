@@ -2,7 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { CollectionItemCard } from '../collection/CollectionItemCard.tsx'
-import { EmptyState, LoadingSkeleton } from '../ui/feedback.tsx'
+import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
@@ -21,10 +21,11 @@ import { deleteCollectionItem } from '../lib/supabase/collection.ts'
 export function AlbumDetailPage() {
   const { id = '' } = useParams()
   const { client } = useClient()
-  const { items, events, status, invalidate } = useCollectionData()
+  const { items, events, status, error, reload, invalidate } = useCollectionData()
   const toast = useToast()
   const navigate = useNavigate()
 
+  // The collection is still loading - do not decide "not found" yet.
   if (status === 'loading') {
     return (
       <div className="vi-page">
@@ -34,6 +35,22 @@ export function AlbumDetailPage() {
     )
   }
 
+  // The collection LOAD FAILED - this is a recoverable data error, never a
+  // "not in your collection".
+  if (status === 'error') {
+    return (
+      <div className="vi-page">
+        <PageHeader eyebrow="Album" title="Could not load your collection" />
+        <ErrorState
+          message={error ?? 'Could not load your collection.'}
+          onRetry={reload}
+        />
+      </div>
+    )
+  }
+
+  // status === 'ready': the collection loaded successfully, so a missing item
+  // is a genuine not-found.
   const item = items.find((entry) => entry.id === id)
 
   if (!item) {
