@@ -192,4 +192,60 @@ describe('CuratorPanel', () => {
     expect(sessionStorage.length).toBe(0)
     expect(localStorage.length).toBe(0)
   })
+
+  describe('onStatusChange -> Vinny state', () => {
+    it('reports thinking while pending then success on an ok result', async () => {
+      const user = userEvent.setup()
+      let resolve: (v: CuratorResult) => void = () => {}
+      mockedRequest.mockImplementation(() => new Promise((r) => { resolve = r }))
+      const onStatusChange = vi.fn()
+
+      render(<CuratorPanel client={client} onStatusChange={onStatusChange} />)
+      expect(onStatusChange).toHaveBeenLastCalledWith('idle')
+
+      await user.type(screen.getByLabelText('Your request'), '90s rock')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+      expect(onStatusChange).toHaveBeenLastCalledWith('thinking')
+
+      resolve(okResult())
+      await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith('success'))
+    })
+
+    it('reports no-match on a no_match result', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockResolvedValue({
+        status: 'no_match',
+        interpretedIntent: {
+          includeGenres: [], excludeGenres: [], decades: [], minRating: null,
+          favoritesOnly: false, neverPlayedOnly: false, avoidRecentlyPlayed: false,
+          recentDays: null, preference: 'none', energy: 'any', mood: null,
+          requestedCount: 3,
+        },
+      })
+      const onStatusChange = vi.fn()
+
+      render(<CuratorPanel client={client} onStatusChange={onStatusChange} />)
+      await user.type(screen.getByLabelText('Your request'), 'polka from 2024')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith('no-match'))
+    })
+
+    it('reports idle (not no-match) on a technical error', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockRejectedValue(
+        new CuratorError('provider_unavailable', 'The curator is unavailable.'),
+      )
+      const onStatusChange = vi.fn()
+
+      render(<CuratorPanel client={client} onStatusChange={onStatusChange} />)
+      await user.type(screen.getByLabelText('Your request'), 'x')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      await screen.findByRole('alert')
+      expect(onStatusChange).toHaveBeenLastCalledWith('idle')
+      expect(onStatusChange).not.toHaveBeenCalledWith('no-match')
+      expect(onStatusChange).not.toHaveBeenCalledWith('success')
+    })
+  })
 })

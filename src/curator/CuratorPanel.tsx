@@ -25,13 +25,17 @@ type CuratorPanelProps = {
   initialRequest?: string
   /**
    * Optional UI-only signal so a host (e.g. the /vin page) can show a matching
-   * mascot state. It reports the initial-request panel status only; it does not
-   * change any curator behaviour or contract.
+   * Vinny state. It is derived from the initial-request flow only and does not
+   * change any curator behaviour or contract. A true technical error reports
+   * `idle` (the panel shows its own error UI) - never `no-match`.
    */
-  onStatusChange?: (status: PanelStatus) => void
+  onStatusChange?: (state: CuratorUiState) => void
 }
 
 type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
+
+/** Semantic curator state for the host's Vinny character. */
+export type CuratorUiState = 'idle' | 'thinking' | 'success' | 'no-match'
 
 // Client-only starter prompts. Clicking one ONLY sets the request text - it is
 // never auto-submitted and makes no model call. No backend/schema change.
@@ -121,9 +125,27 @@ export function CuratorPanel({
   const trimmed = request.trim()
   const pending = status === 'loading'
 
+  // Map the internal flow to a semantic Vinny state for the host page.
+  let vinnyState: CuratorUiState = 'idle'
+  if (status === 'loading') {
+    vinnyState = 'thinking'
+  } else if (status === 'done') {
+    if (conversation) {
+      const lastCurator = [...conversation.turns]
+        .reverse()
+        .find((turn) => turn.role === 'curator')
+      vinnyState = lastCurator?.kind === 'no_match' ? 'no-match' : 'success'
+    } else if (initialResult?.status === 'ok') {
+      vinnyState = 'success'
+    } else if (initialResult?.status === 'no_match') {
+      vinnyState = 'no-match'
+    }
+  }
+  // status 'error' deliberately stays 'idle' - the panel renders the error.
+
   useEffect(() => {
-    onStatusChange?.(status)
-  }, [status, onStatusChange])
+    onStatusChange?.(vinnyState)
+  }, [vinnyState, onStatusChange])
 
   function resetConversation() {
     setConversation(null)

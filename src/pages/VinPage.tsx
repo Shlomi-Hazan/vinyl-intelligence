@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
-import { VinAvatar } from '../brand/VinAvatar.tsx'
-import { CuratorPanel } from '../curator/CuratorPanel.tsx'
+import { Vinny } from '../brand/Vinny.tsx'
+import { CuratorPanel, type CuratorUiState } from '../curator/CuratorPanel.tsx'
 import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
-
-type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
 
 /*
  * Phase A/B: hosts the M9 single-turn recommendation + M10 bounded refinement
@@ -24,24 +22,26 @@ export function VinPage() {
   const { client } = useClient()
   const location = useLocation()
   const { items, status: collectionStatus } = useCollectionData()
-  const [panelStatus, setPanelStatus] = useState<PanelStatus>('idle')
+  const [vinState, setVinState] = useState<CuratorUiState>('idle')
 
   const state = location.state as { prefill?: unknown } | null
   const prefill =
     typeof state?.prefill === 'string' ? state.prefill.slice(0, 800) : undefined
 
-  const thinking = panelStatus === 'loading'
   const ready = collectionStatus === 'ready'
   const ownedCount = ready ? items.length : null
   const emptyCollection = ready && items.length === 0
 
-  const stateCopy = thinking
-    ? 'VIN is digging through your crate...'
-    : panelStatus === 'error'
-      ? 'That did not work - try again.'
-      : panelStatus === 'done'
+  const asideState = emptyCollection ? 'empty' : vinState
+
+  const stateCopy =
+    vinState === 'thinking'
+      ? 'VIN is digging through your crate...'
+      : vinState === 'success'
         ? "VIN's pick is ready."
-        : 'Describe a mood and VIN will choose.'
+        : vinState === 'no-match'
+          ? 'No match for that one - try different words.'
+          : 'Describe a mood and VIN will choose.'
 
   return (
     <div className="vi-page vi-page--wide legacy-host">
@@ -69,13 +69,13 @@ export function VinPage() {
             <CuratorPanel
               client={client}
               initialRequest={prefill}
-              onStatusChange={setPanelStatus}
+              onStatusChange={setVinState}
             />
           )}
         </div>
 
         <aside className="vi-vinpage__aside" aria-live="polite">
-          <VinAvatar size={190} state={thinking ? 'thinking' : 'idle'} />
+          <Vinny state={asideState} size={190} />
           <strong>VIN</strong>
           <p>
             Your Vinyl Intelligence Navigator - recommends only from records you
