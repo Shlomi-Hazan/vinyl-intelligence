@@ -24,18 +24,34 @@
   overflow-y: auto;
 }
 
+.vi-sidebar__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
 .vi-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-1) var(--space-3);
+  padding: var(--space-1);
   min-height: 44px;
-  border-bottom: 1px solid var(--border);
   color: var(--text);
+  flex: 1;
+  min-width: 0;
 }
 .vi-sidebar__brand:hover {
   text-decoration: none;
   color: var(--text);
+}
+.vi-sidebar__brand-full {
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+}
+.vi-sidebar__brand-mark {
+  display: none;
 }
 
 .vi-sidebar__nav {
@@ -95,10 +111,15 @@
 }
 
 .vi-app[data-rail='true'] .vi-navitem__label,
-.vi-app[data-rail='true'] .vi-sidebar__brand-text,
-.vi-app[data-rail='true'] .vi-sidebar__account-text,
-.vi-app[data-rail='true'] .vi-collapse-btn__label {
+.vi-app[data-rail='true'] .vi-sidebar__brand-full,
+.vi-app[data-rail='true'] .vi-sidebar__account-text {
   display: none;
+}
+.vi-app[data-rail='true'] .vi-sidebar__brand-mark {
+  display: block;
+}
+.vi-app[data-rail='true'] .vi-sidebar__brand {
+  justify-content: center;
 }
 
 .vi-app[data-rail='true'] .vi-navitem {
@@ -132,18 +153,32 @@
   color: var(--text);
 }
 
+/* utility control - deliberately quiet: a small square icon button */
 .vi-collapse-btn {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  border: 1px solid transparent;
+  color: var(--text-faint);
   border-radius: var(--radius-sm);
-  padding: 0.35rem 0.6rem;
-  font-size: var(--fs-label);
   cursor: pointer;
+  opacity: 0.6;
+  transition: color var(--dur-fast), border-color var(--dur-fast),
+    background-color var(--dur-fast), opacity var(--dur-fast);
+}
+.vi-collapse-btn:hover,
+.vi-collapse-btn:focus-visible {
+  opacity: 1;
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.vi-app[data-rail='true'] .vi-sidebar__top {
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 /* --- top bar --- */
@@ -170,11 +205,32 @@
   backdrop-filter: blur(8px);
 }
 
-.vi-topbar__context {
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 1.05rem;
+/* wayfinding chrome - quiet, subordinate to the page <h1> */
+.vi-crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+.vi-crumb__home {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-faint);
+}
+.vi-crumb__home:hover {
+  color: var(--text-muted);
+}
+.vi-crumb__sep {
+  color: var(--border-strong);
+}
+.vi-crumb__here {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -207,7 +263,7 @@
 /* --- page frame --- */
 .vi-page {
   flex: 1;
-  padding: var(--space-7) var(--page-gutter) var(--space-9);
+  padding: var(--space-6) var(--page-gutter) var(--space-8);
   width: 100%;
   max-width: var(--width-content);
   margin: 0 auto;
@@ -218,10 +274,15 @@
   max-width: var(--width-wide);
 }
 
+/* a focused <h1> must clear the sticky top bar if anything does scroll to it */
+.vi-main :is(h1, h2, [id]) {
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-4));
+}
+
 @keyframes vi-route-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -235,13 +296,19 @@
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  margin-bottom: var(--space-7);
+  margin-bottom: var(--space-6);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
 .vi-page-header__titles h1 {
   font-size: var(--fs-h1);
+}
+/* the h1 is a programmatic screen-reader target (tabindex=-1), not an
+   interactive control - no visible focus ring. */
+.vi-page-header__titles h1[tabindex]:focus,
+.vi-page-header__titles h1[tabindex]:focus-visible {
+  outline: none;
 }
 
 .vi-page-header__eyebrow {
@@ -283,19 +350,37 @@
 }
 
 /* --- responsive --- */
-@media (max-width: 1023px) {
-  .vi-app {
+/* below this width the sidebar would eat too much of the content area, so it
+   drops to an icon rail (1024x768 laptops included). */
+@media (max-width: 1120px) and (min-width: 768px) {
+  .vi-app,
+  .vi-app[data-rail='true'] {
     grid-template-columns: var(--sidebar-rail-w) 1fr;
   }
   .vi-app .vi-navitem__label,
-  .vi-app .vi-sidebar__brand-text,
+  .vi-app .vi-sidebar__brand-full,
   .vi-app .vi-sidebar__account-text,
-  .vi-app .vi-collapse-btn__label,
   .vi-collapse-btn {
     display: none;
   }
-  .vi-app .vi-navitem {
+  .vi-app .vi-sidebar__brand-mark {
+    display: block;
+  }
+  .vi-app .vi-navitem,
+  .vi-app .vi-sidebar__brand {
     justify-content: center;
+  }
+  .vi-sidebar {
+    padding: var(--space-4) var(--space-2);
+    align-items: center;
+  }
+  .vi-sidebar__top {
+    justify-content: center;
+    border-bottom: 0;
+  }
+  .vi-sidebar__account {
+    justify-content: center;
+    padding: var(--space-2);
   }
 }
 
@@ -312,6 +397,11 @@
   }
   .vi-page {
     padding: var(--space-5) var(--page-gutter) var(--space-7);
+  }
+  /* the page <h1> carries the title on mobile - drop the redundant crumb
+     rather than let it truncate mid-word next to the actions */
+  .vi-crumb {
+    display: none;
   }
   .vi-bottomnav {
     display: flex;

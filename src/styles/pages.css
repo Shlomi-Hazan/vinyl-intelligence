@@ -17,12 +17,13 @@
   position: sticky;
   top: 0;
   z-index: var(--z-topbar);
-  background: color-mix(in srgb, var(--bg) 84%, transparent);
-  backdrop-filter: blur(10px);
+  height: var(--landing-bar-h, 76px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .vi-landing__bar .vi-logo-wordmark {
-  font-size: 1.05rem;
+  font-size: 1.4rem;
 }
 
 .vi-landing__bar-links {
@@ -32,7 +33,7 @@
 }
 .vi-landing__bar-links a.vi-landing__section-link {
   color: var(--text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 .vi-landing__bar-links a.vi-landing__section-link:hover {
@@ -55,13 +56,13 @@
   max-width: var(--width-wide);
   width: 100%;
   margin: 0 auto;
-  padding: clamp(3rem, 8vw, 7rem) var(--page-gutter) clamp(4rem, 9vw, 8rem);
-  min-height: min(84vh, 780px);
+  padding: clamp(2rem, 5vw, 4rem) var(--page-gutter) clamp(3rem, 7vw, 6rem);
+  min-height: min(78vh, 680px);
 }
 
 .vi-hero__copy {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-4);
   max-width: 36rem;
   position: relative;
   z-index: 1;
@@ -200,14 +201,27 @@
   }
 }
 
+/* dedicated "How it works" scroll anchor: zero-height, right before Section 01,
+   offset so `scrollIntoView({block:'start'})` clears the sticky landing bar. */
+.vi-landing__anchor {
+  display: block;
+  height: 0;
+  scroll-margin-top: calc(var(--landing-bar-h, 76px) + var(--space-4));
+}
+/* the anchor is a scroll/focus target, not an interactive control - no ring */
+.vi-landing__anchor:focus,
+.vi-landing__anchor:focus-visible {
+  outline: none;
+}
+
 /* --- landing sections --- */
 .vi-landing__sections {
   max-width: var(--width-content);
   width: 100%;
   margin: 0 auto;
-  padding: var(--space-8) var(--page-gutter) 0;
+  padding: var(--space-7) var(--page-gutter) 0;
   display: grid;
-  gap: clamp(4rem, 10vw, 8rem);
+  gap: clamp(3.5rem, 9vw, 7rem);
 }
 
 .vi-lsection {
@@ -215,6 +229,7 @@
   grid-template-columns: 1fr 1fr;
   gap: clamp(var(--space-5), 5vw, var(--space-8));
   align-items: center;
+  scroll-margin-top: calc(var(--landing-bar-h, 76px) + var(--space-4));
 }
 .vi-lsection:nth-child(even) .vi-lsection__visual {
   order: -1;
@@ -245,10 +260,177 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: clamp(var(--space-4), 3vw, var(--space-6));
-  min-height: 280px;
+  min-height: 300px;
   display: grid;
   place-items: center;
   box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* ---- Section 03: Scan demonstration ---- */
+.vi-scandemo {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+.vi-scandemo__stage {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+.vi-scandemo__cap {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.vi-scandemo__arrow {
+  color: var(--accent);
+}
+.vi-scandemo__sleeve {
+  width: 108px;
+  height: 108px;
+}
+.vi-scandemo__line {
+  animation: vi-scanline 2.6s var(--ease-standard) infinite;
+}
+@keyframes vi-scanline {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(100px);
+  }
+}
+.vi-scandemo__clues {
+  display: grid;
+  gap: var(--space-2);
+  width: min(280px, 100%);
+}
+.vi-scandemo__clue {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  font-size: var(--fs-sm);
+}
+.vi-scandemo__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.vi-scandemo__cands {
+  display: grid;
+  gap: var(--space-2);
+  width: min(300px, 100%);
+}
+.vi-scandemo__cand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.vi-scandemo__cand[data-best='true'] {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px var(--border-accent);
+}
+.vi-scandemo__thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: radial-gradient(circle at 38% 32%, #3a322c, #120e0c);
+  flex: 0 0 auto;
+}
+.vi-scandemo__bars {
+  display: grid;
+  gap: 5px;
+  flex: 1;
+}
+.vi-scandemo__bars span {
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+}
+.vi-scandemo__confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  color: var(--success);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vi-scandemo__line {
+    animation: none;
+    transform: translateY(50px);
+    opacity: 0.5;
+  }
+}
+
+/* ---- Section 04: Rediscover demonstration ---- */
+.vi-rediscover {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+  width: 100%;
+}
+.vi-rediscover__svg {
+  width: min(300px, 100%);
+}
+.vi-rediscover__front {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: vi-rd-lift 3.4s var(--ease-standard) infinite;
+}
+@keyframes vi-rd-lift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vi-rediscover__front {
+    animation: none;
+  }
+}
+.vi-rediscover__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+}
+.vi-rediscover__tag {
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.vi-rediscover__tag--lead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-color: var(--border-accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .vi-mini-grid {
@@ -649,48 +831,68 @@
   gap: var(--space-2);
 }
 
-/* --- branded onboarding / empty state --- */
+/* --- branded onboarding / empty state ---
+   sized to sit comfortably at 1280x800 and 1024x768 without the CTAs being
+   awkwardly cut off (normal page scroll is still fine). */
 .vi-onboard {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-4);
   justify-items: center;
   text-align: center;
-  padding: clamp(var(--space-7), 8vw, var(--space-9)) var(--space-5);
+  padding: clamp(var(--space-5), 4vw, var(--space-7)) var(--space-5);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
   background:
-    radial-gradient(760px 320px at 50% 0%, rgba(205, 122, 66, 0.16), transparent 72%),
+    radial-gradient(760px 300px at 50% 0%, rgba(205, 122, 66, 0.16), transparent 72%),
     var(--groove) var(--surface);
   box-shadow: var(--shadow-card);
 }
 .vi-onboard__figure {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: min(320px, 80vw);
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.vi-onboard__figure .vi-crate {
+  width: clamp(150px, 34vw, 210px);
+  height: auto;
 }
 .vi-onboard__figure .vi-vinny {
-  position: absolute;
-  right: -6%;
-  bottom: 4%;
-  width: 44%;
+  width: clamp(88px, 20vw, 128px);
+  height: auto;
+  margin-bottom: -4%;
   filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.5));
 }
 .vi-onboard h2 {
-  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem);
+  font-size: clamp(1.5rem, 1.15rem + 1.4vw, 2.1rem);
 }
 .vi-onboard p {
   color: var(--text-muted);
-  max-width: 46ch;
-  font-size: 1.05rem;
-  line-height: 1.62;
+  max-width: 44ch;
+  font-size: 1.02rem;
+  line-height: 1.58;
 }
 .vi-onboard__cta {
   display: flex;
   gap: var(--space-3);
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+@media (max-height: 780px) {
+  .vi-onboard {
+    padding: var(--space-5) var(--space-5);
+    gap: var(--space-3);
+  }
+  .vi-onboard__figure .vi-crate {
+    width: clamp(130px, 26vw, 170px);
+  }
+  .vi-onboard__figure .vi-vinny {
+    width: clamp(78px, 16vw, 104px);
+  }
 }
 
 /* ============================ ASK VIN ============================ */
@@ -698,38 +900,47 @@
 .vi-vinpage {
   display: grid;
   gap: var(--space-6);
-  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
   align-items: start;
 }
 .vi-vinpage__aside {
   position: sticky;
-  top: calc(var(--topbar-h) + var(--space-5));
+  top: calc(var(--topbar-h) + var(--space-4));
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   justify-items: center;
   text-align: center;
-  padding: var(--space-6);
+  padding: var(--space-6) var(--space-5) var(--space-7);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
   background:
-    radial-gradient(360px 240px at 50% -10%, rgba(58, 111, 96, 0.28), transparent 72%),
+    radial-gradient(420px 300px at 50% -12%, rgba(58, 111, 96, 0.3), transparent 72%),
     var(--groove) var(--surface);
   box-shadow: var(--shadow-card);
 }
+.vi-vinpage__aside .vi-vinny {
+  width: clamp(150px, 40vw, 200px);
+  height: auto;
+}
 .vi-vinpage__aside strong {
   font-family: var(--font-display);
-  font-size: 1.15rem;
-  font-weight: 500;
+  font-size: 1.35rem;
+  font-weight: 600;
 }
 .vi-vinpage__aside p {
   color: var(--text-muted);
   font-size: var(--fs-sm);
   line-height: 1.55;
+  max-width: 26ch;
 }
 .vi-vinpage__state {
   color: var(--accent);
   font-weight: 600;
   font-size: var(--fs-sm);
+  min-height: 1.4em;
+}
+.vi-vinpage__aside .vi-onboard__cta {
+  margin-top: var(--space-2);
 }
 @media (max-width: 1023px) {
   .vi-vinpage {
@@ -737,8 +948,45 @@
   }
   .vi-vinpage__aside {
     position: static;
-    order: -1;
+    /* on narrow screens the request / empty-state action comes first;
+       VIN's context panel follows it */
   }
+  .vi-vinpage__aside .vi-vinny {
+    width: clamp(140px, 44vw, 180px);
+  }
+}
+
+/* ---- curator request form (inside CuratorPanel) ---- */
+.vi-curator {
+  display: grid;
+  gap: var(--space-5);
+}
+.vi-curator__intro h2 {
+  font-size: var(--fs-h2);
+  margin: var(--space-1) 0 var(--space-2);
+}
+.vi-curator__form {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--groove) var(--surface);
+}
+.vi-curator__starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.vi-curator__request .vi-textarea {
+  min-height: 7rem;
+  font-size: 1.05rem;
+}
+.vi-curator__submit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 /* ============================ SUSPENSE ============================ */
