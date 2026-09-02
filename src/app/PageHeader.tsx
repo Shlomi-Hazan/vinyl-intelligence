@@ -18,7 +18,9 @@ export function PageHeader({
 
   useEffect(() => {
     if (focusOnMount) {
-      headingRef.current?.focus()
+      // preventScroll: focusing the h1 must announce the route to AT without
+      // yanking the viewport under the sticky top bar.
+      headingRef.current?.focus({ preventScroll: true })
     }
   }, [focusOnMount, title])
 

@@ -74,26 +74,26 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
 
       <nav className="vi-sidebar" aria-label="Primary">
-        <NavLink to="/dashboard" className="vi-sidebar__brand" aria-label="Vinyl Intelligence, dashboard">
-          <Logo variant="mark" size={38} />
-          <span
-            className="vi-sidebar__brand-text"
-            style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: '1.05rem' }}
+        <div className="vi-sidebar__top">
+          <NavLink to="/dashboard" className="vi-sidebar__brand" aria-label="Vinyl Intelligence, dashboard">
+            <span className="vi-sidebar__brand-full">
+              <Logo variant="wordmark" />
+            </span>
+            <span className="vi-sidebar__brand-mark" aria-hidden="true">
+              <Logo variant="mark" size={38} />
+            </span>
+          </NavLink>
+          <button
+            type="button"
+            className="vi-collapse-btn"
+            aria-pressed={rail}
+            aria-label={rail ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
+            title={rail ? 'Expand the sidebar' : 'Collapse the sidebar'}
+            onClick={() => setRail((r) => !r)}
           >
-            Vinyl Intelligence
-          </span>
-        </NavLink>
-
-        <button
-          type="button"
-          className="vi-collapse-btn"
-          aria-pressed={rail}
-          aria-label={rail ? 'Expand the sidebar' : 'Collapse the sidebar to icons'}
-          onClick={() => setRail((r) => !r)}
-        >
-          <Icon name="panel-left" size={15} />
-          <span className="vi-collapse-btn__label">{rail ? 'Expand' : 'Collapse'}</span>
-        </button>
+            <Icon name={rail ? 'chevron-right' : 'chevron-left'} size={15} />
+          </button>
+        </div>
 
         <div className="vi-sidebar__nav">
           <NavItems />
@@ -115,7 +115,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="vi-main">
         <div className="vi-topbar">
-          <span className="vi-topbar__context">{title}</span>
+          <nav className="vi-crumb" aria-label="Breadcrumb">
+            <NavLink to="/dashboard" className="vi-crumb__home" aria-label="Home">
+              <Icon name="dashboard" size={13} />
+            </NavLink>
+            <span className="vi-crumb__sep" aria-hidden="true">/</span>
+            <span className="vi-crumb__here" aria-current="page">
+              {title}
+            </span>
+          </nav>
           <span className="vi-topbar__spacer" />
           <NavLink to="/discover" className="vi-btn vi-btn--secondary vi-btn--sm">
             <Icon name="plus" size={16} />
