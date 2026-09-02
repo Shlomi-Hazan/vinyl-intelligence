@@ -61,7 +61,7 @@ export function HeroVinyl({ className }: { className?: string }) {
         <circle cx="150" cy="150" r="52" fill="none" stroke="rgba(36,30,22,0.14)" strokeWidth="1.5" />
         {/* the shared canonical V I mark, scaled onto the label */}
         <g transform="translate(150 150) scale(2.55) translate(-32 -32)">
-          <ViGlyph color="#241e16" />
+          <ViGlyph />
         </g>
         <circle cx="150" cy="150" r="4.5" fill="var(--accent, #cd7a42)" />
       </svg>

@@ -30,6 +30,9 @@
   --accent-2-hover: #47836f;
   --gold: #d3ac57;
 
+  /* canonical V·I letterforms on the ivory record label - one source of truth */
+  --vi-glyph: #d08b48;
+
   /* --- status --- */
   --success: #66b088;
   --warning: #d3ac57;

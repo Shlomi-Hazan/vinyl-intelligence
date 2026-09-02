@@ -24,7 +24,7 @@ type LogoProps = {
  * hero record label and other compositions render the identical letters.
  */
 export function ViGlyph({
-  color = 'var(--text-on-cream, #241e16)',
+  color = 'var(--vi-glyph, #d08b48)',
 }: {
   color?: string
 }) {
