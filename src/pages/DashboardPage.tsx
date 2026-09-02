@@ -132,8 +132,8 @@ export function DashboardPage() {
       {emptyCollection ? (
         <div className="vi-onboard">
           <div className="vi-onboard__figure">
-            <EmptyCrate size={300} />
-            <VinAvatar size={130} />
+            <EmptyCrate size={200} />
+            <VinAvatar size={120} />
           </div>
           <h2>Your crate is empty</h2>
           <p>

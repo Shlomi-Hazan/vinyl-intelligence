@@ -74,8 +74,8 @@ export function CollectionPage() {
       {status === 'ready' && items.length === 0 && !showManual ? (
         <div className="vi-onboard">
           <div className="vi-onboard__figure">
-            <EmptyCrate size={300} />
-            <VinAvatar size={130} />
+            <EmptyCrate size={200} />
+            <VinAvatar size={120} />
           </div>
           <h2>Your shelf is empty</h2>
           <p>
