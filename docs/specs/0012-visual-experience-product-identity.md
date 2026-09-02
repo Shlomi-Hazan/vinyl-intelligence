@@ -5,14 +5,63 @@ mandatory architecture corrections recorded inline: provider artwork is
 resolved at **display time** from stored MusicBrainz IDs (no `releases.cover_url`,
 no catalog-add Cover Art Archive lookup); custom covers are one canonical
 `cover.webp` per item; VIN recommendation artwork resolves locally from
-`collectionItemId` without touching the M9/M10 model contract. **Phase 0
-(custom-cover storage) is implemented** on branch
-`claude/visual-experience-product-identity`. Phases A-E remain unstarted and
-require the Phase 0 PR to merge first.
+`collectionItemId` without touching the M9/M10 model contract.
 
-Date: 2026-08-31
+**Phase 0** (custom-cover storage) is **merged to `main` in PR #12** (merge
+commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`). **Phase A** (design system +
+routing + app shell + transitional page hosts + fallback `AlbumArtwork` +
+`CollectionDataProvider`) is **implemented and locally verified on branch
+`claude/visual-experience-product-identity-ui`, not merged** (see
+`docs/verification.md` "Visual Phase A Evidence"). **Phases B-E are unstarted.**
 
-Branch: `claude/visual-experience-product-identity`
+### Art-direction approval addendum - 2026-09-01
+
+The human completed and approved the visual art-direction review. Two
+human-approved reference images (an overall product moodboard and the VIN /
+Vinny character sheet) are **canonical art-direction references** alongside this
+spec; they are references only and are **not** committed to the repo or
+rasterised into the UI - the design language is recreated with original
+React/CSS/SVG. Where a reference image and this written spec disagree, the spec
+wins.
+
+Locked direction (no drift in later phases):
+
+- **Product feel:** "premium record store x modern streaming app x retro Hi-Fi
+  lounge" - premium, warm, cinematic, music-first, sophisticated, tactile,
+  vinyl/hi-fi-influenced. **High wow factor is explicitly approved**; do not
+  flatten it into a generic minimal dashboard. It must not feel like a SaaS
+  dashboard, a Spotify clone, a childish mascot site, or a plain CRUD project.
+- **Logo:** the "Grooved V-I" is the **primary** mark (circular grooved vinyl,
+  V/I integrated at the centre, spindle detail, "VINYL" / "INTELLIGENCE"
+  wordmark). Original SVG only, crisp from favicon to wordmark. Needle-drop is a
+  secondary decorative motif only.
+- **VIN / Vinny (canonical, full system is Phase D):** premium retro-futuristic
+  vinyl-curator robot - black grooved vinyl-record head, soft ivory centre-label
+  face with small intelligent eyes and a subtle friendly expression, copper
+  spindle, premium brushed-copper over-ear headphones with bottle-green ear
+  cushions, matte charcoal / dark-metal body, restrained copper hardware, a
+  small chest EQ display; warm, smart, musical, friendly but sophisticated,
+  slightly playful, **never childish/toy-like**. Approved future states:
+  idle / thinking / pick-success / no-match / empty-crate. Approved future
+  usage: landing, auth brand area, dashboard quick-VIN, `/vin`, AI
+  thinking/loading, selected empty states - **not** on every card, toast, page,
+  or control.
+- **Colour system:** one warm/dark theme with selective cream surfaces
+  (section 5.1 tokens, unchanged); warm translucent ivory borders, never cold
+  grey; no light-theme system.
+- **Typography:** Fraunces (display / major headings), Inter (body / UI), IBM
+  Plex Mono (metadata / IDs / timestamps); self-hosted WOFF2, no runtime Google
+  Fonts, no font npm dependency, OFL notices preserved. Used intentionally - not
+  every heading is Fraunces.
+- **Motion:** ambitious but not distracting, full `prefers-reduced-motion`.
+  Desktop album cards may use a 3-4 px lift, ~1.015 artwork zoom, a subtle
+  highlight, and a quick-action fade; no exaggerated 3D tilt; no constant
+  distracting motion. The full motion pass is Phase E.
+
+Date: 2026-08-31 (spec); 2026-09-01 (art-direction addendum)
+
+Branch: `claude/visual-experience-product-identity` (Phase 0),
+`claude/visual-experience-product-identity-ui` (Phases A-E)
 
 Baseline (`main`): `bfddeb5109e61eac65b184ff4ff5d58092b3984f` (Milestone 10 merge, PR #11)
 

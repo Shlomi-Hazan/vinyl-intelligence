@@ -2741,3 +2741,153 @@ Findings:
 
 No production or hosted verification of Phase 0 has been performed. Not
 deployed. Milestone 11 has not started.
+
+## Visual Experience Pass - Phase A Evidence (design system + routing + app shell)
+
+Date: 2026-09-02
+
+Branch: `claude/visual-experience-product-identity-ui`
+
+Baseline (`main`): `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (Phase 0 merge, PR #12)
+
+Status: implemented and **locally verified on branch, not merged**. Automated
+gate below all green; implementation self-check only (the pass reserves its one
+focused code review for the end of Phase E - no `/ultrareview`). **No human
+visual verification has been performed yet.** Phases B-E not started.
+
+### Implemented
+
+- **Routing:** `react-router-dom` 7.18.3 (the one new runtime dependency for the
+  whole pass), simple component API (`BrowserRouter` / `Routes` / `Route` /
+  `Navigate` / `Outlet`), no data-router. `public/_redirects` (`/*  /index.html
+  200`) for the Netlify SPA deep-link fallback. Routes: public `/` (landing) and
+  `/auth`; authenticated `/dashboard`, `/collection`, `/collection/:id`,
+  `/discover`, `/scan`, `/vin`, `/history`, `/settings`; `*` branded 404. Guards:
+  an unauthenticated protected-route visit redirects to `/auth` (remembering the
+  target); an authenticated `/auth` visit redirects to `/dashboard`; `/` stays
+  public; `loading` / `profile_missing` / auth-`error` render full-page boundary
+  states before the shell.
+- **App shell** (`src/app/AppShell.tsx`): left sidebar (~240 px) collapsible to a
+  ~64 px icon rail (choice persisted in `localStorage`), auto-rail at
+  768-1023 px, a mobile (`< 768 px`) bottom nav with a "More" drawer for
+  Scan / History / Settings / sign-out; slim sticky top bar with page context, a
+  global "Add" link, and a user avatar; `aria-current="page"` on the active nav
+  item, a skip link to `#vi-main-content`, and an `aria-live` region that
+  announces the new page. `PageHeader` moves focus to the page `<h1>` on mount.
+- **Design system** (`src/styles/`): `tokens.css` (the approved palette,
+  spacing, radius, motion, layout tokens; warm translucent ivory borders),
+  `fonts.css` (self-hosted WOFF2 `@font-face`, `swap`, real fallback stacks),
+  `base.css` (element base + warm/dark ground + grain + focus-visible +
+  `prefers-reduced-motion` reset + `.legacy-host` transitional overrides),
+  `shell.css`, `components.css`. `src/styles.css` (legacy, light) is **kept** and
+  loaded first so the not-yet-rebuilt Collection / Catalog / Curator panels stay
+  functional; it is retired page-by-page in Phases C-D.
+- **Fonts** (`public/fonts/`, SIL OFL 1.1, `public/fonts/README.md`): Fraunces
+  variable (36 KB), Inter variable Latin (47 KB), IBM Plex Mono 400/500 (~15 KB
+  each) - ~116 KB total. Obtained from the projects' legitimate upstream
+  distributions (`github.com/googlefonts/fraunces` via `@fontsource-variable`,
+  `github.com/rsms/inter` via `@fontsource-variable`, `github.com/IBM/plex` via
+  `@fontsource`); no binary was fabricated. No font npm dependency; no runtime
+  Google Fonts request (`@font-face` references only the local files).
+- **Brand:** `src/brand/Logo.tsx` (original "Grooved V-I" SVG, `mark` /
+  `wordmark` / `favicon` variants), `public/favicon.svg`, `src/brand/VinAvatar.tsx`
+  (static record-head + headphones foundation only - the 5-state animated Vinny
+  is Phase D).
+- **UI primitives** (`src/ui/`): `Icon` (original inline sprite, ~22 glyphs),
+  `Button` / `IconButton` / `Field` / `Input` / `Textarea` / `Select` /
+  `SearchInput` / `SegmentedControl` / `Badge` / `Chip` / `RatingControl` /
+  `Container`, `EmptyState` / `ErrorState` / `LoadingSkeleton` (+ `SkeletonStat`
+  / `SkeletonAlbumCard` / `SkeletonRow`), `Dialog` (focus trap + Esc + restore),
+  `ToastProvider` / `useToast`. No component-library or icon npm dependency.
+- **`AlbumArtwork`** (`src/media/AlbumArtwork.tsx`): **fallback tier only** -
+  original CSS/SVG vinyl geometry, a deterministic accent from a curated ramp
+  (`src/media/fallbackCover.ts`), 1:1 `aspect-ratio` box, `role="img"` with an
+  `"{artist} - {title} (no cover art)"` name, decorative geometry `aria-hidden`.
+  It renders **no `<img>`** and makes **no network request**. The Phase C
+  precedence chain (custom signed cover -> CAA release -> CAA release-group ->
+  fallback) is not wired.
+- **`CollectionDataProvider`** (`src/app/`): one authenticated source for the
+  owned collection + listening events. Lives below `AuthProvider`; `AppRoutes`
+  mounts it with `key={user.id}` so a user change discards the instance
+  entirely (no previous-user data can render); an in-flight response is dropped
+  on unmount. Exposes `status` (`loading` / `ready` / `error`), `items`,
+  `events`, `error`, `version`, `reload`, `invalidate`. RLS stays authoritative
+  for every read; no `service_role`; no authorization moved into React state
+  (`items` / `events` are a cache of what RLS returned). The removed `App`-level
+  `collectionRefreshKey` prop-drill is replaced by the provider's `version`.
+- **Feature route hosting (transitional, spec section 15):** `/auth` ->
+  `AuthForm` (unchanged Supabase Auth); `/settings` -> `ProfilePanel`;
+  `/collection` -> `CollectionPanel` (browse / search / filter / sort / ratings /
+  favourites / notes / mark-played / manual CRUD / history), refreshed via the
+  provider `version`; `/collection/:id` -> `CollectionItemCard` for the owned
+  item + real not-found state; `/discover` -> `CatalogPanel` (new optional
+  `showPhotoPanel` prop, `false` here), an add calls `invalidate()`; `/scan` ->
+  `CatalogPhotoPanel`, a chosen query is stashed as the `/discover` search draft
+  then navigates; `/vin` -> `CuratorPanel` **byte-unchanged**; `/history` -> a
+  flat reverse-chronological list from the provider; `/dashboard` -> a
+  structural quick-nav host with **no statistics**; `/` -> a structural landing.
+- **No database / schema change.** `src/lib/curator/*`,
+  `netlify/functions/curator-*.mts`, `netlify/functions/_shared/curator-handlers.mts`,
+  the recognition/vision pipeline, every migration, and all M9/M10 contracts /
+  prompts / schemas / models / rate limits / telemetry are untouched.
+
+### Automated Verification (agent-run / local; no provider calls)
+
+Run on the Phase A branch, clean database, 2026-09-02:
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm run test:run` | Passed: **35 Vitest files, 424 tests** (was 30 / 399) |
+| `npm run build` | Passed (chunk-size advisory only - see deferrals) |
+| `npx supabase db reset` | Passed: 10 migrations (unchanged; no Phase A migration) |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests (unchanged) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+Local dev smoke (Vite + Netlify plugin, no OpenRouter / MusicBrainz / Cover Art
+Archive call): `GET /`, `GET /collection/xyz` (SPA deep link), and `GET /vin` all
+returned `200`; no errors in the dev-server log.
+
+New / ported test coverage: `src/test/renderApp.tsx` helper; `App.test.tsx`
+(landing at `/`, form at `/auth`, protected-route redirect, 404);
+`auth/auth-state.test.tsx` ported to routes (sign-in / sign-up-pending /
+failed-sign-in / sign-out / signed-out auth event -> `/auth` / profile
+validation, save, failure / missing-profile state / **user-change remounts the
+collection UI so user A's draft is not shown to user B** / getSession error);
+`app/AppRoutes.test.tsx` (authed `/auth` -> dashboard, deep link
+`/collection/:id`, unknown `:id` not-found, active-nav `aria-current`, 404);
+`app/AppShell.test.tsx` (all nav sections, `aria-current`, skip link + labelled
+main, mobile bottom nav + "More"); `app/CollectionDataProvider.test.tsx`
+(loading -> ready, error -> retry -> ready, fresh-user keyed remount starts
+empty); `media/AlbumArtwork.test.tsx` (accessible name, no `<img>`, 1:1 box,
+deterministic seed accent, decorative `aria-hidden`);
+`media/fallbackCover.test.ts` (deterministic, in-ramp, empty-string safe). All
+M9/M10 curator suites unchanged and green.
+
+### Known LOW / deferred (deadline mode - recorded, not fixed in Phase A)
+
+- **Bundle size:** the client JS chunk grew to ~521 KB (149 KB gz) with
+  `react-router-dom`. Route-level `React.lazy` code-splitting is a Phase B/E task
+  per `docs/plans/012` (Phase E: "route-level code splitting finalised + bundle
+  budget check"). Build only warns; it does not fail.
+- **`src/styles.css` still present:** retired page-by-page as pages are rebuilt
+  in Phases C-D. Legacy panels render inside a `.legacy-host` wrapper with
+  defensive token overrides - visually transitional, fully functional.
+- **`/history` and `/collection/:id` are transitional hosts** (day-grouped
+  history + the full album-detail hero are Phase D).
+- **Fonts render with fallback stacks until the WOFF2 files load** - by design
+  (`font-display: swap`); the files are committed under `public/fonts/`.
+
+### External Provider / Hosted Actions
+
+OpenRouter completions: 0. MusicBrainz calls: 0. Cover Art Archive calls: 0.
+Hosted Supabase: untouched (all Supabase work local). Not deployed. Milestone 11
+not started.
+
+### Production / Hosted Status
+
+No production or hosted verification of Phase A has been performed. No human
+visual review has occurred yet.

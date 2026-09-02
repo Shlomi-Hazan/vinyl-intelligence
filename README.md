@@ -63,19 +63,29 @@ verification and production deployment have not occurred and remain later
 milestones; no hosted Supabase migration has been applied.
 
 Before Milestone 11 (Production Deployment), a **Visual Experience & Product
-Identity pass** is underway on `claude/visual-experience-product-identity`
+Identity pass** is underway
 (`docs/specs/0012-visual-experience-product-identity.md`,
 `docs/plans/012-visual-experience-product-identity.md`, ADR
 `docs/decisions/0005-visual-experience-and-artwork-architecture.md`). The design
-is **human-approved** (decisions A-K); it adds real multi-page navigation, a
-brand system (VIN curator identity, Grooved V-I logo, dark warm hi-fi visual
-system), first-class album artwork (client-side Cover Art Archive front images +
-optional user custom covers + a branded fallback), and a
-motion/responsive/accessibility pass. **Phase 0** (private `collection-covers`
-Storage bucket + `collection_items.custom_cover_path`; migration
-`20260903120000_add_custom_cover_storage.sql`) is implemented and pending its
-own PR + focused security review. Phases A-E (design system, routing, pages) are
-not started; `react-router-dom` is not yet a dependency.
+is **human-approved** (decisions A-K, art-direction addendum 2026-09-01); it
+adds real multi-page navigation, a brand system (VIN curator identity, Grooved
+V-I logo, dark warm hi-fi visual system), first-class album artwork (client-side
+Cover Art Archive front images + optional user custom covers + a branded
+fallback), and a motion/responsive/accessibility pass.
+
+- **Phase 0** (private `collection-covers` Storage bucket +
+  `collection_items.custom_cover_path`; migration
+  `20260903120000_add_custom_cover_storage.sql`) is **merged to `main` in
+  PR #12** (merge commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`).
+- **Phase A** (design system + `react-router-dom` routing + the 9-route app
+  shell + transitional page hosts for every M2-M10 feature + fallback
+  `AlbumArtwork` + `CollectionDataProvider`) is **implemented and locally
+  verified on branch `claude/visual-experience-product-identity-ui`, not
+  merged** (`docs/verification.md` "Visual Phase A Evidence"). This is the only
+  new runtime dependency in the whole pass.
+- **Phases B-E** (landing/auth/dashboard; artwork infra + visual collection/
+  discover/scan; VIN/history/settings/album-detail; motion/responsive/a11y/perf)
+  are not started.
 
 Milestone pull-request and merge state are tracked in GitHub history.
 

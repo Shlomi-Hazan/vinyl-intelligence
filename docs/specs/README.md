@@ -29,7 +29,7 @@ Existing specs/spikes:
 - [0009 Milestone 8 Listening History](0009-milestone-8-listening-history.md) - implemented and verified (merged in PR #8)
 - [0010 Milestone 9 AI Curator](0010-milestone-9-ai-curator.md) - implemented and verified (human runtime PASS 5/5); merged in PR #10
 - [0011 Milestone 10 Conversational Refinement](0011-milestone-10-conversational-refinement.md) - implemented and verified (human runtime PASS 4/4); merged in PR #11
-- [0012 Visual Experience & Product Identity Pass](0012-visual-experience-product-identity.md) - design/product/architecture spec; **human-approved** (decisions A-K, with the provider-artwork correction). Inserted product-quality pass before Milestone 11. Phase 0 (custom-cover storage) implemented; Phases A-E pending.
+- [0012 Visual Experience & Product Identity Pass](0012-visual-experience-product-identity.md) - design/product/architecture spec; **human-approved** (decisions A-K + 2026-09-01 art-direction addendum). Inserted product-quality pass before Milestone 11. Phase 0 (custom-cover storage) merged in PR #12; **Phase A** (design system + routing + shell) implemented on branch `claude/visual-experience-product-identity-ui`, not merged; Phases B-E pending.
 
 Likely milestone specs:
 

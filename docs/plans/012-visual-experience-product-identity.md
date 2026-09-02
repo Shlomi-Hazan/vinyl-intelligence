@@ -1,14 +1,23 @@
 # 012 Visual Experience & Product Identity Pass - Implementation Plan
 
-Status: **APPROVED 2026-08-31** (spec section 20, decisions A-K), with the
-mandatory provider-artwork correction (no `releases.cover_url`, no catalog-add
-Cover Art Archive lookup - artwork is a client-side display-time concern) and
-the canonical `cover.webp` custom-cover object. **Phase 0 is implemented** on
-this branch (migration `20260903120000_add_custom_cover_storage.sql` + pgTAP +
-`config.toml` storage). Phases A-E are unstarted and gated on the Phase 0 PR
-merging.
+Status: **APPROVED 2026-08-31** (spec section 20, decisions A-K); art-direction
+addendum approved **2026-09-01** (see spec 0012). Mandatory provider-artwork
+correction stands (no `releases.cover_url`, no catalog-add Cover Art Archive
+lookup - artwork is a client-side display-time concern) plus the canonical
+`cover.webp` custom-cover object.
 
-Date: 2026-08-31
+Progress:
+
+- **Phase 0** (custom-cover storage): **merged to `main` in PR #12** (merge
+  commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`).
+- **Phase A** (design system + routing + app shell + transitional page hosts +
+  fallback `AlbumArtwork` + `CollectionDataProvider`): **implemented and locally
+  verified on branch `claude/visual-experience-product-identity-ui`, not
+  merged.** `react-router-dom` 7.18.3 added (the one runtime dependency). See
+  `docs/verification.md` "Visual Phase A Evidence".
+- **Phases B-E:** unstarted.
+
+Date: 2026-08-31 (plan); 2026-09-01 (art-direction addendum)
 
 Branch: `claude/visual-experience-product-identity`
 
@@ -162,22 +171,61 @@ it.
 
 ## 7. Phases A-E
 
-### Phase A - design system + routing + shell
+### Phase A - design system + routing + shell (DONE - branch, not merged)
 
-1. `react-router-dom` added (decision B). `public/_redirects` SPA fallback.
-2. `src/styles/` token/base/font layers; `public/fonts/` woff2; delete
-   `src/styles.css` after every consumer is migrated.
-3. `src/ui/` primitives + `Icon` sprite + `src/brand/Logo` + `AlbumArtwork`
-   (fallback tier only for now) + skeleton/empty/error components.
-4. `src/app/` `AppShell` + `Sidebar` + `BottomNav` + `TopBar` + `RouteView` +
-   route table + auth guards + `CollectionDataProvider`.
-5. Every existing feature mounted at its new route (spec section 15), visually
-   rough but functional. `App.tsx` reduced to composition.
-6. Port every existing Vitest suite to its new host; keep all green. Router /
-   guard / nav tests added.
+1. `react-router-dom` 7.18.3 added (decision B). `public/_redirects` SPA
+   fallback. `BrowserRouter` in the app, `MemoryRouter` in tests. **Done.**
+2. `src/styles/` token / base / fonts / shell / components layers loaded after
+   the legacy `src/styles.css`. `src/styles.css` is **kept for now** (it styles
+   the not-yet-rebuilt Collection / Catalog / Curator panels); `base.css` retints
+   the ground to the warm/dark tokens and a `.legacy-host` wrapper class carries
+   defensive overrides so those panels stay legible. `styles.css` is deleted in
+   Phase C-D as each page is rebuilt. Self-hosted WOFF2 in `public/fonts/`
+   (Fraunces / Inter / IBM Plex Mono, OFL, `public/fonts/README.md`). **Done.**
+3. `src/ui/` primitives (`Button`, `IconButton`, `Field`, `Input`, `Textarea`,
+   `Select`, `SearchInput`, `SegmentedControl`, `Badge`, `Chip`,
+   `RatingControl`, `Container`), `Icon` (original inline sprite),
+   `feedback.tsx` (`EmptyState` / `ErrorState` / `LoadingSkeleton` +
+   `SkeletonStat` / `SkeletonAlbumCard` / `SkeletonRow`), `Dialog` (focus trap +
+   Esc), `ToastProvider` / `useToast`. `src/brand/Logo` (Grooved V-I, 3
+   variants) + `src/brand/VinAvatar` (static foundation - the 5-state system is
+   Phase D). `src/media/AlbumArtwork` **fallback tier only** +
+   `src/media/fallbackCover` (deterministic ramp accent). **Done.**
+4. `src/app/` - `AppShell` (sidebar / collapsible rail / slim top bar / mobile
+   bottom nav + "More" drawer, `aria-current`, skip link, route `aria-live`
+   announce, focus-to-`h1` via `PageHeader`), `AppRoutes` (route table + auth
+   guards), `CollectionDataProvider` (+ context + `useCollectionData`), `nav.ts`,
+   `useClient`, `FullPageState`. `App.tsx` reduced to
+   `AuthProvider > ToastProvider > BrowserRouter > AppRoutes`. **Done.**
+5. Every M2-M10 feature mounted at its route via a transitional page host
+   (`src/pages/*`): `/auth` -> `AuthForm`; `/settings` -> `ProfilePanel`;
+   `/collection` -> `CollectionPanel` (refreshed by the provider's `version`
+   instead of the removed `App`-level `collectionRefreshKey` prop-drill);
+   `/collection/:id` -> `CollectionItemCard` for the owned item (real data
+   only, not-found state for a bad id); `/discover` -> `CatalogPanel` with a new
+   `showPhotoPanel={false}` prop; `/scan` -> `CatalogPhotoPanel` (a chosen query
+   is stashed as the `/discover` search draft, then navigate); `/vin` ->
+   `CuratorPanel` **unchanged**; `/history` -> a flat reverse-chron list from the
+   provider; `/dashboard` -> structural quick-nav host, **no statistics**; `/` ->
+   structural landing; `*` -> branded 404. **Done.**
+6. Ported `src/App.test.tsx` and `src/auth/auth-state.test.tsx` to the router
+   (new `src/test/renderApp.tsx` helper); added
+   `src/app/AppRoutes.test.tsx`, `src/app/AppShell.test.tsx`,
+   `src/app/CollectionDataProvider.test.tsx`, `src/media/AlbumArtwork.test.tsx`,
+   `src/media/fallbackCover.test.ts`. Every M9/M10 curator suite is byte
+   unchanged. **Done.**
 
-Exit: `npm run typecheck|lint|test:run|build` green; every route reachable;
-every M2-M10 feature usable; M9/M10 contract tests unchanged.
+Exit met: `typecheck` / `lint` / `test:run` (35 files / 424) / `build` green;
+`supabase test db` 9 / 433; every route reachable; every M2-M10 feature usable;
+M9/M10 contract tests unchanged. The one code review is still reserved for the
+end of Phase E.
+
+**Known Phase A deferrals (LOW / documented):** the client JS bundle grew to
+~521 KB (149 KB gz) with `react-router-dom`; route-level `React.lazy`
+code-splitting is a Phase B/E task per this plan (Phase E: "route-level code
+splitting finalised + bundle budget check"). `src/styles.css` still present
+(retired page-by-page in C-D). `/history` and `/collection/:id` are transitional
+hosts (full designs in Phase D).
 
 ### Phase B - landing + auth + dashboard
 
