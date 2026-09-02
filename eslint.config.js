@@ -6,7 +6,14 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['.netlify', 'coverage', 'dist', 'node_modules', 'supabase/.temp'],
+    ignores: [
+      '.netlify',
+      'coverage',
+      'dist',
+      'node_modules',
+      'supabase/.temp',
+      'qa-shots.mjs',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

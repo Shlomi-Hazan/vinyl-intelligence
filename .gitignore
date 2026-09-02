@@ -39,3 +39,7 @@ pnpm-debug.log*
 .eslintcache
 playwright-report/
 test-results/
+
+# local QA (visual screenshots)
+qa-shots.mjs
+/shots/
