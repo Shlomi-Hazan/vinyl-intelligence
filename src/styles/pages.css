@@ -1572,26 +1572,37 @@ a.vi-histrow__title:hover {
 .vi-chip--static {
   color: var(--text-muted);
 }
-.vi-chip__x {
+/* The `.vi-app` root carries `.legacy-host`; `.legacy-host button` (0,1,1:
+   framed box + 0.6rem 1rem padding) outranks a bare `.vi-chip__x` (0,1,0).
+   Scope with two classes (0,2,0) so the round remove control wins, and
+   reset the legacy box explicitly. */
+.vi-chip .vi-chip__x {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
   display: inline-grid;
   place-items: center;
+  box-sizing: border-box;
   width: 18px;
   height: 18px;
-  margin: 0 -3px 0 1px;
+  margin: 0 -2px 0 1px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: none;
+  background: transparent;
   color: var(--text-faint);
+  font-size: 0;
+  line-height: 0;
   cursor: pointer;
   transition: color var(--dur-fast), background var(--dur-fast);
 }
-.vi-chip__x svg {
+.vi-chip .vi-chip__x svg {
   display: block;
 }
-.vi-chip__x:hover {
+.vi-chip .vi-chip__x:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  border: 0;
 }
 .vi-genres__add {
   display: flex;

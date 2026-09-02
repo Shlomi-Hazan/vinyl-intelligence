@@ -86,24 +86,36 @@
   text-decoration: none;
 }
 
-.vi-iconbtn {
+/* The `.vi-app` root carries `.legacy-host`, whose `.legacy-host button`
+   (specificity 0,1,1: framed box + 0.6rem 1rem padding) outranks a bare
+   `.vi-iconbtn` (0,1,0). Scope with two classes (0,2,0) so the compact
+   circular treatment wins, and reset the legacy box explicitly. */
+.vi-dialog .vi-iconbtn {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
   display: inline-grid;
   place-items: center;
+  box-sizing: border-box;
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-full);
+  padding: 0;
   border: 0;
-  background: none;
+  border-radius: var(--radius-full);
+  background: transparent;
   color: var(--text-faint);
+  font-size: 0;
+  line-height: 0;
   cursor: pointer;
   transition: color var(--dur-fast), background var(--dur-fast);
 }
-.vi-iconbtn svg {
+.vi-dialog .vi-iconbtn svg {
   display: block;
 }
-.vi-iconbtn:hover {
+.vi-dialog .vi-iconbtn:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--text) 10%, transparent);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  border: 0;
 }
 
 /* --- inputs --- */
