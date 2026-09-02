@@ -1,8 +1,10 @@
+import { ViGlyph } from './Logo.tsx'
+
 /*
  * Original CSS/SVG turntable + vinyl + sleeve composition for the landing hero.
  * No raster, no external image, no copyrighted artwork. Decorative only
  * (aria-hidden). The slow rotation lives in pages.css and is disabled under
- * prefers-reduced-motion.
+ * prefers-reduced-motion. The record label uses the shared canonical V I mark.
  */
 
 export function HeroVinyl({ className }: { className?: string }) {
@@ -55,19 +57,13 @@ export function HeroVinyl({ className }: { className?: string }) {
           d="M150 4 A146 146 0 0 1 296 150 L246 150 A96 96 0 0 0 150 54 Z"
           fill="rgba(242,233,220,0.05)"
         />
-        <circle cx="150" cy="150" r="48" fill="url(#hero-label)" />
-        <circle cx="150" cy="150" r="48" fill="rgba(0,0,0,0.14)" />
-        {/* the V-I mark echoed on the label */}
-        <path
-          d="M132 132 L149.6 168 L167 132"
-          fill="none"
-          stroke="#1b0f07"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <rect x="147" y="132" width="4" height="36" rx="2" fill="#1b0f07" />
-        <circle cx="150" cy="150" r="4" fill="#0b0908" />
+        <circle cx="150" cy="150" r="52" fill="var(--surface-cream, #f4ede1)" />
+        <circle cx="150" cy="150" r="52" fill="none" stroke="rgba(36,30,22,0.14)" strokeWidth="1.5" />
+        {/* the shared canonical V I mark, scaled onto the label */}
+        <g transform="translate(150 150) scale(2.55) translate(-32 -32)">
+          <ViGlyph color="#241e16" />
+        </g>
+        <circle cx="150" cy="150" r="4.5" fill="var(--accent, #cd7a42)" />
       </svg>
 
       {/* the tonearm */}

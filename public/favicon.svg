@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Vinyl Intelligence">
   <rect width="64" height="64" rx="13" fill="#141210"/>
-  <circle cx="32" cy="32" r="25" fill="#1a1512" stroke="#3a332c"/>
-  <circle cx="32" cy="32" r="20.5" fill="none" stroke="#3a332c"/>
-  <circle cx="32" cy="32" r="13.5" fill="#f4ede1"/>
-  <g fill="none" stroke="#241e16" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M25.5 25 L32 39.5 L38.5 25"/>
-    <path d="M32 39.5 L32 23.5"/>
+  <circle cx="32" cy="32" r="26" fill="#1b1512" stroke="#3a332c"/>
+  <circle cx="32" cy="32" r="18.5" fill="#f4ede1"/>
+  <g fill="none" stroke="#241e16" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 23 L22 41 L29 23"/>
+    <path d="M42.5 23 L42.5 41"/>
+    <path d="M38 23 L47 23"/>
+    <path d="M38 41 L47 41"/>
   </g>
-  <rect x="28" y="22" width="8" height="2.8" rx="1.2" fill="#241e16"/>
-  <circle cx="32" cy="32" r="2" fill="#c6743e"/>
+  <circle cx="32" cy="32" r="2.2" fill="#cd7a42"/>
 </svg>
