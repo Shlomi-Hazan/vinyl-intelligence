@@ -64,17 +64,19 @@ type IconProps = {
   size?: number
   className?: string
   title?: string
+  /** Fill the glyph with currentColor instead of stroking it (e.g. a set heart). */
+  filled?: boolean
 }
 
-export function Icon({ name, size = 20, className, title }: IconProps) {
+export function Icon({ name, size = 20, className, title, filled = false }: IconProps) {
   return (
     <svg
       className={className}
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke={filled ? 'none' : 'currentColor'}
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"

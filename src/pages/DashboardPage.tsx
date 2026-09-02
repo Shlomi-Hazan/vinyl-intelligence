@@ -7,7 +7,9 @@ import { Icon } from '../ui/Icon.tsx'
 import { Button, Input } from '../ui/primitives.tsx'
 import { ErrorState, SkeletonAlbumCard, SkeletonStat } from '../ui/feedback.tsx'
 import { useAuth } from '../auth/useAuth.ts'
+import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
+import { customCoverPath } from '../lib/collection/customCover.ts'
 import {
   collectionStats,
   decadeDistribution,
@@ -27,13 +29,24 @@ const QUICK_VIN_CHIPS = [
 ]
 
 function AlbumMini({ item }: { item: CollectionItemWithRelease }) {
+  const { client, userId } = useClient()
   return (
-    <Link to={`/collection/${item.id}`} className="vi-albumcard">
+    <Link
+      to={`/collection/${item.id}`}
+      className="vi-albumcard vi-albumcard__link"
+    >
       <AlbumArtwork
         artist={item.release.artist}
         title={item.release.title}
         seedId={item.release.id}
         size="grid"
+        releaseMbid={item.release.provider_release_id ?? null}
+        releaseGroupMbid={item.release.provider_release_group_id ?? null}
+        customCoverPath={
+          item.custom_cover_path ? customCoverPath(userId, item.id) : null
+        }
+        client={client}
+        customCoverVersion={item.custom_cover_updated_at ?? null}
       />
       <span className="vi-albumcard__title">{item.release.title}</span>
       <span className="vi-albumcard__meta">{item.release.artist}</span>

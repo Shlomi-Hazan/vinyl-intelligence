@@ -126,6 +126,29 @@
   justify-content: center;
 }
 
+/* Collapsed sidebar: a deliberate compact user control - the avatar alone,
+   centred in the rail, no squeezed expanded-card geometry. */
+.vi-app[data-rail='true'] .vi-sidebar {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+  align-items: center;
+}
+.vi-app[data-rail='true'] .vi-sidebar__foot {
+  align-items: center;
+  width: 100%;
+}
+.vi-app[data-rail='true'] .vi-sidebar__account {
+  width: auto;
+  justify-content: center;
+  gap: 0;
+  padding: var(--space-1);
+  border-color: transparent;
+}
+.vi-app[data-rail='true'] .vi-sidebar__account:hover,
+.vi-app[data-rail='true'] .vi-sidebar__account:focus-visible {
+  border-color: var(--border-accent);
+}
+
 .vi-sidebar__foot {
   margin-top: auto;
   display: flex;
@@ -393,9 +416,20 @@
     justify-content: center;
     border-bottom: 0;
   }
+  .vi-sidebar__foot {
+    align-items: center;
+    width: 100%;
+  }
   .vi-sidebar__account {
+    width: auto;
     justify-content: center;
-    padding: var(--space-2);
+    gap: 0;
+    padding: var(--space-1);
+    border-color: transparent;
+  }
+  .vi-sidebar__account:hover,
+  .vi-sidebar__account:focus-visible {
+    border-color: var(--border-accent);
   }
 }
 

@@ -100,9 +100,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="vi-sidebar__foot">
-          <button type="button" className="vi-sidebar__account" onClick={() => void signOut()}>
-            <span className="vi-avatar">{initials(profile?.display_name ?? null, user?.email ?? null)}</span>
-            <span className="vi-sidebar__account-text">
+          <button
+            type="button"
+            className="vi-sidebar__account"
+            onClick={() => void signOut()}
+            title={`${profile?.display_name ?? user?.email ?? 'Account'} - sign out`}
+            aria-label={`${profile?.display_name ?? user?.email ?? 'Account'}, sign out`}
+          >
+            <span className="vi-avatar" aria-hidden="true">
+              {initials(profile?.display_name ?? null, user?.email ?? null)}
+            </span>
+            <span className="vi-sidebar__account-text" aria-hidden="true">
               <span style={{ color: 'var(--text)', fontWeight: 600 }}>
                 {profile?.display_name ?? user?.email ?? 'Account'}
               </span>

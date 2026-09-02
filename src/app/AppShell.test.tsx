@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { AppShell } from './AppShell.tsx'
@@ -68,5 +69,29 @@ describe('AppShell', () => {
     expect(
       screen.getByRole('button', { name: /More/ }),
     ).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('the user control keeps its name and expanded card when the sidebar is expanded', () => {
+    const { container } = wrap('/dashboard', <AppShell>content</AppShell>)
+    expect(container.querySelector('.vi-app')).toHaveAttribute('data-rail', 'false')
+    const account = screen.getByRole('button', { name: /Ana, sign out/ })
+    expect(within(account).getByText('Ana')).toBeInTheDocument()
+    expect(within(account).getByText('Sign out')).toBeInTheDocument()
+  })
+
+  it('collapsing the sidebar keeps a labelled, contained user control (avatar only)', async () => {
+    const { container } = wrap('/dashboard', <AppShell>content</AppShell>)
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Collapse the sidebar to icons' }))
+
+    expect(container.querySelector('.vi-app')).toHaveAttribute('data-rail', 'true')
+    // still one accessible user control, still named
+    const account = screen.getByRole('button', { name: /Ana, sign out/ })
+    // the expanded card text is decorative + hidden from AT in rail mode
+    const text = account.querySelector('.vi-sidebar__account-text')
+    expect(text).toHaveAttribute('aria-hidden', 'true')
+    // the avatar (initials) is the visible affordance
+    expect(account.querySelector('.vi-avatar')?.textContent).toBeTruthy()
   })
 })

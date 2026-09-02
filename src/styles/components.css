@@ -556,28 +556,51 @@ button.vi-chip:hover {
 .vi-albumcard:focus-within .vi-albumcard__actions {
   opacity: 1;
 }
-.vi-albumcard__act {
-  display: inline-grid;
-  place-items: center;
+/* Scoped `.vi-albumcard ...` (0,2,0) so it beats `.legacy-host button` (0,1,1)
+   from the app-shell root - the box is then exactly 30x30 with a centred glyph. */
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act {
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 30px;
   height: 30px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+  font: inherit;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
-  background: rgba(12, 10, 8, 0.8);
+  background: rgba(12, 10, 8, 0.82);
   color: var(--text-muted);
   cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast),
+    background-color var(--dur-fast);
 }
-.vi-albumcard__act:hover:not(:disabled) {
+/* block-level SVG => no inline baseline gap => geometrically centred glyph */
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act svg {
+  display: block;
+}
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--border-accent);
 }
-.vi-albumcard__act[data-on='true'] {
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act--fav[data-on='true'] {
   color: var(--accent);
-  border-color: var(--border-accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 30%, rgba(12, 10, 8, 0.82));
 }
-.vi-albumcard__act:disabled {
+:is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act:disabled {
   opacity: 0.5;
   cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.vi-albumcard, .vi-albumrow) .vi-albumcard__act {
+    transition: none;
+  }
 }
 @media (hover: none) {
   .vi-albumcard__actions {
