@@ -220,20 +220,31 @@
 }
 
 /* --- top bar --- */
+/* `.vi-main` is a fixed-height (100vh grid row) column that owns route
+   scrolling. Its children must NOT flex-shrink to fit, or a tall page squashes
+   the shared top bar (measured 64 -> 37 on a populated Dashboard). The top bar
+   is a rigid band; `<main>` grows with its content and `.vi-main` scrolls. */
 .vi-main {
   grid-row: 1;
   grid-column: 2;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
+}
+.vi-main > main {
+  flex: 1 0 auto;
+  min-height: 0;
 }
 
 .vi-topbar {
   position: sticky;
   top: 0;
   z-index: var(--z-topbar);
+  flex: 0 0 var(--topbar-h);
   height: var(--topbar-h);
+  min-height: var(--topbar-h);
   display: flex;
   align-items: center;
   gap: var(--space-4);
