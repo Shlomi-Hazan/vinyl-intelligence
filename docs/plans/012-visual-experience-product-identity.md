@@ -280,15 +280,39 @@ Delivered on `claude/visual-experience-product-identity-ui`:
 - `src/lib/dashboard/insights.ts` (pure, `now`-injected, unit-tested);
   superseded Phase A structural landing/auth CSS removed; new `pages.css`.
 
-Exit met: `typecheck` / `lint` / `test:run` (40 files / 465) / `build` (no
-advisory) green; `supabase test db` 9 / 433 unchanged; the three screens cover
-the spec's state matrix (see the Phase B state-matrix tests). Human visual
-review not yet performed. The one code review remains at the end of Phase E.
+Exit met (initial): `typecheck` / `lint` / `test:run` (40 files / 465) /
+`build` green; `supabase test db` 9 / 433 unchanged.
 
-**Known Phase B deferrals (LOW):** `supabase-js` in the entry chunk;
-`src/styles.css` still present for the C-D hosts; landing section visuals are
-structural placeholders relative to the Phase E polish; exhaustive
-responsive/motion passes are Phase E.
+**Phase B correction (2026-09-02, before Phase C).** An independent audit found
+two MEDIUM functional findings and a human visual review found the visual
+implementation short of the approved identity. All addressed on this branch:
+(A) `/auth` now returns the user to the intended internal route after login via
+an allow-listed `safeInternalPath` (no open redirect); (B) the dashboard never
+computes listening analytics from `events === []` during loading/failure -
+`insights.ts` split into `collectionStats` / `listeningStats`, and every
+event-derived value (Played-30d, Never-played, Recently-played, Rediscover) is
+gated on `eventsStatus === 'ready'` with skeleton / `--` + Retry otherwise;
+(C) the unsupported "Free to start." landing copy removed; (D-M) a systemic
+visual pass - stronger responsive type scale + contrast + tactile grooved
+surfaces (tokens), larger buttons/inputs/nav/shell, a redesigned unmistakable
+V-I `Logo`, a first-class `VinAvatar` (grooved head, headphones, chest EQ, an
+`idle`/`thinking` state) + `EmptyCrate`, scroll-reveal + scroll cue + slow
+record rotation + Vinny thinking motion (all `prefers-reduced-motion`-safe), a
+richer landing hero + section demos, a scaled-up split auth, a branded
+dashboard/collection empty state (crate + Vinny; collection-first with manual
+CRUD behind an "Add a record manually" disclosure - no field removed), and a
+focused two-area Ask VIN composition with a 132px Vinny + real collection
+context + a live curator-state line (`CuratorPanel` gained one optional
+`onStatusChange` UI-only signal; no M9/M10 contract change). +4 test files
+(`routing`, `intended-route`, strengthened dashboard event-gating,
+insights split). 42 files / 472 tests. `supabase db reset` was **not** run per
+instruction. Full detail: `docs/verification.md` "Phase B correction".
+
+**Known deferrals (LOW):** `supabase-js` in the entry chunk;
+`src/styles.css` still present for the C-D hosts; landing section demo visuals
+are still schematic relative to the Phase E polish; Vinny's full 5-state system
+is Phase D; pixel-level human visual QA of the corrected pages still pending;
+exhaustive responsive/motion passes are Phase E.
 
 ### Phase C - artwork infrastructure + collection / discover / scan
 

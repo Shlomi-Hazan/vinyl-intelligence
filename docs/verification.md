@@ -3181,3 +3181,180 @@ Milestone 11 not started.
 
 No production or hosted verification of Phase B has been performed. No human
 visual review has occurred yet.
+
+## Visual Experience Pass - Phase B correction (2026-09-02)
+
+The section above records the **initial** Phase B implementation. An independent
+code audit then found **two MEDIUM functional findings**, and a **human visual
+review** (Landing, Auth, Dashboard-empty, Collection-empty, Ask VIN) concluded
+the visual implementation did not yet reach the approved product identity. All
+were addressed on the same branch **before Phase C**; the initial Phase B
+evidence above is preserved.
+
+### A - MEDIUM: return to the intended protected route after login (fixed)
+
+`/auth` redirected unconditionally to `/dashboard`, so the `location.state.from`
+stashed by the protected-route guard was ignored.
+
+- **Fix:** the guard now stashes `location.pathname + location.search`; the
+  `/auth` route, once authenticated, redirects to
+  `safeInternalPath(location.state.from) ?? '/dashboard'`.
+- `safeInternalPath` (`src/app/routing.ts`) is a strict allow-list -
+  string, `<= 512` chars, starts with a single `/`, no `//` / `/\` / whitespace
+  / `<>`, and the path (query/hash stripped) equals or is under one of
+  `/dashboard /collection /discover /scan /vin /history /settings`. Anything
+  else -> `null` -> `/dashboard`. No open redirect is possible; the router
+  architecture and lazy routing are unchanged.
+- Tests: `src/app/routing.test.ts` (accepts the 7 protected prefixes +
+  `/collection/:id` + query/hash; rejects `/`, `/auth`, external URLs,
+  `//host`, `/\host`, newline/`<>` injection, over-long, non-strings);
+  `src/app/intended-route.test.tsx` (unauthenticated `/collection` lands on
+  `/auth`; **after login the app is at `/collection`, not `/dashboard`**;
+  a direct `/auth` login with no intended route goes to `/dashboard`).
+
+### B - MEDIUM: never fabricate dashboard listening analytics (fixed)
+
+The dashboard computed Played-30d / Never-played / Recently-played / Rediscover
+from `events` regardless of `eventsStatus`. During loading/failure `events` is
+`[]`, which fabricated "0 played / everything never played" and made Rediscover
+treat the whole collection as never-played.
+
+- **Fix:** `insights.ts` split into `collectionStats(items)` (size + favourites
+  - collection-only, always safe) and `listeningStats(items, events, now)`
+  (played-in-window + never-played - **only** called when
+  `eventsStatus === 'ready'`). `DashboardPage` gates every event-derived value:
+  - `eventsStatus === 'loading'` -> `SkeletonStat` / skeleton rails (no
+    numbers).
+  - `eventsStatus === 'error'` -> the Played / Never-played cards show `--`
+    (muted), an explicit "Listening history is unavailable, so play counts are
+    hidden" alert + Retry, and Recently-played / Rediscover show an
+    `ErrorState` with Retry (`reloadEvents`). Records + Favorites still render.
+  - `eventsStatus === 'ready'` -> real analytics as before.
+- Tests (`src/pages/DashboardPage.test.tsx`, strengthened): **while events are
+  loading** the Played / Never-played labels are absent (not `0`) and
+  Rediscover renders no links; **when events fail** Records shows the real
+  count `3`/`2`, Favorites the real `1`, Never-played shows `--` (not `0`),
+  and a Retry is offered; a collection-load failure is still a full error
+  state, never a false "empty collection".
+- `insights.test.ts` updated for the split; boundary cases retained.
+
+### C - LOW: unsupported pricing claim removed (fixed)
+
+Landing's final CTA said "Free to start." - there is no pricing product
+contract. Replaced with truthful copy: "Your collection. Your data. Your next
+record."
+
+### D-M - visual system correction (implemented)
+
+Systemic, not font-bumps: applied through scale, hierarchy, composition,
+materiality, the brand mark, Vinny, and motion.
+
+- **Type scale + contrast (tokens):** a real responsive scale
+  (`--fs-display` / `-h1` / `-h2` / `-h3` / `-body` ~16-17px / `-sm` 15px /
+  `-label` 13px / `-meta` 14px / `-button` ~16px), applied to headings, nav,
+  labels, inputs, buttons, page titles, and legacy-host panels. Muted/faint
+  text lightened (`--text-muted #bcb2a2`, `--text-faint #8f8676`), borders
+  strengthened, a third surface (`--surface-3`) and a subtle `--groove`
+  radial-repeating texture added for tactility.
+- **Buttons:** larger (`0.8rem 1.35rem`, `--fs-button`), a `--lg` size, a
+  copper gradient + inner highlight + glow on primary, clearer active/hover/
+  focus, primary-vs-secondary separation.
+- **Inputs:** taller (`0.75rem 0.9rem`), `--fs-body`, a copper focus ring
+  (`box-shadow`) instead of a thin outline, readable placeholders.
+- **App shell:** wider sidebar (264px) with a groove texture, larger brand
+  (linked to `/dashboard`), 1rem nav text with copper active icon + rail,
+  taller top bar with a Fraunces page-context title, "Add a record" label, a
+  36px gradient avatar; the collapse control now shows an "Expand"/"Collapse"
+  text label (hidden only in the icon rail) so its purpose is understandable -
+  behaviour unchanged.
+- **Brand mark (`Logo`):** redesigned so the V-I monogram is bold and
+  unmistakable - a wide `V` with a straight serifed `I` stem on a large
+  half-disc ivory label, charcoal grooves, copper spindle; legible at
+  favicon/nav/avatar sizes. `public/favicon.svg` updated to match.
+- **Vinny (`VinAvatar`):** a first-class character, not a favicon glyph -
+  grooved vinyl head with rings, ivory label face with eyes/mouth/copper
+  spindle, brushed-copper over-ear headphones with bottle-green cushions, a
+  charcoal body, a copper collar, a chest EQ. New `state` prop
+  (`idle` | `thinking`): thinking gently wobbles the head and animates the EQ
+  bars; **both fully static under `prefers-reduced-motion`**. The full
+  success / no-match / empty-crate system remains Phase D. New
+  `src/brand/EmptyCrate.tsx` (empty record-crate SVG) for empty states.
+- **Motion (`src/app/useReveal.ts` + CSS):** landing sections reveal on scroll
+  (IntersectionObserver -> CSS transition); the hero record rotates slowly; a
+  bobbing "Discover" scroll cue sits under the hero; card hover lifts 4px with
+  a ~1.015 art zoom; the suspense fallback and Vinny thinking animate. Every
+  one has a `prefers-reduced-motion` static equivalent (`useReveal` starts
+  revealed; all keyframes disabled).
+- **Landing:** larger header wordmark + readable nav; a taller, punchier hero
+  (`min-height`, `--fs-display`, copper last line, richer `HeroVinyl` glow +
+  drop-shadows); a scroll cue; sections become alternating
+  demonstration/copy compositions with grooved bordered visual panels and
+  `01`-`04` numerals; the "Ask VIN" section carries a 110px Vinny; final CTA
+  strengthened, "Free to start." removed.
+- **Auth:** larger wordmark + brand line, a grooved-record geometry behind the
+  brand panel, a 72px Vinny, wider card (`27rem`), full-width tab switch with a
+  clearer selected state, taller inputs/buttons.
+- **Dashboard:** branded empty state (EmptyCrate + 130px Vinny + "Your crate
+  is empty" + Add/Scan `--lg` CTAs); populated layout re-weighted (`1.7fr /
+  1fr`), a bordered gradient Quick VIN card with a 56px Vinny, larger stat
+  values (`clamp` to 2.6rem) on grooved cards, "Your collection at a glance"
+  always shown (with an insufficient-data note when thin).
+- **Collection:** collection-first - loading -> skeleton; error -> recoverable
+  state; **empty -> a branded empty-shelf (EmptyCrate + Vinny) whose primary
+  actions are "Add a record" / "Scan a cover", with manual CRUD behind an
+  "Add a record manually" disclosure**; populated -> the existing
+  `CollectionPanel` unchanged. No manual field or capability removed.
+- **Ask VIN:** a focused two-area composition - `CuratorPanel` (unchanged
+  interaction + contract) on the left; a sticky aside on the right with a 132px
+  Vinny, "recommends only from records you own - N in your collection" (real
+  count), and a live curator-state line ("VIN is digging through your
+  crate..." while thinking). `CuratorPanel` gained one optional additive
+  `onStatusChange` UI-only signal - no contract, prompt, schema, model, rate
+  limit, or telemetry change; `src/lib/curator/*` and
+  `netlify/functions/curator-*.mts` untouched.
+
+### Correction verification (2026-09-02; `supabase db reset` deliberately NOT run)
+
+| Check | Result |
+| --- | --- |
+| `git diff --check` | Passed |
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed (0 errors, 0 warnings) |
+| `npm run test:run` | Passed: **42 Vitest files, 472 tests** (was 40 / 465) |
+| `npm run build` | Passed - entry JS 456.22 kB (132.05 kB gz), CSS 40.64 kB (8.93 kB gz); route chunks unchanged; no chunk advisory |
+| `npx supabase test db` | Passed: 9 pgTAP files, 433 tests (unchanged; no schema change; DB not reset) |
+| `npx supabase db lint` | Passed: no schema errors |
+| `npm audit --omit=dev` | Passed: 0 vulnerabilities |
+
+New / changed tests: `src/app/routing.test.ts` (new, 2), `src/app/intended-route.test.tsx`
+(new, 3), `src/pages/DashboardPage.test.tsx` (event-gating regressions
+strengthened), `src/lib/dashboard/insights.test.ts` (split), `src/auth/auth-state.test.tsx`
++ `src/pages/DashboardPage.test.tsx` updated for the collection-first empty
+state and the "Your crate is empty" onboarding copy. All Phase A / Phase B
+regression suites and every M9/M10 curator suite green.
+
+External provider calls: 0 OpenRouter / 0 MusicBrainz / 0 Cover Art Archive.
+No schema / migration / hosted / deploy action. `supabase db reset` was not
+run.
+
+### Visual verification actually performed
+
+The dev server (`npm run dev`, Vite + Netlify plugin) was started and every
+route (`/`, `/auth`, `/dashboard`, `/collection`, `/vin`, `/nope`) returned
+`200` with no runtime errors in the server log; the rendered DOM structure was
+inspected. **Pixel-level visual inspection was NOT performed** - this
+environment has no browser / computer-use tooling. The human visual review of
+the corrected pages has not yet happened; it is the next step after this
+branch is pushed.
+
+### Known limitations remaining
+
+- Pixel-level visual QA still pending (human, next).
+- `@supabase/supabase-js` still in the entry chunk (Phase E bundle budget).
+- `src/styles.css` (legacy) still present for the C-D page hosts; Collection /
+  Discover / Scan / History / Settings / Album-detail keep their transitional
+  hosts (their full redesigns are Phases C-D).
+- The landing section demo visuals are still schematic relative to the Phase E
+  polish; the composition, scale, and motion are in place.
+- Vinny's full 5-state system (success / no-match / empty-crate) is Phase D;
+  Phase B ships only `idle` / `thinking`.
