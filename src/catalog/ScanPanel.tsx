@@ -39,10 +39,15 @@ type ScanState =
       query: string
       candidates: CatalogCandidate[]
     }
-  | { k: 'no_match'; query: string }
+  | { k: 'no_match'; query: string; recognition: CoverRecognition }
   | { k: 'success' }
   | { k: 'model_error'; message: string }
-  | { k: 'provider_error'; message: string; query: string }
+  | {
+      k: 'provider_error'
+      message: string
+      query: string
+      recognition: CoverRecognition
+    }
 
 type ScanPanelProps = {
   client: BrowserSupabaseClient
@@ -119,9 +124,11 @@ export function ScanPanel({
   const [savingId, setSavingId] = useState<string | null>(null)
   const [addError, setAddError] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const busy = useRef(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  function pickFile(next: File | undefined) {
+  function pickFile(next: File | undefined | null) {
     setState({ k: 'idle' })
     setShowManual(false)
     setAddError(null)
@@ -147,6 +154,67 @@ export function ScanPanel({
     }
   }
 
+  function clearFile() {
+    setFile(null)
+    setFileName(null)
+    setState({ k: 'idle' })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // ---- drag & drop (desktop). Mobile keeps the native picker / camera. ----
+  function onDragOver(e: React.DragEvent) {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault()
+      setDragging(true)
+    }
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (e.currentTarget === e.target) {
+      setDragging(false)
+    }
+  }
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    // same validation path as the file picker
+    pickFile(e.dataTransfer?.files?.[0] ?? null)
+  }
+
+  /** Catalogue search for an already-recognised photo - NO Vision call. */
+  async function doCatalogSearch(query: string, recognition: CoverRecognition) {
+    setState({ k: 'searching', recognition, query })
+    try {
+      const candidates = await searchCatalog(client, query)
+      setState(
+        candidates.length > 0
+          ? { k: 'candidates', recognition, query, candidates }
+          : { k: 'no_match', query, recognition },
+      )
+    } catch (error) {
+      setState({
+        k: 'provider_error',
+        message: error instanceof Error ? error.message : 'Catalog search failed.',
+        query,
+        recognition,
+      })
+    }
+  }
+
+  /** Retry ONLY the catalogue dependency after a provider error (no Vision). */
+  async function retryCatalog(query: string, recognition: CoverRecognition) {
+    if (busy.current) {
+      return
+    }
+    busy.current = true
+    try {
+      await doCatalogSearch(query, recognition)
+    } finally {
+      busy.current = false
+    }
+  }
+
   async function analyse() {
     if (busy.current || !file) {
       return
@@ -162,21 +230,7 @@ export function ScanPanel({
         setState({ k: 'low_confidence', recognition, query })
         return
       }
-      setState({ k: 'searching', recognition, query })
-      try {
-        const candidates = await searchCatalog(client, query)
-        setState(
-          candidates.length > 0
-            ? { k: 'candidates', recognition, query, candidates }
-            : { k: 'no_match', query },
-        )
-      } catch (error) {
-        setState({
-          k: 'provider_error',
-          message: error instanceof Error ? error.message : 'Catalog search failed.',
-          query,
-        })
-      }
+      await doCatalogSearch(query, recognition)
     } catch (error) {
       setState(recognitionError(error))
     } finally {
@@ -209,7 +263,11 @@ export function ScanPanel({
     setFileName(null)
     setShowManual(false)
     setAddError(null)
+    setDragging(false)
     setState({ k: 'idle' })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const active = stepIndex(state)
@@ -234,14 +292,24 @@ export function ScanPanel({
         {/* ---- capture ---- */}
         {state.k === 'idle' || state.k === 'invalid' ? (
           <>
-            <label className="vi-scan__drop">
+            <label
+              className="vi-scan__drop"
+              data-dragging={dragging || undefined}
+              onDragEnter={onDragOver}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+            >
               <Icon name="scan" size={28} />
               <span>
-                {fileName
-                  ? `Selected: ${fileName}`
-                  : 'Take or upload a photo of the record cover'}
+                {dragging
+                  ? 'Drop the cover here'
+                  : fileName
+                    ? `Selected: ${fileName}`
+                    : 'Drag a cover photo here, or take / upload one'}
               </span>
               <input
+                ref={fileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 capture="environment"
@@ -249,7 +317,7 @@ export function ScanPanel({
                 onChange={(e) => pickFile(e.target.files?.[0])}
               />
               <span className="vi-btn vi-btn--secondary vi-btn--sm">
-                Choose image
+                {fileName ? 'Replace image' : 'Choose image'}
               </span>
             </label>
             {state.k === 'invalid' ? (
@@ -258,9 +326,14 @@ export function ScanPanel({
               </p>
             ) : null}
             {file ? (
-              <Button variant="primary" onClick={() => void analyse()}>
-                Analyse cover
-              </Button>
+              <div className="vi-candidate__actions">
+                <Button variant="primary" onClick={() => void analyse()}>
+                  Analyse cover
+                </Button>
+                <Button variant="ghost" size="sm" onClick={clearFile}>
+                  Remove image
+                </Button>
+              </div>
             ) : null}
           </>
         ) : null}
@@ -332,9 +405,26 @@ export function ScanPanel({
             <p>{state.message}</p>
             <div className="vi-candidate__actions">
               {state.k === 'provider_error' ? (
-                <Button variant="secondary" size="sm" onClick={() => void analyse()}>
-                  Try again
-                </Button>
+                <>
+                  {/* retry ONLY the catalogue search - the photo is already
+                      recognised, so no second Vision call */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      void retryCatalog(state.query, state.recognition)
+                    }
+                  >
+                    Retry catalogue search
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onSearchByText(state.query)}
+                  >
+                    Search by text instead
+                  </Button>
+                </>
               ) : (
                 <Button variant="secondary" size="sm" onClick={reset}>
                   Start over

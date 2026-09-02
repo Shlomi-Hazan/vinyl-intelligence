@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ScanPanel } from './ScanPanel.tsx'
+import { validateImageFile } from '../lib/vision/image.ts'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import { RecognitionError, type CoverRecognition } from '../lib/vision/types.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
@@ -144,7 +145,33 @@ describe('ScanPanel', () => {
     expect(
       screen.queryByText('No catalogue release matched those clues.'),
     ).toBeNull()
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Retry catalogue search' }),
+    ).toBeInTheDocument()
+  })
+
+  it('retrying a provider error re-runs the catalogue search but NOT Vision', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog
+      .mockRejectedValueOnce(new Error('MusicBrainz timeout'))
+      .mockResolvedValueOnce([candidate()])
+    setup()
+    await selectFileAndAnalyse()
+
+    expect(recognizeCover).toHaveBeenCalledTimes(1)
+    expect(searchCatalog).toHaveBeenCalledTimes(1)
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Retry catalogue search' }))
+
+    // catalogue searched again ...
+    await waitFor(() => expect(searchCatalog).toHaveBeenCalledTimes(2))
+    // ... but the photo was NOT re-recognised
+    expect(recognizeCover).toHaveBeenCalledTimes(1)
+    expect(
+      await screen.findByText('Selected Ambient Works 85-92'),
+    ).toBeInTheDocument()
   })
 
   it('a recognition/model failure is a model error, not "no match"', async () => {
@@ -169,5 +196,59 @@ describe('ScanPanel', () => {
     expect(addCatalog).not.toHaveBeenCalled()
     expect(searchCatalog).not.toHaveBeenCalled()
     expect(onSearchByText).not.toHaveBeenCalled()
+  })
+
+  describe('drag & drop', () => {
+    function dropZone() {
+      return document.querySelector('.vi-scan__drop') as HTMLElement
+    }
+    const png = () => new File(['x'], 'cover.png', { type: 'image/png' })
+
+    it('shows a drag-over state that clears on leave', () => {
+      setup()
+      const zone = dropZone()
+      fireEvent.dragOver(zone, { dataTransfer: { types: ['Files'] } })
+      expect(screen.getByText('Drop the cover here')).toBeInTheDocument()
+      fireEvent.dragLeave(zone, { target: zone })
+      expect(screen.queryByText('Drop the cover here')).toBeNull()
+    })
+
+    it('dropping a valid image selects it through the normal validation path', () => {
+      vi.mocked(validateImageFile).mockImplementation(() => {})
+      setup()
+      fireEvent.drop(dropZone(), {
+        dataTransfer: { files: [png()], types: ['Files'] },
+      })
+      expect(validateImageFile).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('Selected: cover.png')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Analyse cover' })).toBeInTheDocument()
+    })
+
+    it('dropping an invalid file enters the existing validation error state', () => {
+      vi.mocked(validateImageFile).mockImplementation(() => {
+        throw new RecognitionError('image_too_large', 'That image is too large.')
+      })
+      setup()
+      fireEvent.drop(dropZone(), {
+        dataTransfer: { files: [png()], types: ['Files'] },
+      })
+      expect(screen.getByRole('alert')).toHaveTextContent('That image is too large.')
+      expect(screen.queryByRole('button', { name: 'Analyse cover' })).toBeNull()
+    })
+
+    it('a selected image can be replaced or removed before analysis', async () => {
+      vi.mocked(validateImageFile).mockImplementation(() => {})
+      setup()
+      fireEvent.drop(dropZone(), {
+        dataTransfer: { files: [png()], types: ['Files'] },
+      })
+      // the picker affordance switches to "Replace image"
+      expect(screen.getByText('Replace image')).toBeInTheDocument()
+
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Remove image' }))
+      expect(screen.queryByText('Selected: cover.png')).toBeNull()
+      expect(screen.getByText('Choose image')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Analyse cover' })).toBeNull()
+    })
   })
 })
