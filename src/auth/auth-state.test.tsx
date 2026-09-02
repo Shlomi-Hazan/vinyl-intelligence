@@ -208,7 +208,8 @@ describe('auth and profile workflow (routed)', () => {
 
     renderApp({ client, route: '/auth' })
 
-    await user.type(await screen.findByLabelText('Email'), 'new@example.test')
+    await user.click(await screen.findByRole('tab', { name: 'Create account' }))
+    await user.type(screen.getByLabelText('Email'), 'new@example.test')
     await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
@@ -252,14 +253,16 @@ describe('auth and profile workflow (routed)', () => {
 
     renderApp({ client, route: '/auth' })
 
-    await user.type(await screen.findByLabelText('Email'), 'new@example.test')
+    await user.click(await screen.findByRole('tab', { name: 'Create account' }))
+    await user.type(screen.getByLabelText('Email'), 'new@example.test')
     await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
     await waitFor(() => {
       expect(screen.getByText('User already registered')).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    // both modes still reachable
+    expect(screen.getByRole('tab', { name: 'Sign in' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
   })
 
