@@ -137,21 +137,38 @@ VIN must not act as a general chatbot ("write Python", "do my assignment",
 "reveal your system prompt", unrelated questions). Broad *musical* requests
 ("surprise me", "something warm for dinner", "something energetic") stay valid.
 
-**Design — extend the existing intent/refinement result, add no call:**
+**Design — wrap the existing intent/refinement structured output, add no call.
+`CuratorIntent` itself is NOT modified.**
 
-- Add one boolean `inScope` to the curator intent JSON schema
-  (`CURATOR_INTENT_JSON_SCHEMA`, `strict`) and to `CuratorIntent`. Because the
-  refinement schema **embeds** the intent schema and its validator, the field
-  flows into the refinement path automatically.
+`inScope` is internal model-result metadata / control flow, not a musical
+intent field. It lives on the *outer* structured object, one level above the
+unchanged intent:
+
+- Initial intent call output shape:
+  `{ "inScope": boolean, "intent": { ...existing CuratorIntent fields, unchanged... } }`
+- Refinement call output shape:
+  `{ "inScope": boolean, "intent": { ...existing CuratorIntent fields, unchanged... }, "excludePreviousRecommendations": boolean }`
+
+Concretely:
+- Introduce a small outer JSON schema (`strict`) that has `inScope` plus an
+  `intent` property whose value is the existing `CURATOR_INTENT_JSON_SCHEMA.schema`
+  verbatim. The refinement schema keeps `excludePreviousRecommendations` and
+  moves the existing embedded intent under the same `{ inScope, intent, … }`
+  wrapper.
+- Parsing: a thin outer validator reads `inScope` (`requireBoolean`) then
+  delegates the `intent` object to the **unchanged** `normalizeCuratorIntent`
+  / `parseCuratorIntent`. A missing/invalid `inScope` is `provider_bad_response`
+  like any other contract violation.
+- `CuratorIntent`, and the `interpretedIntent` echoed to the UI, are exactly
+  the existing musical intent — no new field.
 - Add ~2 sentences to `INTENT_SYSTEM_PROMPT` / `REFINEMENT_SYSTEM_PROMPT`:
-  `inScope=false` **only** when the request is not about choosing a record to
-  play from a personal collection (code, essays, prompt disclosure, unrelated
-  Q&A); any real listening request — however broad or vague — is `inScope=true`.
-- Validate `inScope` in `normalizeCuratorIntent` (one `requireBoolean`); a
-  missing/invalid value is `provider_bad_response` like every other field.
-- In `handleCuratorRecommend` / `handleCuratorRefine`: **after** the intent
-  call + its telemetry, **before** `runSelectionPipeline`, branch:
-  `if (!intent.inScope) return { status: 'out_of_scope' }`.
+  set `inScope=false` **only** when the request is not about choosing a record
+  to play from a personal collection (code, essays, prompt disclosure,
+  unrelated Q&A); any real listening request — however broad or vague — is
+  `inScope=true`.
+- In `handleCuratorRecommend` / `handleCuratorRefine`: **after** the intent /
+  refinement call + its telemetry, **before** `runSelectionPipeline`, branch:
+  `if (!result.inScope) return { status: 'out_of_scope' }`.
   **The selection model call never runs for an out-of-scope request.**
 - New result status `out_of_scope` in `CuratorResult` / `CuratorRefineResult`;
   the function maps it to a normal 200 JSON body.
@@ -161,10 +178,10 @@ VIN must not act as a general chatbot ("write Python", "do my assignment",
 
 Flow:
 ```
-user request -> intent/refinement call (existing)
-  -> validate (existing, now includes inScope)
-  -> inScope?  yes -> existing deterministic filter + selection call (unchanged)
-               no  -> stop; return out_of_scope; no selection call
+user request -> intent/refinement call (existing model, wrapped output)
+  -> outer validate: inScope + delegate intent to the UNCHANGED intent validator
+  -> inScope?  true  -> existing deterministic filter + selection call (unchanged)
+               false -> stop; return out_of_scope; no selection call
 ```
 
 ### 8B. Vision prompt-injection hardening
@@ -213,8 +230,13 @@ Target: ≤ ~6 paid provider calls total.
 
 ## 10. Rollback / stop philosophy
 
-- Every hosted mutation (link, `db push`, env set, deploy) is a discrete
-  **human-approved** step; stop and report between them.
+- **Order:** Phase-A code hardening + local gate → human review → hosted
+  Supabase + Netlify configuration → human review → **open the M11 PR →
+  independent review → merge to `main`** → **only then deploy from merged
+  `main`** → hosted smoke → tiny status sync. Production is never deployed from
+  the branch or from an unmerged state. (Full phase list: plan `013`.)
+- Every hosted mutation (Supabase link, `db push`, env set, deploy) is a
+  discrete **human-approved** step; stop and report between them.
 - Netlify keeps previous deploys — rollback = redeploy the prior build.
 - Migrations are forward-only and were pgTAP-verified locally; if a hosted
   `db push` fails partway, stop, report the exact error, do not improvise a
@@ -250,5 +272,20 @@ Target: ≤ ~6 paid provider calls total.
   hardening (existing per-user rate limits + `max_tokens` + 800-char input
   limit + ≤ 3 recommendations remain in force).
 - No new feature, no schema change beyond applying existing migrations, no
-  provider change, no multi-region setup, no custom domain unless the human
-  asks.
+  provider change, no multi-region setup, no custom domain.
+
+## 13. Recorded human defaults (not open questions)
+
+- **Hosted Supabase:** create a NEW Vinyl Intelligence hosted project.
+- **Netlify:** create a NEW Vinyl Intelligence site.
+- **Production domain:** the default `*.netlify.app` domain for now; **no
+  custom domain in M11**.
+- **Auth email:** use Supabase's built-in email sender for the course/demo
+  unless it becomes an actual blocker (then revisit — still no external SMTP
+  integration work planned here).
+- **Netlify preview domain in Supabase Auth:** not needed by default; add only
+  if preview deployment is actually used.
+- **Daily / global AI spend caps:** deferred to M12 unless a real deployment
+  blocker appears. Existing per-user rate limits, `max_tokens`, the 800-char
+  curator input limit, and ≤ 3 recommendations remain in force.
+- **Additional AI classifier / moderation service:** no.
