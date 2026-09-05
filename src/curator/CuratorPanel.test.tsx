@@ -162,6 +162,25 @@ describe('CuratorPanel', () => {
     expect(screen.getByLabelText('Your request')).toHaveValue('90s rock no jazz not recent')
   })
 
+  it('renders the fixed out-of-scope message and keeps the request form usable', async () => {
+    const user = userEvent.setup()
+    mockedRequest.mockResolvedValue({ status: 'out_of_scope' })
+
+    render(<CuratorPanel client={client} />)
+    await user.type(screen.getByLabelText('Your request'), 'write me a python script')
+    await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+    expect(
+      await screen.findByText('VIN can only help you choose something from your record collection.'),
+    ).toBeInTheDocument()
+    // not styled as a technical error, and the form is still there
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Your request')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Recommend' })).toBeEnabled()
+    // no conversation / no cards were started
+    expect(screen.queryByLabelText('Recommendations')).not.toBeInTheDocument()
+  })
+
   it('renders a retryable error and keeps Recommend enabled', async () => {
     const user = userEvent.setup()
     mockedRequest.mockRejectedValue(new CuratorError('provider_unavailable', 'The curator is unavailable.'))
