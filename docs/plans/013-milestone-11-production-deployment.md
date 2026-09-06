@@ -1,8 +1,11 @@
 # 013 Milestone 11 — Production Deployment (Implementation Plan)
 
-Status (2026-09-07): **IN PROGRESS.**
+Status (2026-09-07): **COMPLETE** — M11 implementation and production
+deployment are done; production is live. This docs-only status sync is the last
+task.
 Spec: `docs/specs/0013-milestone-11-production-deployment.md`.
-Branch: `claude/milestone-11-production-deployment`.
+Branch: `claude/milestone-11-production-deployment` (Phases A–I); this status
+sync lands on `claude/m11-final-status-sync`.
 Baseline `main`: `49b1534d9caad138959363289f770b199e2966a0`.
 
 Phase progress:
@@ -12,17 +15,33 @@ Phase progress:
 - Phase C (hosted Supabase setup / migrations) — **COMPLETE**
 - Phase D (Netlify + production Auth configuration) — **COMPLETE**
 - Human gate 2 — **COMPLETE**
-- Phase E (open the M11 PR + independent review) — **CURRENT**: PR #14 open,
-  independent review in progress
-- Phase F (merge to `main`) — **NOT STARTED**
-- Phase G (production deploy from `main`) — **NOT STARTED**
-- Phase H (hosted smoke + security) — **NOT STARTED**
-- Phase I (post-deploy status sync) — **NOT STARTED**
+- Phase E (open the M11 PR + independent review) — **COMPLETE** (PR #14, merge
+  commit `10f9e4fe09a7164e9fceac7f97d23442a58ca0b8`)
+- Phase F (merge to `main`) — **COMPLETE**
+- Phase G (production deploy from `main`) — **COMPLETE**. First attempt (deploy
+  `6a9dd752d9250164dedab2fa`) built fine but failed pre-publication with HTTP
+  422 — four `netlify/functions/*.test.ts` files were discovered as invalid
+  function names. Fixed by PR #15 (`fix: keep tests out of Netlify functions
+  bundle`, merge commit `fc68b5d4ce8d1cb496242cc35b8fe37f94f49013`), which moved
+  the tests to `netlify/tests/`. Successful deploy `6a9ddd6480cd7c12d779c79d`
+  from `fc68b5d…`; exactly six functions published; production visibility
+  human-confirmed Public; `/`, `/api/health`, and a `/collection/<uuid>`
+  deep-link all returned 200.
+- Phase H (hosted smoke + security) — **COMPLETE**. Human production smoke
+  passed. One production defect found (curator `includeGenres` used exact
+  full-string equality, so `rock` missed owned `progressive rock` and a
+  "something older" refinement returned a false no-match); fixed by PR #16
+  (`fix: match broad curator genres to subgenres`, merge commit
+  `55f514c20be15b9f2656aa1d534598b9938e7396`), redeployed as
+  `6a9de5c190ec8b263f9bc9f8`, human regression PASS. Final technical security
+  sanity PASS (no server secret in the public bundle; protected provider
+  endpoints reject unauthenticated requests before any provider call).
+- Phase I (post-deploy status sync) — **COMPLETE** — pending merge of this
+  docs-only status-sync PR.
 
-Production application is **NOT DEPLOYED**. Production smoke is **NOT RUN**. M12
-is **NOT STARTED**. Every remaining phase that mutates hosted infrastructure is
-marked [HUMAN-APPROVED] and must be individually approved and (where it needs
-credentials / a browser login) human-run.
+**M11 implementation / deployment work COMPLETE.** Production is live at
+`https://vinyl-intelligence.netlify.app`, deployed from merged `main`
+`55f514c20be15b9f2656aa1d534598b9938e7396`. **M12 NOT STARTED.**
 
 ---
 
@@ -159,43 +178,62 @@ dashboard-only schema edits.
 
 ---
 
-## Phase E — Open the M11 PR + independent review — ▶ CURRENT (PR #14 open)
+## Phase E — Open the M11 PR + independent review — ✅ COMPLETE
 
-- Open **one** PR: `feat: milestone 11 production deployment`, base `main`.
-  Body: spec link; what shipped (Phase A code); the Phase B local gate results;
-  the hosted setup done in C/D (names only); known gaps; explicit "not deployed
-  yet, M12 not started".
-- Independent review of the branch diff (Phase A code only at this point).
-- Address review findings on the branch; re-run the Phase B gate.
+- Opened PR #14 (`feat: milestone 11 production deployment`), base `main`.
+- Independently reviewed (BLOCKER 0 / HIGH 0 / MEDIUM 0).
+- One tiny follow-up docs correction landed on the branch before merge.
 
-## Phase F — Merge the approved PR to `main` [HUMAN-APPROVED] — NOT STARTED
+## Phase F — Merge the approved PR to `main` [HUMAN-APPROVED] — ✅ COMPLETE
 
-- Human approves; merge with a normal merge commit (repo convention).
-- Sync local `main` fast-forward-only.
+- PR #14 merged with a normal merge commit
+  `10f9e4fe09a7164e9fceac7f97d23442a58ca0b8`. Local `main` fast-forwarded.
 
-## Phase G — Production deploy from `main` [HUMAN-APPROVED] — NOT STARTED
+## Phase G — Production deploy from `main` [HUMAN-APPROVED] — ✅ COMPLETE
 
-- Deploy the Netlify site from merged `main`.
-- Confirm the build succeeds, functions bundle, `/api/health` returns OK, the
-  site loads, and a `/collection/:id` deep-link refresh works.
+- **First attempt (deploy `6a9dd752d9250164dedab2fa`):** build succeeded, then
+  the deploy failed **before publication** with HTTP 422 "Incorrect function
+  names" — Netlify packaged four co-located `netlify/functions/*.test.ts` files
+  as functions with invalid names. No improvised hosted fix.
+- **Deployment blocker fix — PR #15** (`fix: keep tests out of Netlify functions
+  bundle`): moved the four test files to `netlify/tests/`, updated only the
+  import paths, extended `tsconfig.node.json` include. Merged with normal merge
+  commit `fc68b5d4ce8d1cb496242cc35b8fe37f94f49013`.
+- **Successful deploy `6a9ddd6480cd7c12d779c79d`** from merged `main`
+  `fc68b5d…`: build succeeded, **exactly six** Netlify Functions published.
+  Production visibility was human-confirmed **Public** before the HTTP recheck;
+  `GET /` = 200, `GET /api/health` = 200 `{"status":"ok"}`, direct
+  `/collection/<uuid>` SPA deep-link = 200.
 
-**Stop and report** the deploy URL + build-log summary.
+## Phase H — Minimal hosted smoke + security verification [HUMAN-APPROVED] — ✅ COMPLETE
 
-## Phase H — Minimal hosted smoke + security verification [HUMAN-APPROVED] — NOT STARTED
+- **Human production smoke PASS** (see `docs/verification.md` → "Milestone 11 —
+  Phase H"): signup + email confirm + sign in; manual add (Pink Floyd — *Wish
+  You Were Here*) persisted after refresh; album-detail opened; catalog
+  search/add (Radiohead — *OK Computer*); photo recognition with explicit
+  candidate confirmation (J. Cole — *2014 Forest Hills Drive*); initial VIN
+  recommendation; conversational refinement; out-of-scope request ("What is the
+  capital of France?") → bounded VIN-only message, no recommendation;
+  collection deep-link survived refresh; sign out.
+- **Production defect found + fixed — PR #16** (`fix: match broad curator genres
+  to subgenres`): curator `includeGenres` used exact full-string equality, so
+  request "…preferably rock" + refinement "Something older" produced a false
+  no-match against owned genre `progressive rock`. Include matching now uses
+  complete contiguous token-sequence semantics; exclude semantics unchanged
+  (exact). Local re-verification: targeted candidates tests 25 pass; full suite
+  60 files / 638 tests pass; typecheck / lint (0 warnings) / build pass. Merged
+  with normal merge commit `55f514c20be15b9f2656aa1d534598b9938e7396`;
+  redeployed as `6a9de5c190ec8b263f9bc9f8`. **Human regression PASS** — the
+  initial request now admits both *OK Computer* and *Wish You Were Here*, and
+  "Something older" correctly returns *Wish You Were Here*.
+- **Final technical security sanity PASS:** production public JS/CSS inspected
+  (no secret values read); `SUPABASE_SERVICE_ROLE_KEY` / `OPENROUTER_API_KEY`
+  identifiers and any secret-shaped token **absent** from the bundle;
+  unauthenticated `POST /api/curator/recommend` and `POST /api/catalog/recognize`
+  → 401 bounded JSON; repository inspection confirms authentication before any
+  provider call; `GET /api/health` = 200; zero provider calls during the check.
 
-Run spec §9 against the deploy URL (human-driven browser; agent scripts/observes
-where useful). Minimum paid provider calls (≤ ~6). Explicitly include the
-**out-of-scope VIN request** case and confirm **no selection model call** was
-made for it (`model_calls` telemetry / function logs).
-
-Security spot-check: built JS bundle + client network tab — **no
-`SUPABASE_SERVICE_ROLE_KEY`, no `OPENROUTER_API_KEY`**; a forced function error
-response contains no secret.
-
-**Stop and report** the smoke result + any defect. A real defect is fixed on a
-branch with a test and redeployed — never hand-patched on hosted.
-
-## Phase I — Tiny post-deploy status / evidence sync (if needed) — NOT STARTED
+## Phase I — Tiny post-deploy status / evidence sync — ✅ COMPLETE (pending merge of this docs-only PR)
 
 - `docs/verification.md` — new "Milestone 11" section: exact local + hosted
   steps, by whom, smoke outcome, provider-call counts, known gaps.

@@ -19,17 +19,18 @@ This document is the **current** roadmap. The project mission, product principle
 - Milestones 0–10 are **complete and merged to `main`**.
 - After Milestone 10, before starting Milestone 11 (Production Deployment), the human assessed the application as functionally rich but **not yet at the intended product-experience quality for production**. Deploying directly after M10 would have shipped a development / demo interface rather than the intended polished record-collector product.
 - The human therefore **deliberately inserted a dedicated pre-M11 product-quality pass**: the **Visual Experience & Product Identity Pass**. This was **not part of the 2026-08-18 plan** — it is a documented mid-project evolution.
-- That pass is now **complete on the feature branch and human-accepted (Phases A–E)**, but is **not yet merged** as of this roadmap's date.
-- **Milestone 11 has not started.** Production deployment has not started. No hosted Supabase migration has been applied.
-- **Milestone 12 is unchanged** and still follows M11. The inserted pass does **not** replace M12.
+- That pass is **complete and merged to `main`** in PR #13 (merge commit `49b1534d9caad138959363289f770b199e2966a0`).
+- **Milestone 11 (Production Deployment) is COMPLETE.** Production is live at `https://vinyl-intelligence.netlify.app`, deployed from merged `main` `55f514c20be15b9f2656aa1d534598b9938e7396`. Hosted Supabase is configured with all 13 migrations applied (zero pending); production Auth is configured; the human hosted smoke passed; one production defect (curator include-genre matching) was fixed via PR #16 and re-verified.
+- **Milestone 12 is unchanged** and still follows M11 — it is now the **next** milestone and **has not started**. The inserted pass does **not** replace M12.
 
 ```text
 original 2026-08-18 roadmap
   -> project executed M0..M10
   -> human judged pre-deployment product quality insufficient
   -> human inserted the Visual Experience & Product Identity Pass (Phase 0 + A..E)
-  -> pass completed and accepted on the feature branch
-  -> M11 Production Deployment becomes the next milestone
+  -> pass completed, accepted, and merged to main (PR #13)
+  -> M11 Production Deployment executed and completed (production live)
+  -> M12 Reliability / Security / Telemetry / Polish becomes the next milestone
 ```
 
 ---
@@ -169,7 +170,7 @@ The initial architecture remains approved and is the default unless a later ADR 
 
 ## Deployment
 
-- **Netlify** (frontend + Functions), **hosted Supabase** project. Not yet configured — that is Milestone 11.
+- **Netlify** (frontend + Functions), **hosted Supabase** project. **Configured and live** as of Milestone 11 — `https://vinyl-intelligence.netlify.app` (default `*.netlify.app` domain; no custom domain; no Git continuous deployment — deploys are run manually from merged `main`; Supabase built-in email sender).
 
 ## Source control and review
 
@@ -281,9 +282,9 @@ The inserted pass added, as standing verification for its surface area: measured
 | 8 | Listening History | Timestamped listening behavior (append-only) | **Complete — merged (PR #8)** |
 | 9 | AI Curator | Safe owned-collection recommendations | **Complete — merged (PR #10)** |
 | 10 | Conversational Refinement | Bounded multi-turn recommendation refinement | **Complete — merged (PR #11)** |
-| — | **Visual Experience & Product Identity Pass** (inserted pre-M11) | Premium coherent product experience | **Phase 0 merged (PR #12); Phases A–E complete + human accepted, on branch, PR open, not merged** |
-| 11 | Production Deployment | Real hosted application | **Not started** |
-| 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Not started** |
+| — | **Visual Experience & Product Identity Pass** (inserted pre-M11) | Premium coherent product experience | **Complete — merged (PR #13, `49b1534`)** |
+| 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`, deployed from `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS** |
+| 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Not started (next)** |
 
 `origin/main` HEAD at this roadmap's date: `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Phase 0 merge).
 
@@ -484,9 +485,8 @@ Motion vocabulary finalised (duration tokens aligned to the approved values; sta
 ## Current state of the pass
 
 - Phase 0 is **merged** to `main` (PR #12).
-- Phases A–E are **complete and human-accepted**, implemented on branch `claude/visual-experience-product-identity-ui`.
-- As of this roadmap's date the A–E work is **not yet merged**; the final PR for it is being opened now.
-- **Milestone 11 has not started.** Production deployment has not started. **No hosted Supabase migration has been applied.**
+- Phases A–E are **complete, human-accepted, and merged to `main`** in **PR #13** (merge commit `49b1534d9caad138959363289f770b199e2966a0`), from branch `claude/visual-experience-product-identity-ui`.
+- **Milestone 11 is COMPLETE.** Production is live at `https://vinyl-intelligence.netlify.app`; hosted Supabase is configured and all 13 version-controlled migrations are applied (zero pending). See §21.
 
 ## Relationship to Milestone 12
 
@@ -498,17 +498,62 @@ This pass handled the major **pre-deployment** product / UI transformation. It d
 
 **Objective:** turn the verified local application into a real hosted system.
 
-**Not started.** When it begins:
+**Status: COMPLETE (2026-09-06/07).** Production is live at
+`https://vinyl-intelligence.netlify.app`, deployed from merged `main`
+`55f514c20be15b9f2656aa1d534598b9938e7396`. Spec `docs/specs/0013`, plan
+`docs/plans/013`, evidence `docs/verification.md` ("Milestone 11 — …" sections).
 
-- **Deployment target:** Netlify frontend + Netlify Functions; hosted Supabase project.
-- **Environment configuration:** production env vars set securely (Supabase URL + publishable key in the browser; server-only catalog and AI/provider credentials; privileged Supabase secret only for a specific approved backend need). Never commit production secrets.
-- **Supabase production setup:** apply the **version-controlled migrations**, including the inserted-pass forward migrations that are **currently local-only** — `20260903120000` (custom-cover storage, already merged), `20260904120000` (listening-event management), `20260904121000` (personal genres), `20260904122000` (profile avatar storage). Verify RLS enabled, grants correct, auth redirect URLs, email confirmation behavior, Storage bucket policies (`collection-covers`, `profile-avatars`), database triggers, production-safe origins.
-- **Netlify setup:** production build, SPA routing (`public/_redirects`), Netlify Functions, `/api/health`, env vars, function runtime compatibility, logs free of secrets, reasonable timeouts.
-- **Hosted smoke test:** a fresh-account end-to-end run of every implemented flow — sign up → confirm → sign in → profile → add manual record → catalog add → image recognition → browse/filter → rate/favorite/note → mark listened → History edit/delete → curator recommendation → conversational refinement → custom cover → profile avatar → sign out.
-- **Security validation:** no service key or provider key in browser assets; hosted RLS works; cross-user access denied; upload handling safe; function endpoints validate inputs; error messages leak no secrets; signed URLs remain memory-only in production.
-- **Failure handling:** understandable production behavior for catalog outage, AI provider outage, Supabase error, rate limit, invalid upload, no catalog match, empty recommendation candidate set.
+**What was delivered:**
 
-**Exit condition:** a reviewer can use a stable hosted application through its core flows.
+- **Pre-deploy AI hardening (Phase A):** curator out-of-scope detection via an
+  outer `{ inScope, intent }` structured-output wrapper — `CuratorIntent`
+  unchanged, no extra model call, out-of-scope stops before the selection call;
+  vision recognition moved to a trusted `system` message that frames all image
+  text as untrusted data. Local gate green (Phase B).
+- **Hosted Supabase (Phase C):** new project `vinyl-intelligence`
+  (`dlkaljnywnrhzfxcfklx`); **all 13 version-controlled migrations applied**,
+  local == remote history, zero pending. Read-only verification: RLS enabled on
+  every public table; `collection-covers` + `profile-avatars` buckets private,
+  webp-only, size-limited; profile-creation trigger present; no `anon`/`public`
+  write grants; remote `db lint` clean.
+- **Netlify + production Auth (Phase D):** site `vinyl-intelligence`
+  (`fd95e6cf-309e-434a-99b6-8ae716ec694a`), blank project, **no Git continuous
+  deployment**; 11 environment variables set in the dashboard (two server
+  secrets marked secret); `netlify.toml` + `public/_redirects` file-verified.
+  Supabase Auth Site URL + redirect URL set to the `*.netlify.app` origin; no
+  preview wildcard; Supabase built-in email sender retained.
+- **Deploy (Phases E–G):** PR #14 reviewed + merged (`10f9e4f`). First deploy
+  attempt failed pre-publication (HTTP 422 — four co-located
+  `netlify/functions/*.test.ts` files packaged as invalid function names);
+  fixed by **PR #15** (tests moved to `netlify/tests/`, merge `fc68b5d`).
+  Successful deploy `6a9ddd64…` from merged `main`; exactly six functions
+  published; visibility human-confirmed Public; `/`, `/api/health`, and a
+  `/collection/<uuid>` deep-link all 200.
+- **Hosted smoke + defect fix (Phase H):** human end-to-end smoke passed
+  (signup → email confirm → sign in; manual add persisted; album detail;
+  catalog search/add; photo recognition with candidate confirmation; VIN
+  recommendation; conversational refinement; out-of-scope request → bounded
+  VIN-only message; deep-link refresh; sign out). One production defect —
+  curator `includeGenres` used exact full-string equality, so "…preferably
+  rock" + "Something older" returned a false no-match against owned
+  `progressive rock` — fixed by **PR #16** (complete contiguous token-sequence
+  include matching; exclude semantics unchanged), merged `55f514c`, redeployed
+  `6a9de5c1…`, **human regression PASS**.
+- **Final technical security sanity (Phase H):** production JS/CSS inspected —
+  `SUPABASE_SERVICE_ROLE_KEY` / `OPENROUTER_API_KEY` identifiers and any
+  secret-shaped token **absent** from the bundle (the bare `sb_secret_` prefix
+  literal inside bundled `@supabase/supabase-js` is not a secret);
+  unauthenticated `POST /api/curator/recommend` and `POST /api/catalog/recognize`
+  → 401 bounded JSON; code confirms auth before any provider call;
+  `GET /api/health` = 200; zero provider calls during the check.
+
+**Not done in M11 (belongs to M12 or explicitly deferred):** custom domain;
+Git continuous deployment; SMTP; daily/global AI spend caps; an exhaustive
+failure-mode matrix in production; a full security re-audit. Built-in Supabase
+email remains the configured default.
+
+**Exit condition met:** a reviewer can use the stable hosted application through
+its core flows.
 
 ---
 
@@ -574,13 +619,13 @@ M10 Conversational Refinement
  |
  v
 [INSERTED] Visual Experience & Product Identity Pass
-           (Phase 0 merged; Phases A-E complete + accepted, PR open, not merged)
+           (Phase 0 merged PR #12; Phases A-E merged PR #13 -> `49b1534`)
  |
  v
-M11 Production Deployment
+M11 Production Deployment  (COMPLETE -> live, deployed `main` `55f514c`; PR #14/#15/#16)
  |
  v
-M12 Reliability / Security / Telemetry / Final Polish
+M12 Reliability / Security / Telemetry / Final Polish  (NEXT — not started)
 ```
 
 This order is intentional. The AI curator is delayed until authentication, ownership, collection data, structured metadata, preference signals, and listening-history signals are all trustworthy. The Visual Experience & Product Identity pass is deliberately placed **after** the functional product is complete and **before** production deployment: it is a product-quality gate, not a feature milestone, and it must not destabilize the verified M0–M10 behavior.

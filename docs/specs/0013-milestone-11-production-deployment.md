@@ -1,13 +1,18 @@
 # 0013 Milestone 11 — Production Deployment (Specification)
 
-Status (2026-09-07): **IN PROGRESS** — Phases A–D complete; PR #14 open for
-Phase E review. Hosted Supabase + Netlify / production Auth configuration
-completed. Production application **not deployed yet**. Production smoke **not
-run**. M12 **not started**. Per-phase status: plan `013`.
+Status (2026-09-07): **COMPLETE** — Phases A–I complete. Production is live at
+`https://vinyl-intelligence.netlify.app`, deployed from merged `main`
+`55f514c20be15b9f2656aa1d534598b9938e7396` (Netlify deploy
+`6a9de5c190ec8b263f9bc9f8`). Hosted Supabase configured, all 13 migrations
+applied (zero pending), production Auth configured. Human hosted smoke **PASS**;
+one production defect (curator include-genre matching) fixed via PR #16 and
+re-verified; final technical security sanity **PASS**. **M12 not started.**
+Per-phase detail: plan `013`; evidence: `docs/verification.md`.
 
 Baseline: `origin/main` = `49b1534d9caad138959363289f770b199e2966a0` (PR #13
 merged — the Visual Experience & Product Identity pass is on `main`). This
-remains the historical baseline for the M11 branch.
+remains the historical baseline for the M11 branch; the deployed SHA is
+`55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #14 → #15 → #16).
 
 References (do not duplicate): `intent.txt` §10/§15/§31, `docs/architecture.md`,
 `docs/security.md`, `docs/ai-design.md`,
@@ -261,20 +266,32 @@ Target: ≤ ~6 paid provider calls total.
 
 ## 11. M11 acceptance criteria
 
-- [ ] 8A + 8B implemented, local gate green (typecheck / lint / `test:run` /
+- [x] 8A + 8B implemented, local gate green (typecheck / lint / `test:run` /
   build / `supabase test db` / `db lint` / `npm audit --omit=dev`), no real
-  provider calls in automated tests.
-- [ ] Hosted Supabase project linked; **all** migrations applied; RLS + both
-  private buckets + trigger verified read-only on hosted.
-- [ ] Netlify site deployed from `main`; `/api/health` OK; SPA deep-link OK.
-- [ ] Production env vars set server-side; secrets absent from the browser
-  bundle and from client-visible network traffic.
-- [ ] Production Auth Site/redirect URLs correct; confirmation flow works.
-- [ ] The §9 smoke passes, including the out-of-scope VIN case.
-- [ ] `docs/verification.md` "Milestone 11" records exactly what was run
-  (local + hosted), by whom, and any gap.
-- [ ] Historical 2026-08-18 roadmap untouched; current roadmap + README status
-  synced.
+  provider calls in automated tests. *(Phase B; full suite later 60 files / 638
+  tests after the PR #16 fix.)*
+- [x] Hosted Supabase project linked; **all** 13 migrations applied (zero
+  pending); RLS + both private buckets + profile trigger verified read-only on
+  hosted. *(Phase C.)*
+- [x] Netlify site deployed from `main`; `/api/health` = 200 `{"status":"ok"}`;
+  SPA deep-link = 200. *(Phase G, deploy `6a9de5c190ec8b263f9bc9f8`.)*
+- [x] Production env vars set server-side (human, Netlify dashboard); the
+  `SUPABASE_SERVICE_ROLE_KEY` / `OPENROUTER_API_KEY` identifiers and any
+  secret-shaped token are **absent from the production JS/CSS bundle**, and
+  unauthenticated function error responses are bounded JSON with no secrets.
+  *(Phase H technical sanity. A full authenticated network-traffic capture was
+  not performed — code inspection confirms no secret is sent to the browser.)*
+- [x] Production Auth Site/redirect URLs configured (human, Supabase dashboard);
+  the email-confirmation flow works — exercised end-to-end in the Phase H human
+  smoke (signup → email confirm → sign in).
+- [x] The §9 smoke passes, including the out-of-scope VIN case (returned the
+  bounded VIN-only message, no recommendation). *The "no selection-model call
+  for an out-of-scope request" guarantee is covered by Phase A automated tests;
+  it was not separately re-confirmed from production `model_calls` telemetry.*
+- [x] `docs/verification.md` "Milestone 11" records what was run (local +
+  hosted), by whom, and the known gaps.
+- [x] Historical 2026-08-18 roadmap untouched; current roadmap
+  (`2026-09-02-…`) + README status synced.
 
 ## 12. Non-goals (M11)
 
