@@ -286,7 +286,7 @@ The inserted pass added, as standing verification for its surface area: measured
 | 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`, deployed from `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS** |
 | 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Not started (next)** |
 
-`origin/main` HEAD at this roadmap's date: `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Phase 0 merge).
+Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). That is **not** the present main. After Milestone 11 completion the current / deployed `main` is `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16).
 
 ---
 

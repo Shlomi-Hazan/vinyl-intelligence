@@ -4734,14 +4734,14 @@ above) is unchanged.
   `production`, from merged `main` **`fc68b5d4ce8d1cb496242cc35b8fe37f94f49013`**.
 - Build succeeded; **exactly six** Netlify Functions published
   (`available_functions` on the deploy confirms the six).
-- Production visibility was **human-confirmed Public** (Netlify dashboard)
-  before the HTTP recheck. (A brief earlier `401 → app.netlify.com/edge-access`
-  observation was the site's default visitor-access gate, not a deploy failure;
-  it is not recorded further.)
-- HTTP recheck (fresh, cache-busted): `GET /` = 200 SPA HTML;
-  `GET /api/health` = 200 `{"status":"ok"}`; direct
-  `GET /collection/<uuid>` = 200, byte-identical SPA shell (not a Netlify 404,
-  not a login page).
+- An earlier fresh HTTP check returned a Netlify edge-access/login page with
+  **HTTP 401**. The cause was not independently established.
+- The human then visually confirmed in the Netlify dashboard: **Production
+  visibility = Public** and **Deploy Preview visibility = Public**. The agent
+  performed **no visibility or config mutation** during the recheck.
+- Subsequent fresh cache-busted checks returned: `GET /` = **200** (SPA HTML);
+  `GET /api/health` = **200** `{"status":"ok"}`; `GET /collection/<uuid>` =
+  **200** (byte-identical SPA shell — not a Netlify 404, not a login page).
 
 ### Phase H — human production smoke — PASS (HUMAN-VERIFIED)
 
