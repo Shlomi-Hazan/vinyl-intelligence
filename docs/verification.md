@@ -4602,3 +4602,94 @@ accidental broad public write**:
 - No Auth Site URL / redirect URL / email template / SMTP / provider change.
 - Phase D (Netlify + production Auth URLs) **not started**. No deployment. No
   model/provider calls. No test users or demo data. No storage files created.
+
+## Milestone 11 — Phase D Netlify + Production Auth Configuration — 2026-09-06
+
+Branch `claude/milestone-11-production-deployment`, HEAD
+`2a04ef10bb537c5fedf37491f1849edd4753f3d7` at start. `origin/main` unchanged at
+`49b1534d9caad138959363289f770b199e2966a0`. Working tree clean.
+
+The Netlify site and the Supabase Auth URL configuration were both performed
+**by the human** through the Netlify CLI (`netlify sites:create`) and the
+Supabase and Netlify dashboards. This phase is **verification only** — no
+deployment, no continuous-deployment wiring, no config mutation.
+
+### Netlify site — CLI read-only verified (`netlify status`)
+
+| Field | Value |
+| --- | --- |
+| Project name | `vinyl-intelligence` |
+| Project URL | `https://vinyl-intelligence.netlify.app` |
+| Project ID | `fd95e6cf-309e-434a-99b6-8ae716ec694a` |
+| Netlify TOML | `/…/netlify.toml` (repo root) |
+| Netlify user | `shlomih2806@gmail.com` |
+
+- Site created manually as a **blank project with no Git continuous
+  deployment** (`netlify sites:create --name vinyl-intelligence`). This
+  verification did not run `netlify init`, `netlify deploy`,
+  `netlify deploy --prod`, and did not connect a Git repository.
+- Project-local link (`.netlify/state.json`, git-ignored, untracked) has
+  `siteId = fd95e6cf-309e-434a-99b6-8ae716ec694a` — matches the site above.
+
+### Environment variables — repository-side verification only
+
+The 11 variables were configured **by the human** in the Netlify dashboard.
+Their **values were never read, printed, fetched, or committed** — no
+`netlify env:get`, no `netlify env:list --plain`, no value-exposing command was
+run. The dashboard configuration is taken as HUMAN-CONFIRMED evidence for the
+values; only the repository expectations below were checked.
+
+| Variable | Scope | Secret? | Repo reference |
+| --- | --- | --- | --- |
+| `VITE_APP_NAME` | browser | no | `src/vite-env.d.ts` (declared optional) |
+| `VITE_SUPABASE_URL` | browser + server | no | `src/lib/supabase/client.ts`, `catalog-handlers.mts` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | browser + server | no | `src/lib/supabase/client.ts`, `catalog-handlers.mts` |
+| `SUPABASE_SERVICE_ROLE_KEY` | server | **yes** | `catalog-handlers.mts` |
+| `OPENROUTER_API_KEY` | server | **yes** | `curator-handlers.mts` |
+| `MUSICBRAINZ_USER_AGENT` | server | no | `catalog-handlers.mts` |
+| `OPENROUTER_VISION_MODEL` | server | no | `recognition-handlers.mts` |
+| `OPENROUTER_CURATOR_INTENT_MODEL` | server | no | `curator-handlers.mts` |
+| `OPENROUTER_CURATOR_SELECTION_MODEL` | server | no | `curator-handlers.mts` |
+| `OPENROUTER_APP_URL` | server | no | `curator-handlers.mts`, `recognition-handlers.mts` |
+| `OPENROUTER_APP_TITLE` | server | no | `curator-handlers.mts`, `recognition-handlers.mts` |
+
+- **Secret variable names:** `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY` —
+  both entered in Netlify with "Contains secret values" enabled (HUMAN-CONFIRMED).
+- **No server secret uses a `VITE_` prefix** — the only `VITE_`-prefixed
+  variables (which Vite inlines into the browser bundle) are `VITE_APP_NAME`,
+  `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, all browser-safe.
+- Code reads exactly these names; no extra required variable is referenced.
+
+### Supabase Auth — HUMAN-CONFIRMED dashboard configuration
+
+Hosted project `vinyl-intelligence` / `dlkaljnywnrhzfxcfklx`. The Supabase CLI
+exposes **no read-only command** for hosted Auth URL configuration
+(`supabase config` has only `push`, which would mutate and was **not** run), so
+the following is recorded as HUMAN-CONFIRMED, not CLI-verified:
+
+- Site URL: `https://vinyl-intelligence.netlify.app`
+- Redirect URL: `https://vinyl-intelligence.netlify.app/**`
+- No Netlify preview-domain wildcard added.
+- Supabase built-in email sender remains the default. No SMTP, no OAuth
+  provider, no email-template change, no Auth-hook change.
+
+Local `supabase/config.toml` still targets local dev
+(`site_url = "http://127.0.0.1:5173"`); it is not pushed and does not affect the
+hosted project. Local link (`supabase/.temp/project-ref`) remains
+`dlkaljnywnrhzfxcfklx`.
+
+### Local config — CLI/file verified
+
+- `netlify.toml`: `build.command = "npm run build"`, `build.publish = "dist"`,
+  `functions.directory = "netlify/functions"`,
+  `functions.node_bundler = "esbuild"`. Unchanged.
+- `public/_redirects`: SPA fallback `/*  /index.html  200` present. Unchanged.
+- Phase B gate already passed (see the Phase A/B section); not re-run here.
+
+### Explicit
+
+- No application code change. No environment-variable value change or read.
+- No secret value printed, fetched, or committed.
+- No Supabase schema change. No Auth setting mutation.
+- No GitHub ↔ Netlify continuous deployment connected.
+- **No deployment.** No model/provider calls. No PR. Phase E not started.
