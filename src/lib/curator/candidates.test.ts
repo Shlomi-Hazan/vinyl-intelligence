@@ -4,6 +4,7 @@ import {
   applyPreviousExclusion,
   buildAllowedCandidateSet,
   deriveCandidateFacts,
+  includeGenreMatches,
   rankAndCap,
   scoreCandidate,
   selectCandidates,
@@ -100,6 +101,49 @@ describe('applyHardFilters', () => {
     expect(out.map((c) => c.id).sort()).toEqual(['jazzrap91', 'nogenre', 'rock90'])
   })
 
+  it('includeGenres reaches subgenres (Milestone 11 Phase H production fix)', () => {
+    // Production smoke: refine "something older" -> includeGenres ["rock"],
+    // decades [1960, 1970]; owned "Wish You Were Here" (1975, "progressive
+    // rock") must survive the hard filter.
+    const owned = deriveCandidateFacts(
+      [item({ id: 'wywh', genres: ['progressive rock'], release_year: 1975 })],
+      [],
+    )
+    const out = applyHardFilters(
+      owned,
+      baseIntent({ includeGenres: ['rock'], decades: [1960, 1970] }),
+      NOW,
+    )
+    expect(out.map((c) => c.id)).toEqual(['wywh'])
+  })
+
+  it('includeGenres "rock" matches rock subgenres but not "rockabilly"', () => {
+    const list = deriveCandidateFacts(
+      [
+        item({ id: 'rock', genres: ['rock'] }),
+        item({ id: 'prog', genres: ['progressive rock'] }),
+        item({ id: 'alt', genres: ['alternative rock'] }),
+        item({ id: 'post', genres: ['post-rock'] }),
+        item({ id: 'billy', genres: ['rockabilly'] }),
+      ],
+      [],
+    )
+    const out = applyHardFilters(list, baseIntent({ includeGenres: ['rock'] }), NOW)
+    expect(out.map((c) => c.id).sort()).toEqual(['alt', 'post', 'prog', 'rock'])
+  })
+
+  it('includeGenres matches a multi-word request inside a longer genre', () => {
+    const list = deriveCandidateFacts(
+      [
+        item({ id: 'althh', genres: ['alternative hip hop'] }),
+        item({ id: 'plain', genres: ['pop'] }),
+      ],
+      [],
+    )
+    const out = applyHardFilters(list, baseIntent({ includeGenres: ['hip hop'] }), NOW)
+    expect(out.map((c) => c.id)).toEqual(['althh'])
+  })
+
   it('decades membership; null year fails', () => {
     const withNull = deriveCandidateFacts([item({ id: 'x', release_year: null })], [])
     expect(applyHardFilters(withNull, baseIntent({ decades: [1990] }), NOW)).toHaveLength(0)
@@ -149,6 +193,32 @@ describe('applyHardFilters', () => {
       NOW,
     )
     expect(out.map((c) => c.id)).toEqual(['b'])
+  })
+})
+
+describe('includeGenreMatches (Milestone 11 Phase H)', () => {
+  it('matches on exact equality and on a complete token sequence inside a subgenre', () => {
+    for (const candidateGenre of [
+      'rock',
+      'progressive rock',
+      'alternative rock',
+      'art rock',
+      'post-rock',
+    ]) {
+      expect(includeGenreMatches('rock', candidateGenre)).toBe(true)
+    }
+    expect(includeGenreMatches('jazz', 'jazz rap')).toBe(true)
+    expect(includeGenreMatches('hip hop', 'alternative hip hop')).toBe(true)
+  })
+
+  it('respects token boundaries - no naive substring matching', () => {
+    expect(includeGenreMatches('rock', 'rockabilly')).toBe(false)
+    expect(includeGenreMatches('rap', 'trap')).toBe(false)
+    expect(includeGenreMatches('pop', 'synthpop')).toBe(false)
+    // a longer request cannot match a shorter genre
+    expect(includeGenreMatches('progressive rock', 'rock')).toBe(false)
+    // the token sequence must be contiguous
+    expect(includeGenreMatches('hip hop', 'hip nu-disco hop')).toBe(false)
   })
 })
 

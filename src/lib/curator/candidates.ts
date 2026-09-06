@@ -66,6 +66,51 @@ export function deriveCandidateFacts(
   })
 }
 
+/** Split a normalized genre label into word tokens (whitespace / hyphen separated). */
+function genreTokens(genre: string): string[] {
+  return genre.split(/[\s-]+/).filter((token) => token.length > 0)
+}
+
+/**
+ * Milestone 11 production fix (Phase H smoke): an INCLUDE genre matches broadly
+ * enough to reach subgenres. A requested genre matches a candidate genre when
+ *
+ *   1. the normalized strings are exactly equal, OR
+ *   2. the requested genre's word tokens appear as a complete, contiguous token
+ *      sequence inside the candidate genre's tokens.
+ *
+ * Token-boundary only - "rock" matches "progressive rock" / "art rock" /
+ * "post-rock" and "hip hop" matches "alternative hip hop", but "rock" does NOT
+ * match "rockabilly" and "rap" does NOT match "trap". This is deliberately
+ * asymmetric with excludeGenres, which stays exact normalized equality so a
+ * negative constraint never silently removes a large slice of the collection.
+ */
+export function includeGenreMatches(requested: string, candidateGenre: string): boolean {
+  if (requested === candidateGenre) {
+    return true
+  }
+
+  const needle = genreTokens(requested)
+  const haystack = genreTokens(candidateGenre)
+  if (needle.length === 0 || needle.length > haystack.length) {
+    return false
+  }
+
+  for (let start = 0; start + needle.length <= haystack.length; start += 1) {
+    let matched = true
+    for (let i = 0; i < needle.length; i += 1) {
+      if (haystack[start + i] !== needle[i]) {
+        matched = false
+        break
+      }
+    }
+    if (matched) {
+      return true
+    }
+  }
+  return false
+}
+
 function daysSince(iso: string | null, now: number): number | null {
   if (iso === null) {
     return null
@@ -85,12 +130,17 @@ function passesHardFilters(
   const genres = candidate.genres
 
   if (intent.includeGenres.length > 0) {
-    if (!intent.includeGenres.some((g) => genres.includes(g))) {
+    const matchesInclude = intent.includeGenres.some((requested) =>
+      genres.some((candidateGenre) => includeGenreMatches(requested, candidateGenre)),
+    )
+    if (!matchesInclude) {
       return false
     }
   }
 
   if (intent.excludeGenres.length > 0) {
+    // Exact normalized equality only - see includeGenreMatches for the rationale
+    // behind the include/exclude asymmetry.
     if (intent.excludeGenres.some((g) => genres.includes(g))) {
       return false
     }
