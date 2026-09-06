@@ -1,17 +1,32 @@
 # 013 Milestone 11 — Production Deployment (Implementation Plan)
 
-Status: **PLANNING ONLY — awaiting human approval** (2026-09-05).
+Status (2026-09-07): **IN PROGRESS.**
 Spec: `docs/specs/0013-milestone-11-production-deployment.md`.
 Branch: `claude/milestone-11-production-deployment`.
 Baseline `main`: `49b1534d9caad138959363289f770b199e2966a0`.
 
-Nothing in this plan is executed yet. **Every phase that mutates hosted
-infrastructure is marked [HUMAN-APPROVED] and must be individually approved and
-(where it needs credentials/a browser login) human-run.**
+Phase progress:
+- Phase A (minimal AI hardening) — **COMPLETE**
+- Phase B (local verification gate) — **COMPLETE**
+- Human gate 1 — **COMPLETE**
+- Phase C (hosted Supabase setup / migrations) — **COMPLETE**
+- Phase D (Netlify + production Auth configuration) — **COMPLETE**
+- Human gate 2 — **COMPLETE**
+- Phase E (open the M11 PR + independent review) — **CURRENT**: PR #14 open,
+  independent review in progress
+- Phase F (merge to `main`) — **NOT STARTED**
+- Phase G (production deploy from `main`) — **NOT STARTED**
+- Phase H (hosted smoke + security) — **NOT STARTED**
+- Phase I (post-deploy status sync) — **NOT STARTED**
+
+Production application is **NOT DEPLOYED**. Production smoke is **NOT RUN**. M12
+is **NOT STARTED**. Every remaining phase that mutates hosted infrastructure is
+marked [HUMAN-APPROVED] and must be individually approved and (where it needs
+credentials / a browser login) human-run.
 
 ---
 
-## Phase A — Minimal AI hardening (code, on branch)
+## Phase A — Minimal AI hardening (code, on branch) — ✅ COMPLETE
 
 **A1. Curator out-of-scope (spec 8A).** `CuratorIntent` is NOT modified —
 `inScope` lives on an *outer* wrapper object. Files:
@@ -59,8 +74,13 @@ infrastructure is marked [HUMAN-APPROVED] and must be individually approved and
   only" statement) + a short `user` message carrying the image. Keep
   `temperature: 0`, `max_tokens: MAX_OUTPUT_TOKENS`,
   `response_format: json_schema` (`RECOGNITION_JSON_SCHEMA`) and all output
-  validation unchanged. If the configured model rejects a `system` role, fall
-  back to the trusted text as the first `user` text part (same wording).
+  validation unchanged. Implemented as exactly **one** call with an
+  unconditional real `system` message and the image in the `user` message —
+  **no runtime retry, no fallback second request, no silent request reshaping.**
+  If the configured provider/model rejected that shape, normal provider-failure
+  handling applies; real `system`-role compatibility is checked in the Phase H
+  hosted smoke and any real incompatibility is fixed on a branch (no runtime
+  retry logic added).
 - `netlify/functions/_shared/recognition-handlers.mts` — unchanged (auth,
   rate limit, image validation stay as-is).
 - Tests: 1–2 unit tests on the outbound request body — trusted statement
@@ -72,7 +92,7 @@ infrastructure is marked [HUMAN-APPROVED] and must be individually approved and
 No `src/` change outside curator + vision + their UI. No M9/M10 contract change
 to ownership / allowed IDs / candidate count / explanation length.
 
-## Phase B — Local verification gate (on branch)
+## Phase B — Local verification gate (on branch) — ✅ COMPLETE
 
 ```
 git diff --check
@@ -91,11 +111,11 @@ Record results in `docs/verification.md` "Milestone 11 — Phase A/B".
 
 ---
 
-### ⛔ STOP FOR HUMAN REVIEW (gate 1) — approve Phase A code before any hosted phase.
+### ✅ STOP FOR HUMAN REVIEW (gate 1) — COMPLETE. Phase A code approved.
 
 ---
 
-## Phase C — Hosted Supabase setup / migrations [HUMAN-APPROVED]
+## Phase C — Hosted Supabase setup / migrations [HUMAN-APPROVED] — ✅ COMPLETE
 
 Human **creates a NEW Vinyl Intelligence hosted Supabase project** (recorded
 default §"Human defaults" below) and provides its ref + DB password. Then, with
@@ -113,13 +133,16 @@ human approval:
 **Stop and report after `db push`.** No `supabase db reset` on hosted. No
 dashboard-only schema edits.
 
-## Phase D — Netlify + production Auth configuration [HUMAN-APPROVED]
+## Phase D — Netlify + production Auth configuration [HUMAN-APPROVED] — ✅ COMPLETE
 
 1. Human `netlify login`, then **creates a NEW Vinyl Intelligence Netlify site**
    and links it — this establishes the `*.netlify.app` production domain
    (recorded default: no custom domain in M11).
-2. Confirm `netlify.toml` is honored (build `npm run build`, publish `dist`,
-   functions `netlify/functions`); confirm `_redirects` is deployed.
+2. `netlify.toml` (build `npm run build`, publish `dist`, functions
+   `netlify/functions`, esbuild) and `public/_redirects` (`/*  /index.html
+   200`) — **file-verified** in this phase. Whether a deployed production build
+   honors them and serves the SPA deep-link fallback is confirmed in Phase G/H,
+   after merge — not here.
 3. Human sets the spec §6 environment variables in the Netlify site env — the
    two secrets (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) server-side
    only, `OPENROUTER_APP_URL` = the `*.netlify.app` origin,
@@ -132,11 +155,11 @@ dashboard-only schema edits.
 
 ---
 
-### ⛔ STOP FOR HUMAN REVIEW (gate 2) — approve the hosted Supabase + Netlify configuration.
+### ✅ STOP FOR HUMAN REVIEW (gate 2) — COMPLETE. Hosted Supabase + Netlify configuration approved.
 
 ---
 
-## Phase E — Open the M11 PR + independent review
+## Phase E — Open the M11 PR + independent review — ▶ CURRENT (PR #14 open)
 
 - Open **one** PR: `feat: milestone 11 production deployment`, base `main`.
   Body: spec link; what shipped (Phase A code); the Phase B local gate results;
@@ -145,12 +168,12 @@ dashboard-only schema edits.
 - Independent review of the branch diff (Phase A code only at this point).
 - Address review findings on the branch; re-run the Phase B gate.
 
-## Phase F — Merge the approved PR to `main` [HUMAN-APPROVED]
+## Phase F — Merge the approved PR to `main` [HUMAN-APPROVED] — NOT STARTED
 
 - Human approves; merge with a normal merge commit (repo convention).
 - Sync local `main` fast-forward-only.
 
-## Phase G — Production deploy from `main` [HUMAN-APPROVED]
+## Phase G — Production deploy from `main` [HUMAN-APPROVED] — NOT STARTED
 
 - Deploy the Netlify site from merged `main`.
 - Confirm the build succeeds, functions bundle, `/api/health` returns OK, the
@@ -158,7 +181,7 @@ dashboard-only schema edits.
 
 **Stop and report** the deploy URL + build-log summary.
 
-## Phase H — Minimal hosted smoke + security verification [HUMAN-APPROVED]
+## Phase H — Minimal hosted smoke + security verification [HUMAN-APPROVED] — NOT STARTED
 
 Run spec §9 against the deploy URL (human-driven browser; agent scripts/observes
 where useful). Minimum paid provider calls (≤ ~6). Explicitly include the
@@ -172,7 +195,7 @@ response contains no secret.
 **Stop and report** the smoke result + any defect. A real defect is fixed on a
 branch with a test and redeployed — never hand-patched on hosted.
 
-## Phase I — Tiny post-deploy status / evidence sync (if needed)
+## Phase I — Tiny post-deploy status / evidence sync (if needed) — NOT STARTED
 
 - `docs/verification.md` — new "Milestone 11" section: exact local + hosted
   steps, by whom, smoke outcome, provider-call counts, known gaps.
@@ -205,9 +228,25 @@ branch with a test and redeployed — never hand-patched on hosted.
   blocker appears.
 - **Additional AI classifier:** no. **Moderation service:** no.
 
-## Remaining hard blockers (need human input to start Phase C/D)
+## Resolved hosted prerequisites
 
-- The new hosted Supabase project ref + DB password.
-- `netlify login` + the new Netlify site.
-- (`system` role support for `google/gemini-3.1-flash-lite` via OpenRouter is
-  expected to work; Phase A carries a user-turn fallback if not — not a blocker.)
+**Supabase:**
+- project: `vinyl-intelligence`
+- ref: `dlkaljnywnrhzfxcfklx`
+- all 13 version-controlled migrations applied; local == remote migration
+  history; zero pending
+
+**Netlify:**
+- project: `vinyl-intelligence`
+- site ID: `fd95e6cf-309e-434a-99b6-8ae716ec694a`
+- URL: https://vinyl-intelligence.netlify.app
+- 11 required environment variables configured; the two server secrets
+  (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) stored as Netlify secrets
+  — names only, no values recorded
+
+**Supabase Auth:** production Site URL + redirect URL configured; Supabase
+built-in email sender retained.
+
+(`system`-role support for `google/gemini-3.1-flash-lite` via OpenRouter is
+confirmed in the Phase H hosted smoke; the implementation adds no runtime
+retry/fallback.)
