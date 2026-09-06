@@ -21,6 +21,14 @@ export const DEFAULT_CURATOR_INTENT_MODEL = 'google/gemini-3.1-flash-lite'
 export const DEFAULT_CURATOR_SELECTION_MODEL = 'google/gemini-3.5-flash'
 
 export const MAX_REQUEST_LENGTH = 800
+
+/**
+ * Milestone 11 hardening: the fixed, bounded product message shown when the
+ * intent/refinement model marks a request out of scope (code, essays, prompt
+ * disclosure, unrelated Q&A). VIN is only a record-collection curator.
+ */
+export const CURATOR_OUT_OF_SCOPE_MESSAGE =
+  'VIN can only help you choose something from your record collection.'
 export const MAX_CANDIDATES = 12
 export const RATE_LIMIT_MAX = 10
 export const RATE_LIMIT_WINDOW_MINUTES = 10
@@ -172,6 +180,12 @@ export type CuratorResult =
     }
   | { status: 'empty_collection' }
   | { status: 'no_match'; interpretedIntent: CuratorIntent }
+  /**
+   * Milestone 11: the intent model marked the request as not about choosing a
+   * record to play. The selection model is never called; the UI shows
+   * `CURATOR_OUT_OF_SCOPE_MESSAGE`.
+   */
+  | { status: 'out_of_scope' }
 
 export type CuratorUsage = {
   promptTokens: number | null
@@ -211,6 +225,8 @@ export type CuratorRefineResult =
     }
   | { status: 'empty_collection' }
   | { status: 'no_match'; interpretedIntent: CuratorIntent }
+  /** Milestone 11: the follow-up was marked out of scope; no selection call. */
+  | { status: 'out_of_scope' }
 
 /** One entry in the bounded, React-memory-only conversation transcript. */
 export type CuratorTurn =

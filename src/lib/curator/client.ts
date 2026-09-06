@@ -82,6 +82,10 @@ function normalizeResult(payload: unknown): CuratorResult {
     return { status: 'empty_collection' }
   }
 
+  if (payload.status === 'out_of_scope') {
+    return { status: 'out_of_scope' }
+  }
+
   if (payload.status === 'no_match') {
     if (!isRecord(payload.interpretedIntent)) {
       throw new CuratorError('provider_bad_response', 'The curator returned an unexpected response.')

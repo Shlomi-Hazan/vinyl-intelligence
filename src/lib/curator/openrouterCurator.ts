@@ -19,9 +19,9 @@ import {
   type CuratorUsage,
 } from './types.ts'
 import {
-  CURATOR_INTENT_JSON_SCHEMA,
+  CURATOR_INTENT_RESULT_JSON_SCHEMA,
   INTENT_SYSTEM_PROMPT,
-  parseCuratorIntent,
+  parseCuratorIntentResult,
 } from './intentSchema.ts'
 import {
   CURATOR_REFINEMENT_JSON_SCHEMA,
@@ -38,11 +38,13 @@ import type { CuratorCandidate } from './types.ts'
 
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const DEFAULT_TIMEOUT_MS = 15_000
-const INTENT_MAX_TOKENS = 250
-// A refinement returns the full 12-field intent object nested in a wrapper plus
-// one boolean - larger than the flat intent output, so a wider budget than
-// INTENT_MAX_TOKENS. Still google/gemini-3.1-flash-lite, no reasoning override.
-const REFINEMENT_MAX_TOKENS = 400
+// The 12-field intent object nested under a `{ inScope, intent }` wrapper
+// (Milestone 11). One extra boolean vs the flat intent; small headroom.
+const INTENT_MAX_TOKENS = 300
+// A refinement returns `{ inScope, intent: {12 fields}, excludePreviousRecommendations }`
+// - larger than the intent output, so a wider budget. Still
+// google/gemini-3.1-flash-lite, no reasoning override.
+const REFINEMENT_MAX_TOKENS = 430
 // Human Runtime Test 1 (2026-08-31) hit finish_reason: "length" on the selection
 // call: google/gemini-3.5-flash defaults to "medium" reasoning effort, which
 // consumed the 500-token budget before the JSON completed. The selection task is
@@ -76,6 +78,8 @@ type BaseOptions = {
 export type ExtractIntentOptions = BaseOptions & { request: string }
 
 export type ExtractIntentResult = {
+  /** Milestone 11 scope gate; `intent` is the unchanged musical intent. */
+  inScope: boolean
   intent: CuratorIntent
   usage: CuratorUsage
   model: string
@@ -298,11 +302,12 @@ export async function extractIntent(
     base: { ...options, model },
     systemPrompt: INTENT_SYSTEM_PROMPT + untrustedFramingNote(nonce),
     userContent: userBlock('USER REQUEST (untrusted)', options.request, nonce),
-    jsonSchema: CURATOR_INTENT_JSON_SCHEMA,
+    jsonSchema: CURATOR_INTENT_RESULT_JSON_SCHEMA,
     maxTokens: INTENT_MAX_TOKENS,
   })
 
-  return { intent: parseCuratorIntent(parsed), usage, model: usedModel }
+  const { inScope, intent } = parseCuratorIntentResult(parsed)
+  return { inScope, intent, usage, model: usedModel }
 }
 
 /**

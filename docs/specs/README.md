@@ -29,7 +29,8 @@ Existing specs/spikes:
 - [0009 Milestone 8 Listening History](0009-milestone-8-listening-history.md) - implemented and verified (merged in PR #8)
 - [0010 Milestone 9 AI Curator](0010-milestone-9-ai-curator.md) - implemented and verified (human runtime PASS 5/5); merged in PR #10
 - [0011 Milestone 10 Conversational Refinement](0011-milestone-10-conversational-refinement.md) - implemented and verified (human runtime PASS 4/4); merged in PR #11
-- [0012 Visual Experience & Product Identity Pass](0012-visual-experience-product-identity.md) - design/product/architecture spec; **human-approved** (decisions A-K + 2026-09-01 art-direction addendum). Inserted product-quality pass before Milestone 11. Phase 0 (custom-cover storage) merged in PR #12; **Phases A + B** (design system + routing + shell; landing + auth + dashboard + code splitting) implemented on branch `claude/visual-experience-product-identity-ui`, not merged; Phases C-E pending.
+- [0012 Visual Experience & Product Identity Pass](0012-visual-experience-product-identity.md) - inserted product-quality pass before Milestone 11. **Phases A-E complete + human-accepted; merged to `main` in PR #13** (Phase 0 was merged earlier in PR #12).
+- [0013 Milestone 11 Production Deployment](0013-milestone-11-production-deployment.md) - **PLANNING ONLY** (not started). Netlify + hosted Supabase deployment; two small pre-deploy AI-hardening items (curator out-of-scope, vision prompt-injection). Plan: `docs/plans/013-milestone-11-production-deployment.md`.
 
 Likely milestone specs:
 

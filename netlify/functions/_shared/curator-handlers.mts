@@ -580,6 +580,12 @@ export async function handleCuratorRecommend(
       errorCategory: null,
     })
 
+    // Milestone 11: an out-of-scope request stops here - the selection model is
+    // never called, and no owned-collection filtering runs.
+    if (!intentResult.inScope) {
+      return jsonResponse({ status: 'out_of_scope' })
+    }
+
     const result = await runSelectionPipeline({
       deps,
       env,
@@ -649,7 +655,14 @@ export async function handleCuratorRefine(
       errorCategory: null,
     })
 
-    const { intent: refinedIntent, excludePreviousRecommendations } = refinementResult.refinement
+    const { inScope, intent: refinedIntent, excludePreviousRecommendations } =
+      refinementResult.refinement
+
+    // Milestone 11: an out-of-scope follow-up stops here - no selection call,
+    // and no recommendation constraints are mutated.
+    if (!inScope) {
+      return jsonResponse({ status: 'out_of_scope' })
+    }
 
     // Reconcile client-supplied prior IDs against the CURRENT owned set. A
     // non-owned / stale / tampered id simply never makes the intersection.

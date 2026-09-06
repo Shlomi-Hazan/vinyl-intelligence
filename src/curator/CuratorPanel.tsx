@@ -4,6 +4,7 @@ import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
 import {
   CuratorError,
+  CURATOR_OUT_OF_SCOPE_MESSAGE,
   DEFAULT_RECENT_DAYS,
   MAX_REQUEST_LENGTH,
   type CuratorConversation,
@@ -115,6 +116,9 @@ export function CuratorPanel({
   const [status, setStatus] = useState<PanelStatus>('idle')
   const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
   const [error, setError] = useState<{ code: string; message: string } | null>(null)
+  // Milestone 11: transient - the last curator call (initial or refinement) was
+  // marked out of scope. No selection call ran; nothing else changed.
+  const [outOfScope, setOutOfScope] = useState(false)
 
   // Milestone 10 - bounded conversation state; React memory only, no persistence.
   const [conversation, setConversation] = useState<CuratorConversation | null>(null)
@@ -155,6 +159,7 @@ export function CuratorPanel({
     setInitialResult(null)
     setStatus('idle')
     setError(null)
+    setOutOfScope(false)
     setRequest('')
   }
 
@@ -166,9 +171,17 @@ export function CuratorPanel({
 
     setStatus('loading')
     setError(null)
+    setOutOfScope(false)
 
     try {
       const next = await requestCuratorRecommendation(client, trimmed)
+      if (next.status === 'out_of_scope') {
+        // Not an error and not a result - the request was off-topic. Keep the
+        // form usable for the next request; no conversation is started.
+        setOutOfScope(true)
+        setStatus('idle')
+        return
+      }
       setInitialResult(next)
       setStatus('done')
       if (next.status === 'ok') {
@@ -194,6 +207,13 @@ export function CuratorPanel({
   }
 
   function handleRefined(result: CuratorRefineResult, followUpText: string) {
+    setOutOfScope(result.status === 'out_of_scope')
+    if (result.status === 'out_of_scope') {
+      // Do not consume a refinement turn, mutate the intent, or touch the
+      // shown recommendations. The refine panel + prior cards stay usable.
+      return
+    }
+
     setConversation((current) => {
       if (!current) {
         return current
@@ -313,6 +333,12 @@ export function CuratorPanel({
       {status === 'error' && error ? (
         <div className="curator-state" role="alert">
           <p className="error">{error.message}</p>
+        </div>
+      ) : null}
+
+      {outOfScope ? (
+        <div className="curator-state" role="status">
+          <p className="notice">{CURATOR_OUT_OF_SCOPE_MESSAGE}</p>
         </div>
       ) : null}
 
