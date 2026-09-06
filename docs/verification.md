@@ -4508,3 +4508,97 @@ change. **0 BLOCKER, 0 HIGH, 0 MEDIUM.**
 No extra model call · 0 real OpenRouter / MusicBrainz / Cover Art Archive calls
 (automated tests use mocks) · no hosted Supabase action · no Netlify action · no
 deployment · no PR · Phase C not started.
+
+## Milestone 11 — Phase C Hosted Supabase — 2026-09-06
+
+**Approved remote mutations only** (link + `db push`). No Netlify, no
+deployment, no Auth URL / SMTP / email-template change, no Phase D. `origin/main`
+unchanged at `49b1534d9caad138959363289f770b199e2966a0`.
+
+### Project
+
+- Hosted project name: **vinyl-intelligence**
+- Ref: **`dlkaljnywnrhzfxcfklx`** (created 2026-09-06, `eu-west-1`, ACTIVE_HEALTHY)
+- A brand-new project created for this app; **not** the unrelated
+  `the-tribunal-dev` / `lfjtklmrpfznzzxzrrls`.
+- `supabase link --project-ref dlkaljnywnrhzfxcfklx` linked via the access
+  token — **no database password was entered, printed, passed as an argument,
+  or stored.** `supabase projects list` shows `vinyl-intelligence` `linked=true`
+  and `the-tribunal-dev` `linked=false`. `supabase/.temp/project-ref` (git-
+  ignored) contains exactly `dlkaljnywnrhzfxcfklx`.
+
+### Migrations
+
+13 version-controlled migrations, applied in timestamp order:
+
+| # | Migration |
+| --- | --- |
+| 1 | `20260818134203_create_profiles.sql` |
+| 2 | `20260819000100_create_manual_collection.sql` |
+| 3 | `20260826000100_add_catalog_releases.sql` |
+| 4 | `20260829120000_grant_service_role_catalog_privileges.sql` |
+| 5 | `20260829140000_add_model_calls.sql` |
+| 6 | `20260830120000_add_release_genres.sql` |
+| 7 | `20260831120000_add_collection_item_signals.sql` |
+| 8 | `20260901120000_add_listening_events.sql` |
+| 9 | `20260902120000_widen_model_calls_feature.sql` |
+| 10 | `20260903120000_add_custom_cover_storage.sql` |
+| 11 | `20260904120000_allow_listening_event_management.sql` |
+| 12 | `20260904121000_add_personal_genres.sql` |
+| 13 | `20260904122000_add_profile_avatar_storage.sql` |
+
+- **Pre-push** `supabase migration list --linked`: all 13 present locally,
+  `remote` empty for all 13 (brand-new project, nothing applied). No
+  unexpected remote migration; CLI did not suggest `migration repair`.
+- **Dry run** (`db push --linked --dry-run`): would push exactly these 13, in
+  order; `seeds: []`, `roles: []`.
+- **`supabase db push --linked`**: applied all 13, in order; `seeds: []`,
+  `roles: []`; no failure.
+- **Post-push** `migration list --linked`: all 13 rows have `local == remote`,
+  **0 mismatches**; no local-only, no remote-only.
+- **Second dry run**: `{"upToDate":true,"migrations":[]}` — **zero migrations
+  pending.**
+
+### Targeted read-only hosted verification (`supabase db query --linked`, read-only)
+
+**A. Public tables / RLS** — 5 application tables, every one `rowsecurity = true`:
+`collection_items`, `listening_events`, `model_calls`, `profiles`, `releases`.
+No unexpected `public` table. Policy counts per table match the migrations:
+`collection_items` 4, `listening_events` 4 (SELECT/INSERT own + Phase-D
+UPDATE/DELETE own), `model_calls` 1, `profiles` 2, `releases` 4.
+
+**B. Profile trigger** — `create_profile_after_auth_user_insert` on `auth.users`
+runs `private.create_profile_for_new_user` (`SECURITY DEFINER`, in the
+non-exposed `private` schema).
+
+**C. Storage buckets** — both present and **private**:
+`collection-covers` (`public=false`, `file_size_limit=3145728` = 3 MiB,
+`allowed_mime_types=['image/webp']`); `profile-avatars` (`public=false`,
+`file_size_limit=1048576` = 1 MiB, `allowed_mime_types=['image/webp']`).
+
+**D. Policies / grants** — no obvious mismatch with the migrations, and **no
+accidental broad public write**:
+- `storage.objects`: 8 policies, 4 per bucket (INSERT with-check, SELECT using,
+  UPDATE using+with-check, DELETE using), all role `{authenticated}`, all
+  owner-scoped. None to `anon` / `public`.
+- `public` tables: **no policy grants write (`INSERT`/`UPDATE`/`DELETE`/`ALL`) to
+  `anon` or `public`.** Table grants: `authenticated` only — broad `SELECT`,
+  `DELETE` on `collection_items` + `listening_events`; **no `anon` / `public`
+  table grants at all.**
+- Column-scoped grants present as designed: `listening_events.listened_at`
+  SELECT+UPDATE but `collection_item_id` INSERT+SELECT only (M8 append-only,
+  Phase D added only `listened_at` UPDATE); `collection_items.personal_genres`
+  SELECT+UPDATE; `profiles.{display_name,avatar_path,avatar_updated_at}`
+  SELECT+UPDATE.
+
+**E. Remote db lint** (`supabase db lint --linked`): `No schema errors found`,
+`results: []`.
+
+### Explicit
+
+- No `migration repair`. No `db reset`. No `--include-seed` / `--include-all` /
+  `db pull`.
+- No manual hosted SQL **mutation** (only read-only `db query` for verification).
+- No Auth Site URL / redirect URL / email template / SMTP / provider change.
+- Phase D (Netlify + production Auth URLs) **not started**. No deployment. No
+  model/provider calls. No test users or demo data. No storage files created.
