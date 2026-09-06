@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import curatorHandler, { config as curatorConfig } from './curator-recommend.mts'
-import refineHandler, { config as refineConfig } from './curator-refine.mts'
+import curatorHandler, { config as curatorConfig } from '../functions/curator-recommend.mts'
+import refineHandler, { config as refineConfig } from '../functions/curator-refine.mts'
 import {
   handleCuratorRecommend,
   handleCuratorRefine,
   type CuratorFunctionDependencies,
-} from './_shared/curator-handlers.mts'
+} from '../functions/_shared/curator-handlers.mts'
 import { CuratorError } from '../../src/lib/curator/types.ts'
 
 const env = {
