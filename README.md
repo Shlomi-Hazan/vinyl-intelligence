@@ -33,14 +33,22 @@ The recommended baseline is:
 
 ## Project Status
 
-**Current state (2026-09-03):** Milestones 0–10 are complete and merged to
-`main`. The **Visual Experience & Product Identity pass** — a human-directed
-product-quality pass deliberately inserted between Milestone 10 and Milestone 11
-— is **complete and human-accepted (Phases A–E)** on branch
-`claude/visual-experience-product-identity-ui`; its Phase 0 is already merged
-(PR #12) and the final A–E pull request is being opened now. **Milestone 11
-(Production Deployment) has not started; no hosted Supabase migration has been
-applied; nothing is deployed.**
+**Current state (2026-09-07):** Milestones **0–11 are complete**. Milestones
+0–10 and the **Visual Experience & Product Identity pass** (a human-directed
+product-quality pass deliberately inserted between Milestone 10 and Milestone 11;
+Phase 0 in PR #12, Phases A–E in **PR #13**, merge commit `49b1534`) are merged
+to `main`. **Milestone 11 (Production Deployment) is complete:** the application
+is **live at <https://vinyl-intelligence.netlify.app>**, deployed from merged
+`main` `55f514c` (PR #14 → #15 → #16). Hosted Supabase, Auth, and Storage are
+configured; **all 13 version-controlled migrations are applied** (zero pending);
+the human production smoke passed; one production defect (curator include-genre
+matching) was fixed via PR #16 and re-verified; the final technical security
+sanity passed. **Milestone 12 (Reliability / Security / Telemetry / Polish) has
+not started and is next.**
+
+No Git continuous deployment, no custom domain, no SMTP — deploys are run
+manually from merged `main`, on the default `*.netlify.app` domain, with
+Supabase's built-in email sender.
 
 - **Current roadmap:** [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md)
 - **Historical roadmap snapshot (2026-08-18, unchanged for auditability):** [`docs/roadmaps/2026-08-18-complete-project-roadmap.md`](docs/roadmaps/2026-08-18-complete-project-roadmap.md)
@@ -72,9 +80,7 @@ focused self-review plus an independent GitHub review whose one MEDIUM was fixed
 (`docs/specs/0011-milestone-10-conversational-refinement.md`,
 `docs/plans/011-milestone-10-conversational-refinement.md`,
 `docs/verification.md` "Milestone 10 Evidence"). **Merged to `main`** in PR #11
-(merge commit `bfddeb5109e61eac65b184ff4ff5d58092b3984f`). Hosted/production
-verification and production deployment have not occurred and remain later
-milestones; no hosted Supabase migration has been applied.
+(merge commit `bfddeb5109e61eac65b184ff4ff5d58092b3984f`).
 
 ### Visual Experience & Product Identity pass (inserted pre-M11)
 
@@ -124,10 +130,11 @@ unchanged.**
   `.legacy-host button` cascade was fixed by commit `8226328` and visually
   human-verified). **COMPLETE + HUMAN ACCEPTED.** No model-contract change.
 
-The A–E visual pass is **complete and human-accepted** on the branch. It is
-**not yet merged and not deployed**; the final A–E pull request is being opened
-now. Full per-phase evidence is in `docs/verification.md`. Milestone
-pull-request and merge state are tracked in GitHub history.
+The A–E visual pass is **complete, human-accepted, and merged to `main`** in
+**PR #13** (merge commit `49b1534`). Its forward migrations
+(`20260904120000`, `20260904121000`, `20260904122000`) were applied to hosted
+Supabase in Milestone 11. Full per-phase evidence is in `docs/verification.md`.
+Milestone pull-request and merge state are tracked in GitHub history.
 
 Implemented:
 
@@ -189,9 +196,9 @@ Implemented:
   last-listened time (no denormalized columns, no triggers), and a compact
   collapsible reverse-chronological history; authenticated `SELECT` + `INSERT
   (collection_item_id)` only, own-item `INSERT` RLS, both foreign keys
-  `ON DELETE CASCADE` (Milestone 8). *The Visual Experience Phase D branch (not
-  merged) adds an owner-scoped `UPDATE (listened_at)` + `DELETE` grant so a
-  collector can correct or remove their own play - see ADR 0006.*
+  `ON DELETE CASCADE` (Milestone 8). *The Visual Experience pass (merged, PR #13)
+  adds an owner-scoped `UPDATE (listened_at)` + `DELETE` grant so a collector can
+  correct or remove their own play - see ADR 0006.*
 - AI Curator: `POST /api/curator/recommend` - a single-turn natural-language
   request produces a small set of recommendations drawn only from owned records.
   Two-stage OpenRouter pipeline (intent extraction -> deterministic hard filter
@@ -207,10 +214,20 @@ Implemented:
   conversation state (no table, no `sessionStorage` / `localStorage`), the
   shared `curator_intent` rate budget, no migration (Milestone 10; merged in
   PR #11)
+- Pre-deploy AI hardening: curator out-of-scope detection via an outer
+  `{ inScope, intent }` structured-output wrapper (`CuratorIntent` unchanged, no
+  extra model call, stops before the selection call) and a trusted `system`
+  message for vision recognition that frames all image text as untrusted data
+  (Milestone 11; merged in PR #14)
+- Production deployment: live at <https://vinyl-intelligence.netlify.app> on
+  Netlify (frontend + six Functions) + hosted Supabase (`dlkaljnywnrhzfxcfklx`),
+  all 13 migrations applied; deployed from merged `main` `55f514c`; hosted smoke
+  PASS (Milestone 11; PR #14 → #15 → #16)
 
 Planned:
 
-- Production deployment (Milestone 11)
+- Reliability, security re-check, telemetry review, and final polish
+  (Milestone 12 — not started)
 
 ## Local Setup
 

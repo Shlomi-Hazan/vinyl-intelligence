@@ -4693,3 +4693,155 @@ hosted project. Local link (`supabase/.temp/project-ref`) remains
 - No Supabase schema change. No Auth setting mutation.
 - No GitHub ↔ Netlify continuous deployment connected.
 - **No deployment.** No model/provider calls. No PR. Phase E not started.
+
+## Milestone 11 — Production (Phases E–I) — 2026-09-06 / 2026-09-07
+
+Final M11 production record. Earlier chronological evidence (Phase A/B, C, D
+above) is unchanged.
+
+### Phase E / F — PR, review, merge
+
+- **PR #14** (`feat: milestone 11 production deployment`) independently reviewed
+  (BLOCKER 0 / HIGH 0 / MEDIUM 0) and merged with a **normal merge commit
+  `10f9e4fe09a7164e9fceac7f97d23442a58ca0b8`**. Local `main` fast-forwarded.
+
+### First Phase G deploy attempt — FAILED before publication
+
+- Deploy from merged `main` — Netlify deploy ID **`6a9dd752d9250164dedab2fa`**.
+- `npm run build` succeeded (entry ≈ 135 kB gzip).
+- Deploy **failed before publication** with **HTTP 422 "Incorrect function
+  names"**: Netlify packaged four co-located `netlify/functions/*.test.ts` files
+  as functions with invalid (`.`-containing) names.
+- **No improvised hosted fix.** Stopped and reported.
+
+### Deployment blocker fix — PR #15
+
+- **PR #15** (`fix: keep tests out of Netlify functions bundle`): the four
+  Vitest files moved to `netlify/tests/`; only the relative import paths updated
+  (`./…` → `../functions/…`); `tsconfig.node.json` `include` extended so the
+  relocated tests stay type-checked. Production function code and `netlify.toml`
+  unchanged.
+- Local: `netlify functions:list` → exactly **six** deployable functions
+  (`catalog-add`, `catalog-recognize`, `catalog-search`, `curator-recommend`,
+  `curator-refine`, `health`); full suite 60 files / 633 tests; typecheck / lint
+  (0 warnings) / build pass.
+- Merged with a **normal merge commit
+  `fc68b5d4ce8d1cb496242cc35b8fe37f94f49013`**.
+
+### Successful Phase G deploy
+
+- Netlify deploy ID **`6a9ddd6480cd7c12d779c79d`**, `state: ready`, context
+  `production`, from merged `main` **`fc68b5d4ce8d1cb496242cc35b8fe37f94f49013`**.
+- Build succeeded; **exactly six** Netlify Functions published
+  (`available_functions` on the deploy confirms the six).
+- An earlier fresh HTTP check returned a Netlify edge-access/login page with
+  **HTTP 401**. The cause was not independently established.
+- The human then visually confirmed in the Netlify dashboard: **Production
+  visibility = Public** and **Deploy Preview visibility = Public**. The agent
+  performed **no visibility or config mutation** during the recheck.
+- Subsequent fresh cache-busted checks returned: `GET /` = **200** (SPA HTML);
+  `GET /api/health` = **200** `{"status":"ok"}`; `GET /collection/<uuid>` =
+  **200** (byte-identical SPA shell — not a Netlify 404, not a login page).
+
+### Phase H — human production smoke — PASS (HUMAN-VERIFIED)
+
+Performed by the human against `https://vinyl-intelligence.netlify.app`:
+
+- production signup + email confirmation + sign in
+- manual add: **Pink Floyd — Wish You Were Here**; persisted after refresh
+- album-detail page opened
+- catalog search / add: **Radiohead — OK Computer**
+- photo recognition + explicit candidate confirmation:
+  **J. Cole — 2014 Forest Hills Drive**
+- initial VIN production recommendation worked
+- conversational refinement exercised
+- out-of-scope request **"What is the capital of France?"** → the bounded
+  VIN-only message, **no recommendation**
+- direct collection-detail deep link survived a browser refresh
+- sign out succeeded
+
+(No personal email, password, auth token, user UUID, or collection-item UUID is
+recorded here.)
+
+### Phase H — production defect + fix
+
+- **Initial production VIN request:** *"I want something atmospheric and
+  introspective, preferably rock."*
+- **Observed defect:** curator `includeGenres` used exact full-string equality,
+  so requested `rock` did not match owned genre `progressive rock`; the
+  refinement **"Something older"** then produced a **false no-match**
+  (owned *Wish You Were Here*, 1975, `progressive rock`).
+- **Fix — PR #16** (`fix: match broad curator genres to subgenres`):
+  INCLUDE-genre matching now succeeds on exact normalized equality **or** when
+  the requested genre appears as a complete, contiguous word-token sequence
+  inside the candidate genre (`rock` → `progressive rock` / `post-rock`;
+  `hip hop` → `alternative hip hop`; `rock` ✗ `rockabilly`; `rap` ✗ `trap`).
+  **excludeGenres semantics unchanged** — still exact normalized equality.
+- Local verification after the fix:
+  - targeted `candidates` tests: **25 pass**
+  - full suite: **60 files / 638 tests pass**
+  - typecheck pass; lint pass (0 warnings); build pass (entry ≈ 135 kB gzip)
+- Merged with a **normal merge commit
+  `55f514c20be15b9f2656aa1d534598b9938e7396`**.
+- Production redeploy — Netlify deploy ID **`6a9de5c190ec8b263f9bc9f8`**,
+  `state: ready`, from `55f514c…`; six functions published; `/`, `/api/health`,
+  and a `/collection/<uuid>` deep-link all 200.
+- **Human regression verification (HUMAN-VERIFIED):** the initial request now
+  admits both **OK Computer** and **Wish You Were Here**; the refinement
+  **"Something older"** correctly returns **Wish You Were Here**. **Regression
+  PASS.**
+
+### Phase H — final technical security sanity — PASS (agent, read-only, 0 provider calls)
+
+Against `55f514c…` / deploy `6a9de5c190ec8b263f9bc9f8`:
+
+- Source-side: `SUPABASE_SERVICE_ROLE_KEY` and `OPENROUTER_API_KEY` are read
+  only by `netlify/functions/_shared/*.mts` via `requiredEnv(env, …)`; nothing
+  in `src/` references either, and no `src/` module imports from `netlify/`. The
+  only `VITE_`-prefixed vars are `VITE_APP_NAME`, `VITE_SUPABASE_URL`,
+  `VITE_SUPABASE_PUBLISHABLE_KEY` — no server secret has a `VITE_` prefix.
+- Production bundle: the root HTML's referenced entry + all 24 lazy chunks +
+  `jsx-runtime` + CSS were fetched and scanned. **Actual secret values were
+  never read or printed.** `SUPABASE_SERVICE_ROLE_KEY` identifier **absent**;
+  `OPENROUTER_API_KEY` identifier **absent**; no OpenRouter-key-shaped token
+  (`sk-or-v1-…`) and no Supabase secret-key-shaped token (`sb_secret_` + key)
+  found; `"service_role"` and `Bearer sk-or` absent. The bare literal
+  `sb_secret_` exists once inside bundled upstream `@supabase/supabase-js`
+  prefix-classification code (`startsWith(\`sb_publishable_\`) || startsWith(
+  \`sb_secret_\`)`), with **no secret-shaped value** — **not a finding**.
+- Unauthenticated requests: `POST /api/curator/recommend` → **401**
+  `{"code":"unauthorized",…}` (63 bytes); `POST /api/catalog/recognize` → **401**
+  `{"code":"unauthorized",…}` (69 bytes). Repository inspection confirms every
+  provider-backed handler calls `authenticateRequest(...)` as its first
+  statement, **before** any OpenRouter / MusicBrainz / vision call.
+- No secret names/values, stack traces, `process.env` dump, or internal env
+  data in any response. `GET /api/health` → 200 `{"status":"ok"}`.
+- **Technical check PASS. Zero provider calls during the check.**
+
+### Final Milestone 11 result
+
+**MILESTONE 11 — COMPLETE.**
+
+- Production URL live: `https://vinyl-intelligence.netlify.app`
+- Hosted Supabase configured (`vinyl-intelligence` / `dlkaljnywnrhzfxcfklx`)
+- All 13 version-controlled migrations applied to hosted; **zero pending**
+- Production Auth configured (Site URL + redirect URL; built-in email sender)
+- Production deployed from merged `main`
+  **`55f514c20be15b9f2656aa1d534598b9938e7396`**
+- Hosted smoke **PASS** (human); production regression defect fixed (PR #16) and
+  **re-verified PASS**
+- Final technical security sanity **PASS**
+- **M12 NOT STARTED**
+
+### Known gaps / explicitly out of M11 evidence
+
+- No Git ↔ Netlify continuous deployment; deploys are run manually from merged
+  `main`.
+- No custom domain; no SMTP (Supabase built-in email sender is the configured
+  default).
+- No daily/global AI spend caps (deferred to M12).
+- No exhaustive production failure-mode matrix; no full security re-audit; no
+  cross-user production testing beyond the single-account human smoke.
+- The "no selection-model call for an out-of-scope request" guarantee is covered
+  by Phase A automated tests and the UI showed no recommendation; it was not
+  separately re-confirmed from production `model_calls` telemetry.
