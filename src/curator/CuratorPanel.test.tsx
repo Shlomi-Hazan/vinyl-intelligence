@@ -1,9 +1,20 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
+import type { ReactElement } from 'react'
 import { CuratorPanel } from './CuratorPanel.tsx'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
+import { addListeningEvent } from '../lib/supabase/listeningEvents.ts'
 import { CuratorError, type CuratorResult } from '../lib/curator/types.ts'
+import { CollectionDataContext } from '../app/collection-data-context.ts'
+import {
+  makeCollectionData,
+  renderWithCuratorProviders,
+} from '../test/curatorHarness.tsx'
+import type { CollectionData } from '../app/collection-data-context.ts'
+import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 vi.mock('../lib/curator/client.ts', async (importOriginal) => {
@@ -11,8 +22,73 @@ vi.mock('../lib/curator/client.ts', async (importOriginal) => {
   return { ...actual, requestCuratorRecommendation: vi.fn() }
 })
 
+vi.mock('../lib/supabase/listeningEvents.ts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../lib/supabase/listeningEvents.ts')>()
+  return { ...actual, addListeningEvent: vi.fn() }
+})
+
 const client = {} as BrowserSupabaseClient
 const mockedRequest = vi.mocked(requestCuratorRecommendation)
+const mockedAddListeningEvent = vi.mocked(addListeningEvent)
+
+let reloadEvents = vi.fn()
+
+/**
+ * Render the panel with a fixed `userId` inside the curator providers. Ensures
+ * every render shares the same `reloadEvents` spy so tests can assert on it.
+ */
+function renderPanel(
+  ui: ReactElement,
+  collection: Partial<CollectionData> = {},
+): RenderResult {
+  return renderWithCuratorProviders(ui, { reloadEvents, ...collection })
+}
+
+function ownedItem(
+  overrides: Partial<CollectionItemWithRelease> = {},
+): CollectionItemWithRelease {
+  return {
+    id: 'a',
+    added_at: '2026-08-01T00:00:00.000Z',
+    created_at: '2026-08-01T00:00:00.000Z',
+    rating: null,
+    is_favorite: false,
+    notes: null,
+    custom_cover_path: null,
+    custom_cover_updated_at: null,
+    personal_genres: [],
+    release: {
+      id: 'rel-a',
+      artist: 'Radiohead',
+      title: 'OK Computer',
+      release_year: 1997,
+      label: null,
+      catalog_number: null,
+      country: null,
+      format: null,
+      genres: ['alternative rock'],
+      updated_at: '2026-08-01T00:00:00.000Z',
+      provider_release_id: '11111111-1111-4111-8111-111111111111',
+      provider_release_group_id: null,
+      source: 'catalog',
+    },
+    ...overrides,
+  }
+}
+
+function playedEvent(
+  collectionItemId: string,
+  overrides: Partial<ListeningEventRecord> = {},
+): ListeningEventRecord {
+  return {
+    id: 'evt-1',
+    collection_item_id: collectionItemId,
+    listened_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    ...overrides,
+  }
+}
 
 function okResult(): CuratorResult {
   return {
@@ -71,6 +147,7 @@ function okResult(): CuratorResult {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  reloadEvents = vi.fn()
 })
 
 afterEach(() => {
@@ -83,7 +160,7 @@ describe('CuratorPanel', () => {
     let resolve: (v: CuratorResult) => void = () => {}
     mockedRequest.mockImplementation(() => new Promise((r) => { resolve = r }))
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     const button = screen.getByRole('button', { name: 'Recommend' })
     expect(button).toBeDisabled()
 
@@ -102,7 +179,7 @@ describe('CuratorPanel', () => {
     const user = userEvent.setup()
     mockedRequest.mockResolvedValue(okResult())
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     await user.type(screen.getByLabelText('Your request'), '  90s rock  ')
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -121,7 +198,7 @@ describe('CuratorPanel', () => {
     const user = userEvent.setup()
     mockedRequest.mockResolvedValue({ status: 'empty_collection' })
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     await user.type(screen.getByLabelText('Your request'), 'anything')
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -150,7 +227,7 @@ describe('CuratorPanel', () => {
       },
     })
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     await user.type(screen.getByLabelText('Your request'), '90s rock no jazz not recent')
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -166,7 +243,7 @@ describe('CuratorPanel', () => {
     const user = userEvent.setup()
     mockedRequest.mockResolvedValue({ status: 'out_of_scope' })
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     await user.type(screen.getByLabelText('Your request'), 'write me a python script')
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -185,7 +262,7 @@ describe('CuratorPanel', () => {
     const user = userEvent.setup()
     mockedRequest.mockRejectedValue(new CuratorError('provider_unavailable', 'The curator is unavailable.'))
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     await user.type(screen.getByLabelText('Your request'), 'x')
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -197,7 +274,7 @@ describe('CuratorPanel', () => {
     const user = userEvent.setup()
     mockedRequest.mockResolvedValue(okResult())
 
-    render(<CuratorPanel client={client} />)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
     // before submitting there is only the initial request textarea
     expect(screen.getByLabelText('Your request')).toBeInTheDocument()
     expect(screen.queryByLabelText('Your follow-up')).not.toBeInTheDocument()
@@ -219,7 +296,7 @@ describe('CuratorPanel', () => {
       mockedRequest.mockImplementation(() => new Promise((r) => { resolve = r }))
       const onStatusChange = vi.fn()
 
-      render(<CuratorPanel client={client} onStatusChange={onStatusChange} />)
+      renderPanel(<CuratorPanel client={client} userId="user-1" onStatusChange={onStatusChange} />)
       expect(onStatusChange).toHaveBeenLastCalledWith('idle')
 
       await user.type(screen.getByLabelText('Your request'), '90s rock')
@@ -243,7 +320,7 @@ describe('CuratorPanel', () => {
       })
       const onStatusChange = vi.fn()
 
-      render(<CuratorPanel client={client} onStatusChange={onStatusChange} />)
+      renderPanel(<CuratorPanel client={client} userId="user-1" onStatusChange={onStatusChange} />)
       await user.type(screen.getByLabelText('Your request'), 'polka from 2024')
       await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -257,7 +334,7 @@ describe('CuratorPanel', () => {
       )
       const onStatusChange = vi.fn()
 
-      render(<CuratorPanel client={client} onStatusChange={onStatusChange} />)
+      renderPanel(<CuratorPanel client={client} userId="user-1" onStatusChange={onStatusChange} />)
       await user.type(screen.getByLabelText('Your request'), 'x')
       await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
@@ -265,6 +342,141 @@ describe('CuratorPanel', () => {
       expect(onStatusChange).toHaveBeenLastCalledWith('idle')
       expect(onStatusChange).not.toHaveBeenCalledWith('no-match')
       expect(onStatusChange).not.toHaveBeenCalledWith('success')
+    })
+  })
+
+  describe('recommendation card actions (post-M11 UX)', () => {
+    it('shows the owned record artwork and a View record deep link', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockResolvedValue(okResult())
+
+      renderPanel(<CuratorPanel client={client} userId="user-1" />, {
+        items: [ownedItem()],
+      })
+      await user.type(screen.getByLabelText('Your request'), '90s rock')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      const cards = await screen.findAllByRole('article')
+      // The owned item ('a') resolves -> canonical AlbumArtwork uses its real
+      // MusicBrainz release id (CAA release tier).
+      const cover = within(cards[0]).getByRole('img', { name: /Radiohead - OK Computer/ })
+      expect(cover.querySelector('img.vi-art__img')).toHaveAttribute(
+        'src',
+        'https://coverartarchive.org/release/11111111-1111-4111-8111-111111111111/front-250',
+      )
+      const view = within(cards[0]).getByRole('link', { name: 'View record' })
+      expect(view).toHaveAttribute('href', '/collection/a')
+    })
+
+    it('Played now inserts one listening event for that exact item and refreshes events', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockResolvedValue(okResult())
+      mockedAddListeningEvent.mockResolvedValue(playedEvent('a'))
+
+      renderPanel(<CuratorPanel client={client} userId="user-1" />, {
+        items: [ownedItem()],
+      })
+      await user.type(screen.getByLabelText('Your request'), '90s rock')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      const cards = await screen.findAllByRole('article')
+      await user.click(within(cards[0]).getByRole('button', { name: 'Played now' }))
+
+      await waitFor(() =>
+        expect(mockedAddListeningEvent).toHaveBeenCalledWith(client, 'a'),
+      )
+      expect(mockedAddListeningEvent).toHaveBeenCalledTimes(1)
+      expect(reloadEvents).toHaveBeenCalledTimes(1)
+    })
+
+    it('prevents a double submit while Played now is pending', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockResolvedValue(okResult())
+      let resolvePlay: (v: ListeningEventRecord) => void = () => {}
+      mockedAddListeningEvent.mockImplementation(
+        () => new Promise((r) => { resolvePlay = r }),
+      )
+
+      renderPanel(<CuratorPanel client={client} userId="user-1" />, {
+        items: [ownedItem()],
+      })
+      await user.type(screen.getByLabelText('Your request'), '90s rock')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      const cards = await screen.findAllByRole('article')
+      const playButton = within(cards[0]).getByRole('button', { name: 'Played now' })
+      await user.click(playButton)
+
+      const pending = within(cards[0]).getByRole('button', { name: 'Marking...' })
+      expect(pending).toBeDisabled()
+      await user.click(pending)
+      // View record stays usable during the mutation.
+      expect(within(cards[0]).getByRole('link', { name: 'View record' })).toBeInTheDocument()
+
+      resolvePlay(playedEvent('a'))
+      await waitFor(() =>
+        expect(within(cards[0]).getByRole('button', { name: 'Played now' })).toBeEnabled(),
+      )
+      expect(mockedAddListeningEvent).toHaveBeenCalledTimes(1)
+    })
+
+    it('surfaces a recoverable error and does not fake a play on failure', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockResolvedValue(okResult())
+      mockedAddListeningEvent.mockRejectedValue(new Error('network down'))
+
+      renderPanel(<CuratorPanel client={client} userId="user-1" />, {
+        items: [ownedItem()],
+        events: [],
+        eventsStatus: 'ready',
+      })
+      await user.type(screen.getByLabelText('Your request'), '90s rock')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      const cards = await screen.findAllByRole('article')
+      await user.click(within(cards[0]).getByRole('button', { name: 'Played now' }))
+
+      expect(await within(cards[0]).findByRole('alert')).toHaveTextContent('network down')
+      // still "Never played" - no fabricated success
+      expect(within(cards[0]).getByText('Never played')).toBeInTheDocument()
+      expect(within(cards[0]).getByRole('button', { name: 'Played now' })).toBeEnabled()
+      expect(reloadEvents).not.toHaveBeenCalled()
+    })
+
+    it('stops showing "Never played" once the refreshed events include the play', async () => {
+      const user = userEvent.setup()
+      mockedRequest.mockResolvedValue(okResult())
+
+      const { rerender } = renderPanel(
+        <CuratorPanel client={client} userId="user-1" />,
+        { items: [ownedItem()], events: [], eventsStatus: 'ready' },
+      )
+      await user.type(screen.getByLabelText('Your request'), '90s rock')
+      await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+      const cards = await screen.findAllByRole('article')
+      expect(within(cards[0]).getByText('Never played')).toBeInTheDocument()
+
+      // Simulate the CollectionDataProvider events refresh landing.
+      rerender(
+        <MemoryRouter>
+          <CollectionDataContext.Provider
+            value={makeCollectionData({
+              reloadEvents,
+              items: [ownedItem()],
+              events: [playedEvent('a')],
+              eventsStatus: 'ready',
+            })}
+          >
+            <CuratorPanel client={client} userId="user-1" />
+          </CollectionDataContext.Provider>
+        </MemoryRouter>,
+      )
+
+      await waitFor(() =>
+        expect(within(cards[0]).queryByText('Never played')).not.toBeInTheDocument(),
+      )
+      expect(within(cards[0]).getByText(/Played 1 time/)).toBeInTheDocument()
     })
   })
 })
