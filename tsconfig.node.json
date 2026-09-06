@@ -21,6 +21,7 @@
     "eslint.config.js",
     "netlify/functions/**/*.mts",
     "netlify/functions/**/*.ts",
+    "netlify/tests/**/*.ts",
     "vite.config.ts",
     "vitest.config.ts"
   ]

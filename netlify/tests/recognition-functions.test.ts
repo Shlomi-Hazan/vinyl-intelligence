@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import recognizeHandler, { config as recognizeConfig } from './catalog-recognize.mts'
+import recognizeHandler, { config as recognizeConfig } from '../functions/catalog-recognize.mts'
 import {
   countRecentRecognitionAttemptsWithUserToken,
   handleCatalogRecognize,
   type RecognitionFunctionDependencies,
-} from './_shared/recognition-handlers.mts'
+} from '../functions/_shared/recognition-handlers.mts'
 import { RecognitionError, type CoverRecognition } from '../../src/lib/vision/types.ts'
 
 const env = {

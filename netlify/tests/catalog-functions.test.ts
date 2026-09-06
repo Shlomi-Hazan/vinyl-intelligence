@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import addHandler, { config as addConfig } from './catalog-add.mts'
-import searchHandler, { config as searchConfig } from './catalog-search.mts'
+import addHandler, { config as addConfig } from '../functions/catalog-add.mts'
+import searchHandler, { config as searchConfig } from '../functions/catalog-search.mts'
 import {
   handleCatalogAdd,
   handleCatalogSearch,
-} from './_shared/catalog-handlers.mts'
+} from '../functions/_shared/catalog-handlers.mts'
 import { MusicBrainzError } from '../../src/lib/catalog/musicbrainz.ts'
 import type { CatalogCandidate } from '../../src/lib/catalog/types.ts'
 

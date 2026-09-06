@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import handler, { config } from './health.mts'
+import handler, { config } from '../functions/health.mts'
 
 describe('health function', () => {
   it('returns the expected public health JSON', async () => {
