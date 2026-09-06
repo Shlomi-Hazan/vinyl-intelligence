@@ -42,6 +42,13 @@ export type AlbumArtworkProps = {
   client?: BrowserSupabaseClient | null
   /** Cache-buster for the custom cover (e.g. `custom_cover_updated_at`). */
   customCoverVersion?: string | number | null
+  /**
+   * Whether the branded fallback shows the decorative title/artist text overlay.
+   * Default `true`. Set `false` where the title is already shown right beside
+   * the artwork (e.g. the VIN recommendation card) so it is not duplicated. The
+   * accessible name and the artwork precedence are unaffected.
+   */
+  decorativeText?: boolean
 }
 
 const CAA_SIZE: Record<AlbumArtworkSize, CoverArtSize> = {
@@ -67,9 +74,10 @@ export function AlbumArtwork({
   customCoverPath,
   client,
   customCoverVersion,
+  decorativeText = true,
 }: AlbumArtworkProps) {
   const accent = fallbackAccent(seedId ?? `${artist} ${title}`)
-  const showText = size !== 'thumb'
+  const showText = decorativeText && size !== 'thumb'
 
   const wantsCustom = Boolean(customCoverPath && client)
   const signed = useSignedCoverUrl(

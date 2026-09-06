@@ -1318,6 +1318,60 @@
   flex-wrap: wrap;
 }
 
+/* VIN recommendation card: cover + identity, then reason / facts / actions. */
+.vi-rec {
+  display: grid;
+  gap: var(--space-3);
+}
+.vi-rec__top {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.vi-rec__art {
+  display: block;
+  width: 104px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.vi-rec__ident {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+.vi-rec__ident h3 {
+  margin: 0;
+}
+.vi-rec__title {
+  color: var(--text);
+  text-decoration: none;
+}
+.vi-rec__title:hover {
+  text-decoration: underline;
+}
+.vi-rec__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+@media (max-width: 480px) {
+  .vi-rec__top {
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .vi-rec__art {
+    width: 84px;
+  }
+  .vi-rec__actions .vi-btn {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+}
+
 /* ============================ SUSPENSE ============================ */
 
 .vi-route-loading {
