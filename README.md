@@ -71,8 +71,11 @@ deploy `6a9dfeaacb28d21bd0c88eb6`.
 verification + documentation-reconciliation pass (spec
 [`0014`](docs/specs/0014-milestone-12-final-hardening.md), plan
 [`014`](docs/plans/014-milestone-12-final-hardening.md), PR #19); no new
-features, no redesign. It is marked complete only after independent PR review
-and a human production regression.
+features, no redesign. The human production regression found one reliability
+defect — the VIN session was lost on `VIN → View record → back` — fixed on the
+branch (`CuratorSessionProvider`, no curator-contract change). M12 is marked
+complete only after independent PR review and a human production regression
+(including re-verifying that fix).
 
 No Git continuous deployment, no custom domain, no SMTP — deploys are run
 manually from merged `main`, on the default `*.netlify.app` domain, with

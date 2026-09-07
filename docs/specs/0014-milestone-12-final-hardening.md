@@ -6,6 +6,14 @@ architecture change, no dependency churn, no CI. Final `M12 COMPLETE` status is
 set only after automated verification, independent PR review, and human
 production acceptance.
 
+**Update (2026-09-07):** the first human production regression found one real
+reliability defect — the transient VIN session was lost on `VIN → View record →
+back` navigation. A proportional, tested runtime fix landed on this branch
+(commit `40797d4`, `CuratorSessionProvider`; no curator contract / prompt /
+model / schema change; persistence contract unchanged). Evidence:
+`docs/verification.md` → "Human production regression — defect + fix". M12 stays
+NOT COMPLETE until the fix is human-verified.
+
 Baseline: `main` = `ee6d695b449e3b7810be3663b5cd5b221fedd059` (PR #18 merged —
 the VIN recommendation-card enhancement is on `main`). Production is live at
 `https://vinyl-intelligence.netlify.app`, application deploy

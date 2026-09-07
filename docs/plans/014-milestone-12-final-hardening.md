@@ -13,6 +13,15 @@ As-built docs updated in place. `intent.txt` appendix only. Historical
 roadmap not marked COMPLETE. No production deploy. Final human production
 regression is a gate before completion.
 
+**Update (2026-09-07):** the human production regression found one real
+reliability defect (transient VIN session lost on `VIN → View record → back`).
+A proportional runtime fix + 6 focused regression tests landed on this branch
+(commit `40797d4`) — `CuratorSessionProvider` lifts exactly the transient
+`CuratorPanel` state above the route outlet; persistence contract and every
+curator contract unchanged. Full record: `docs/verification.md` → "Human
+production regression — defect + fix". Gate after the fix: `test:run` 62 files /
+655 tests, typecheck / lint / build pass, pgTAP 10 / 507 PASS.
+
 ---
 
 ## Phase A — Clean-checkout automated verification

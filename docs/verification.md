@@ -4859,6 +4859,11 @@ features, no redesign, no production deploy.
 M12 is marked COMPLETE only after: this automated matrix (below), independent PR
 review, and the human production regression (spec §5). Not complete yet.
 
+**The first human production regression (2026-09-07) found one real defect
+(see "Human production regression — defect + fix" below). The earlier
+"Phase A … no defect found" applied to the automated sweep only; the
+runtime-flow defect surfaced only in the browser, in production.**
+
 ### Phase A — clean-checkout automated verification
 
 Run in a fresh `git clone` of the branch + `npm ci` (Node v24.19.0, npm
@@ -4876,11 +4881,14 @@ Run in a fresh `git clone` of the branch + `npm ci` (Node v24.19.0, npm
 | runtime deps | `npm audit --omit=dev` | **0 vulnerabilities** |
 | all deps | `npm audit --json` | 14 high, **all dev-only** (triage below) |
 
-No test was added — every M12-required invariant was already proven (the
-out-of-set curator id rejection is `src/lib/curator/selectionSchema.ts:165` +
-`selectionSchema.test.ts` "rejects an out-of-set id" + the handler tests). No
-defect found. Zero real OpenRouter / MusicBrainz / Cover Art Archive calls; no
-hosted Supabase or Netlify mutation.
+No test was added in the automated sweep — every M12-required invariant was
+already proven (the out-of-set curator id rejection is
+`src/lib/curator/selectionSchema.ts:165` + `selectionSchema.test.ts` "rejects an
+out-of-set id" + the handler tests). The automated sweep found **no defect**;
+one runtime defect was later found by the human production regression and fixed
+on this branch (see below — after the fix: **62 files / 655 tests**). Zero real
+OpenRouter / MusicBrainz / Cover Art Archive calls; no hosted Supabase or
+Netlify mutation.
 
 **Build output — entry + chunk table** (with the documented `VITE_*` build-time
 env present; see the note below):
@@ -5030,12 +5038,70 @@ is byte-unchanged (sha256
 - `model_calls` has no automatic retention purge (deferred low-priority item;
   the table stores no prompt/response/image/free-text).
 
+### Human production regression — defect + fix (2026-09-07)
+
+The first human production regression **found one real reliability / product-flow
+defect** in the VIN card flow. Recording it honestly (the automated Phase A
+sweep had found none — this one is only reproducible in the browser across a
+route change):
+
+- **Finding (real, product-flow).** In production: Ask VIN → recommendations
+  render → click a card's "View record" → the correct `/collection/<id>` page
+  opens → navigate back to VIN → **the request, recommendations, and refinement
+  state are gone**, so "Played now" can no longer be used on the card that was
+  just inspected. Reproduced by the human in production.
+- **Root cause (verified in code).** `CuratorPanel` held `request` / `status` /
+  `initialResult` / `error` / `outOfScope` / `conversation` / `lastOkResult` /
+  `refineNoMatchIntent` / `refineEmpty` in component-local `useState`. `/vin` and
+  `/collection/:id` are sibling routes under one layout route
+  (`AppRoutes.tsx`), so navigating unmounts `VinPage` + `CuratorPanel`; returning
+  mounts a fresh panel with empty state.
+- **Fix (proportional, this branch — commit `40797d4`).** Exactly that transient
+  state is lifted into a small client-only `CuratorSessionProvider`
+  (`src/curator/CuratorSessionProvider.tsx` + `curator-session-context.ts` +
+  `useCuratorSession.ts`), mounted once in `AppRoutes` **above the route
+  `<Outlet>`** and **inside** the per-user `CollectionDataProvider`. `CuratorPanel`
+  now reads/writes it via `useCuratorSession()`; "Start over" calls
+  `session.reset()`. The dashboard "Quick VIN" prefill seeds the textarea only
+  when the session is pristine.
+- **Persistence / privacy boundary — unchanged (re-checked).** The provider is
+  pure `useState` + `useMemo`/`useCallback` — no database, no `sessionStorage`,
+  no `localStorage`, no server state, no transcript. `grep` of the three new
+  session files finds no storage / fetch / supabase call (only the doc comment
+  that says it uses none). A full app remount (refresh) starts empty; the
+  provider is discarded on a user change because the wrapping
+  `CollectionDataProvider` is `key={user.id}`.
+- **No contract change.** No curator API / prompt / schema / model / rate-limit /
+  telemetry / owned-ID / recommendation / refinement change. `CuratorPanel`'s
+  behaviour is identical; only where its state lives changed.
+- **Focused regression tests** — `src/curator/curator-session-navigation.test.tsx`
+  (new, 6 tests) proves: recommendation + conversation survive
+  VIN → View record → back; "Played now" works after the return; refinement
+  state survives; "Start over" clears; a full remount starts empty; a user
+  change (keyed provider) discards the session; **zero `sessionStorage` /
+  `localStorage` writes across the whole flow**. `curatorHarness.tsx` and one
+  inline `rerender` in `CuratorPanel.test.tsx` updated to include the provider.
+- **Gate after the fix.** `git diff --check` clean; `typecheck` pass;
+  `lint` pass (0 warnings); `test:run` **62 files / 655 tests pass** (was
+  61 / 649: +1 file, +6 tests); `build` pass — entry
+  **466.53 kB / 135.25 kB gz** (was 465.72 / 135.02; +0.8 kB raw for the
+  provider, still << 200 kB gz); `VinPage` chunk 18.25 kB / 5.74 kB gz;
+  153 modules. `npx supabase test db` 10 / 507 PASS; `db lint` clean; audit
+  unchanged.
+
+**M12 remains NOT COMPLETE.** The fixed behaviour must be re-verified by the
+human in the browser (see the acceptance gate below) before M12 is closed.
+
 ### Remaining human acceptance gate
 
 Short production regression with the **existing** account (no repeat
 signup/email round-trip): sign in; add a manual record + refresh + open detail;
 one catalog add; one photo recognition to a confirmed candidate; one VIN
-recommendation + one refinement + one out-of-scope request; a VIN card
-"View record" then "Played now"; one deep-link refresh and one forced failure
-state; a ~390px + keyboard spot-check; sign out. Target ≤ ~6 paid provider
-calls. M12 is marked COMPLETE only after this passes and the PR is reviewed.
+recommendation + one refinement + one out-of-scope request; **a VIN card
+"View record" → navigate back to VIN → confirm the recommendations + refine
+panel are still there → "Played now" still works on that card**; one deep-link
+refresh and one forced failure state; a ~390px + keyboard spot-check; sign out.
+Target ≤ ~6 paid provider calls. M12 is marked COMPLETE only after this passes
+and the PR is reviewed. (Re-verifying the fixed navigation behaviour requires a
+build carrying commit `40797d4`; if a preview/draft deploy is needed for that,
+it must be explicitly approved — no production deploy in M12.)
