@@ -6,6 +6,7 @@ import {
   CollectionDataContext,
   type CollectionData,
 } from '../app/collection-data-context.ts'
+import { CuratorSessionProvider } from '../curator/CuratorSessionProvider.tsx'
 
 /**
  * A `CollectionData` context value for curator tests. Defaults to a ready,
@@ -32,8 +33,10 @@ export function makeCollectionData(
 
 /**
  * Render a curator component inside the providers it needs in the real app: a
- * router (for the recommendation cards' `View record` links) and the shared
- * collection data (for card artwork + live listening facts).
+ * router (for the recommendation cards' `View record` links), the shared
+ * collection data (for card artwork + live listening facts), and the transient
+ * VIN session provider (`CuratorSessionProvider`, which in the app is mounted
+ * above the route outlet so the session survives navigation).
  */
 export function renderWithCuratorProviders(
   ui: ReactElement,
@@ -42,7 +45,7 @@ export function renderWithCuratorProviders(
   return render(
     <MemoryRouter>
       <CollectionDataContext.Provider value={makeCollectionData(collection)}>
-        {ui}
+        <CuratorSessionProvider>{ui}</CuratorSessionProvider>
       </CollectionDataContext.Provider>
     </MemoryRouter>,
   )

@@ -1,6 +1,6 @@
 # Security and Privacy
 
-Last updated: 2026-08-17.
+Last updated: 2026-09-07 (Milestone 12 reconciliation).
 
 Security is part of the product definition. The app handles personal collections, uploads, API credentials, and costly model calls.
 
@@ -27,18 +27,32 @@ Supabase is approved for database, authentication, and storage:
 - Use RLS policies on user-owned tables.
 - Use Netlify Functions for privileged writes, external API calls, LLM calls, and image-recognition orchestration.
 
-Tables requiring strict ownership:
+Tables requiring strict ownership (as built - all have RLS enabled and
+owner-scoped policies; `docs/data-model.md`):
 
 - `profiles`
 - `collection_items`
 - `listening_events`
-- `image_identification_attempts`
 - `model_calls`
-- `conversation_sessions` if persisted
+
+Never implemented (deliberately ephemeral, not a gap):
+
+- `image_identification_attempts` - the recognition flow is confirmation-based
+  and stores nothing about an attempt.
+- `conversation_sessions` - refinement state lives only in browser React memory
+  (no table, no `sessionStorage` / `localStorage`, no server memory).
 
 Shared metadata table:
 
-- `releases` can be globally readable if it contains public catalog metadata, but writes should go through trusted backend logic.
+- `releases` is globally readable public catalog metadata; all writes go through
+  trusted backend logic (the browser has no write grant; `service_role` has
+  SELECT/INSERT/UPDATE, no DELETE).
+
+Storage:
+
+- Two private buckets, `collection-covers` and `profile-avatars`, both
+  `image/webp` only, size-limited, owner-scoped, no public listing. Signed URLs
+  are short-TTL and memory-only.
 
 ## Secrets
 
@@ -104,8 +118,11 @@ Costly Netlify Function endpoints should have:
 
 ## Open Privacy Decisions
 
-- How long are model-call audit records retained?
-- Whether bounded structured conversation state is persisted or kept ephemeral for the MVP implementation
+- How long are `model_calls` audit records retained? No automatic purge is
+  implemented; the table stores no prompt text, response body, image, or
+  free-text - only provider / feature / success / latency / token counts /
+  error category. A retention window (e.g. a scheduled delete) is deferred as a
+  low-priority future item, not a submission blocker.
 
 ## Resolved Privacy Decisions
 

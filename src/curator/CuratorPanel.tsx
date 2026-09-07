@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
 import { useCollectionData } from '../app/useCollectionData.ts'
+import { useCuratorSession } from './useCuratorSession.ts'
 import { useToast } from '../ui/useToast.ts'
 import { addListeningEvent } from '../lib/supabase/listeningEvents.ts'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
@@ -10,7 +11,6 @@ import {
   CURATOR_OUT_OF_SCOPE_MESSAGE,
   DEFAULT_RECENT_DAYS,
   MAX_REQUEST_LENGTH,
-  type CuratorConversation,
   type CuratorIntent,
   type CuratorRecommendation,
   type CuratorRefineResult,
@@ -26,22 +26,13 @@ type CuratorPanelProps = {
   /** Current user id - only used client-side to resolve custom-cover paths. */
   userId: string
   /**
-   * Optional client-only seed for the request textarea (e.g. the dashboard
-   * "Quick VIN" prefill). It only pre-fills the field - nothing is submitted
-   * and no model call is made until the user explicitly asks. The M9/M10
-   * request/response contracts are unchanged.
-   */
-  initialRequest?: string
-  /**
    * Optional UI-only signal so a host (e.g. the /vin page) can show a matching
-   * Vinny state. It is derived from the initial-request flow only and does not
+   * Vinny state. It is derived from the panel's own flow only and does not
    * change any curator behaviour or contract. A true technical error reports
    * `idle` (the panel shows its own error UI) - never `no-match`.
    */
   onStatusChange?: (state: CuratorUiState) => void
 }
-
-type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
 
 /** Semantic curator state for the host's Vinny character. */
 export type CuratorUiState = 'idle' | 'thinking' | 'success' | 'no-match'
@@ -145,7 +136,6 @@ function OkCards({
 export function CuratorPanel({
   client,
   userId,
-  initialRequest,
   onStatusChange,
 }: CuratorPanelProps) {
   const { items, events, eventsStatus, reloadEvents } = useCollectionData()
@@ -164,19 +154,38 @@ export function CuratorPanel({
     [client, reloadEvents, toast],
   )
 
-  const [request, setRequest] = useState(() => initialRequest ?? '')
-  const [status, setStatus] = useState<PanelStatus>('idle')
-  const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
-  const [error, setError] = useState<{ code: string; message: string } | null>(null)
-  // Milestone 11: transient - the last curator call (initial or refinement) was
-  // marked out of scope. No selection call ran; nothing else changed.
-  const [outOfScope, setOutOfScope] = useState(false)
+  // The transient VIN session lives in a provider mounted above the /vin route
+  // (see CuratorSessionProvider), so it survives "VIN -> View record -> back to
+  // VIN". Persistence contract is unchanged: React memory only, no storage, no
+  // server, no transcript; cleared by "Start over", a full remount, or a user
+  // change.
+  const session = useCuratorSession()
+  const {
+    request,
+    setRequest,
+    status,
+    setStatus,
+    initialResult,
+    setInitialResult,
+    error,
+    setError,
+    // Milestone 11: transient - the last curator call was marked out of scope.
+    outOfScope,
+    setOutOfScope,
+    // Milestone 10 - bounded conversation state.
+    conversation,
+    setConversation,
+    lastOkResult,
+    setLastOkResult,
+    refineNoMatchIntent,
+    setRefineNoMatchIntent,
+    refineEmpty,
+    setRefineEmpty,
+  } = session
 
-  // Milestone 10 - bounded conversation state; React memory only, no persistence.
-  const [conversation, setConversation] = useState<CuratorConversation | null>(null)
-  const [lastOkResult, setLastOkResult] = useState<OkResult | null>(null)
-  const [refineNoMatchIntent, setRefineNoMatchIntent] = useState<CuratorIntent | null>(null)
-  const [refineEmpty, setRefineEmpty] = useState(false)
+  // The dashboard "Quick VIN" prefill is applied by VinPage (it resets the
+  // session and seeds `request` once, then clears the route state), so the
+  // panel itself owns no seeding logic.
 
   const trimmed = request.trim()
   const pending = status === 'loading'
@@ -204,15 +213,8 @@ export function CuratorPanel({
   }, [vinnyState, onStatusChange])
 
   function resetConversation() {
-    setConversation(null)
-    setLastOkResult(null)
-    setRefineNoMatchIntent(null)
-    setRefineEmpty(false)
-    setInitialResult(null)
-    setStatus('idle')
-    setError(null)
-    setOutOfScope(false)
-    setRequest('')
+    // "Start over" clears the whole transient session.
+    session.reset()
   }
 
   async function handleSubmit(event: FormEvent) {

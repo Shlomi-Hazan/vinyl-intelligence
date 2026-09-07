@@ -1348,4 +1348,91 @@ variability, latency, cost, and failure; specify interface flows and bad
 states; and preserve specification, verification, and an audit trail
 throughout agentic development.
 
+======================================================================
+38. RESOLVED DECISIONS APPENDIX (added 2026-09-07, Milestone 12)
+======================================================================
+
+The section 34 questions are resolved as follows. This appendix does not
+change the intent above; it records where each decision was made. The
+implementation agent was Claude Code (not Codex); the "Codex" wording in
+sections 26 and 35 is historical and applies to the same agentic loop.
+
+ 1. Product name: "Vinyl Intelligence" (working name kept).
+ 2. Frontend: Vite + React 19 + TypeScript (docs/architecture.md;
+    docs/decisions/0001).
+ 3. Backend: Netlify Functions (*.mts), six deployable functions
+    (docs/architecture.md; docs/decisions/0001).
+ 4. Supabase: yes - hosted Postgres + Auth + Storage (docs/decisions/0001).
+ 5. Catalog provider: MusicBrainz (docs/decisions/0002; spec 0001 spike).
+ 6. Authoritative metadata: MusicBrainz for catalog fields; user-entered
+    for manual releases; Cover Art Archive for artwork at display time
+    (docs/api-integrations.md as-built table).
+ 7. AI provider: OpenRouter. Models - google/gemini-3.1-flash-lite
+    (vision + curator intent), google/gemini-3.5-flash (curator
+    selection) (docs/decisions/0003, 0004).
+ 8. Same provider (OpenRouter) for vision and text; different models per
+    use (docs/decisions/0003, 0004).
+ 9. Auth: Supabase Auth, email + password, built-in email confirmation
+    (spec 0003 / Milestone 2).
+10. Collection semantics: collection-item level; release-level provider
+    ids stored when available; album-first UI (docs/data-model.md).
+11. Duplicates: multiple collection_items may reference the same release;
+    the add flow does not hard-block a legitimate duplicate (Milestone 3
+    / 4 specs).
+12. Genre display: MusicBrainz genre tags on releases plus an optional
+    user "Genre" field and user-owned personal_genres; no cross-provider
+    reconciliation (Milestone 6; Visual pass Phase D).
+13. Decade: derived from release_year in application logic, never stored,
+    never LLM-authored (docs/data-model.md; Milestone 6).
+14. Conversational state retention: none - React memory only, cleared by
+    refresh / logout / "Start over" (docs/security.md; spec 0011).
+15. Chat transcripts stored: no (docs/security.md "Resolved Privacy
+    Decisions"; spec 0011).
+16. Uploaded cover photos retained: no - the recognition flow is
+    ephemeral and confirmation-based; nothing about an attempt is stored
+    (docs/security.md; spec 0006).
+17. Recommendation ranking: a small explainable deterministic heuristic
+    (favorite, rating, plus a preference-specific term) before the
+    selection model; the model only selects/explains from allowed
+    candidates (src/lib/curator/candidates.ts; spec 0010).
+18. "Not listened to recently": default 30 days (DEFAULT_RECENT_DAYS;
+    spec 0010).
+19. Max candidate set to the LLM: 12 (MAX_CANDIDATES; spec 0010).
+20. Max AI calls / cost per interaction: exactly two provider calls per
+    successful curator request (one for a no-match, zero for an empty
+    collection); one vision call per recognition; per-user rate limits
+    (10 curator-intent / 10 min; MAX_RECOGNITIONS_PER_WINDOW = 10)
+    (docs/ai-design.md; spec 0010).
+21. Retry/fallback: bounded, hard retry limits, timeouts; a provider
+    failure is surfaced as a visible failure, never a fabricated result
+    (docs/ai-design.md; specs 0006, 0010).
+22. Telemetry stored: model_calls (provider, feature, success, latency,
+    token usage, estimated cost, error category) + /api/health. No
+    prompt/response/image/free-text; no analytics infrastructure
+    (docs/data-model.md; docs/security.md).
+23. Stretch features in final scope: the "forgotten records" /
+    rediscovery preference and the dashboard insights modules shipped;
+    the rest of section 24 remains out of scope.
+24. Test framework: Vitest (unit/integration) + pgTAP via the Supabase
+    CLI (RLS/DB) + ESLint + tsc + human production runtime
+    (docs/verification.md).
+25. Production deployment: Netlify static + Functions, hosted Supabase,
+    default *.netlify.app domain, manual deploy from merged main, no CI,
+    no custom domain, built-in Supabase email (Milestone 11; spec 0013;
+    docs/roadmaps/2026-09-02-complete-project-roadmap.md section 21).
+
+Additional decisions made after section 34 was written:
+
+26. Visual Experience & Product Identity pass inserted between Milestone
+    10 and Milestone 11 (docs/roadmaps/2026-09-02-complete-project-roadmap.md
+    section 20; spec 0012; docs/decisions/0005, 0006).
+27. Listening events are append-only but a user may correct their own
+    listened_at or delete their own play (docs/decisions/0006).
+28. Curator out-of-scope handling via an outer { inScope, intent }
+    wrapper on the existing structured output - no extra model call
+    (Milestone 11; spec 0013; docs/ai-design.md).
+29. Vision prompt-injection hardening: trusted instructions in a system
+    message; all in-image text treated as untrusted data (Milestone 11;
+    docs/ai-design.md).
+
 END OF INTENT
