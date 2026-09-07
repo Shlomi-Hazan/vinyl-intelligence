@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
 import { useCollectionData } from '../app/useCollectionData.ts'
+import { useCuratorSession } from './useCuratorSession.ts'
 import { useToast } from '../ui/useToast.ts'
 import { addListeningEvent } from '../lib/supabase/listeningEvents.ts'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
@@ -10,7 +11,6 @@ import {
   CURATOR_OUT_OF_SCOPE_MESSAGE,
   DEFAULT_RECENT_DAYS,
   MAX_REQUEST_LENGTH,
-  type CuratorConversation,
   type CuratorIntent,
   type CuratorRecommendation,
   type CuratorRefineResult,
@@ -40,8 +40,6 @@ type CuratorPanelProps = {
    */
   onStatusChange?: (state: CuratorUiState) => void
 }
-
-type PanelStatus = 'idle' | 'loading' | 'error' | 'done'
 
 /** Semantic curator state for the host's Vinny character. */
 export type CuratorUiState = 'idle' | 'thinking' | 'success' | 'no-match'
@@ -164,19 +162,51 @@ export function CuratorPanel({
     [client, reloadEvents, toast],
   )
 
-  const [request, setRequest] = useState(() => initialRequest ?? '')
-  const [status, setStatus] = useState<PanelStatus>('idle')
-  const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
-  const [error, setError] = useState<{ code: string; message: string } | null>(null)
-  // Milestone 11: transient - the last curator call (initial or refinement) was
-  // marked out of scope. No selection call ran; nothing else changed.
-  const [outOfScope, setOutOfScope] = useState(false)
+  // The transient VIN session lives in a provider mounted above the /vin route
+  // (see CuratorSessionProvider), so it survives "VIN -> View record -> back to
+  // VIN". Persistence contract is unchanged: React memory only, no storage, no
+  // server, no transcript; cleared by "Start over", a full remount, or a user
+  // change.
+  const session = useCuratorSession()
+  const {
+    request,
+    setRequest,
+    status,
+    setStatus,
+    initialResult,
+    setInitialResult,
+    error,
+    setError,
+    // Milestone 11: transient - the last curator call was marked out of scope.
+    outOfScope,
+    setOutOfScope,
+    // Milestone 10 - bounded conversation state.
+    conversation,
+    setConversation,
+    lastOkResult,
+    setLastOkResult,
+    refineNoMatchIntent,
+    setRefineNoMatchIntent,
+    refineEmpty,
+    setRefineEmpty,
+  } = session
 
-  // Milestone 10 - bounded conversation state; React memory only, no persistence.
-  const [conversation, setConversation] = useState<CuratorConversation | null>(null)
-  const [lastOkResult, setLastOkResult] = useState<OkResult | null>(null)
-  const [refineNoMatchIntent, setRefineNoMatchIntent] = useState<CuratorIntent | null>(null)
-  const [refineEmpty, setRefineEmpty] = useState(false)
+  // One-time seed of the request textarea from the dashboard "Quick VIN"
+  // prefill - only when the session is pristine, so returning to /vin never
+  // clobbers an in-progress session. Not submitted; makes no model call.
+  const seededFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (
+      initialRequest &&
+      seededFor.current !== initialRequest &&
+      status === 'idle' &&
+      conversation === null &&
+      request.length === 0
+    ) {
+      seededFor.current = initialRequest
+      setRequest(initialRequest)
+    }
+  }, [initialRequest, status, conversation, request.length, setRequest])
 
   const trimmed = request.trim()
   const pending = status === 'loading'
@@ -204,15 +234,9 @@ export function CuratorPanel({
   }, [vinnyState, onStatusChange])
 
   function resetConversation() {
-    setConversation(null)
-    setLastOkResult(null)
-    setRefineNoMatchIntent(null)
-    setRefineEmpty(false)
-    setInitialResult(null)
-    setStatus('idle')
-    setError(null)
-    setOutOfScope(false)
-    setRequest('')
+    // "Start over" clears the whole transient session.
+    seededFor.current = null
+    session.reset()
   }
 
   async function handleSubmit(event: FormEvent) {

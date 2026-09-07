@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth.ts'
 import { FullPageState } from './FullPageState.tsx'
 import { AppShell } from './AppShell.tsx'
 import { CollectionDataProvider } from './CollectionDataProvider.tsx'
+import { CuratorSessionProvider } from '../curator/CuratorSessionProvider.tsx'
 import { safeInternalPath } from './routing.ts'
 import { Button } from '../ui/primitives.tsx'
 import { Logo } from '../brand/Logo.tsx'
@@ -69,8 +70,13 @@ function RouteLoading() {
  *   `location.state.from`.
  * - `/auth`, once authenticated, returns the user to that intended internal
  *   route (allow-listed by `safeInternalPath`), else `/dashboard`.
- * - `CollectionDataProvider` is keyed by `user.id` so a user change remounts it
- *   with empty state - no previous user's collection can render.
+ * - `CollectionDataProvider` and `CuratorSessionProvider` are keyed by `user.id`
+ *   (via the parent `key`) so a user change remounts them with empty state - no
+ *   previous user's collection or VIN session can render.
+ * - `CuratorSessionProvider` sits above the route `<Outlet>` so the transient
+ *   VIN session (recommendations + bounded conversation) survives in-app
+ *   navigation such as VIN -> View record -> back to VIN. It is React memory
+ *   only - see `curator-session-context.ts` for the persistence contract.
  */
 export function AppRoutes() {
   const { status, client, user, errorMessage, signOut } = useAuth()
@@ -138,9 +144,11 @@ export function AppRoutes() {
           element={
             authed && client && user ? (
               <CollectionDataProvider key={user.id} client={client} userId={user.id}>
-                <AppShell>
-                  <Outlet />
-                </AppShell>
+                <CuratorSessionProvider>
+                  <AppShell>
+                    <Outlet />
+                  </AppShell>
+                </CuratorSessionProvider>
               </CollectionDataProvider>
             ) : (
               <Navigate

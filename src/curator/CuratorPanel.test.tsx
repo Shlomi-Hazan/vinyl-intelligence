@@ -8,6 +8,7 @@ import { requestCuratorRecommendation } from '../lib/curator/client.ts'
 import { addListeningEvent } from '../lib/supabase/listeningEvents.ts'
 import { CuratorError, type CuratorResult } from '../lib/curator/types.ts'
 import { CollectionDataContext } from '../app/collection-data-context.ts'
+import { CuratorSessionProvider } from './CuratorSessionProvider.tsx'
 import {
   makeCollectionData,
   renderWithCuratorProviders,
@@ -457,7 +458,9 @@ describe('CuratorPanel', () => {
       const cards = await screen.findAllByRole('article')
       expect(within(cards[0]).getByText('Never played')).toBeInTheDocument()
 
-      // Simulate the CollectionDataProvider events refresh landing.
+      // Simulate the CollectionDataProvider events refresh landing. The
+      // CuratorSessionProvider keeps its position/type so the VIN session
+      // (and the rendered cards) survive this rerender.
       rerender(
         <MemoryRouter>
           <CollectionDataContext.Provider
@@ -468,7 +471,9 @@ describe('CuratorPanel', () => {
               eventsStatus: 'ready',
             })}
           >
-            <CuratorPanel client={client} userId="user-1" />
+            <CuratorSessionProvider>
+              <CuratorPanel client={client} userId="user-1" />
+            </CuratorSessionProvider>
           </CollectionDataContext.Provider>
         </MemoryRouter>,
       )
