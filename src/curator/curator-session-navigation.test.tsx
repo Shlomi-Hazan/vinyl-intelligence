@@ -1,8 +1,17 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter, Outlet, Route, Routes, Link } from 'react-router-dom'
+import { useState, type FormEvent } from 'react'
+import {
+  MemoryRouter,
+  Outlet,
+  Route,
+  Routes,
+  Link,
+  useNavigate,
+} from 'react-router-dom'
 import { CuratorPanel } from './CuratorPanel.tsx'
+import { useCuratorSession } from './useCuratorSession.ts'
 import { CuratorSessionProvider } from './CuratorSessionProvider.tsx'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
 import { addListeningEvent } from '../lib/supabase/listeningEvents.ts'
@@ -78,13 +87,46 @@ function okResult(): CuratorResult {
 }
 
 /**
- * Mimics the app's route nesting: CuratorSessionProvider is mounted ABOVE the
- * route <Outlet>, so it survives navigation between /vin and /collection/:id.
- * `providerKey` mirrors the app's `key={user.id}` on the wrapping provider.
+ * Stand-in for the dashboard "Quick VIN" form. Uses exactly the same mechanism
+ * as `DashboardPage.submitQuickVin`: reset the transient session, seed
+ * `request`, then navigate to /vin. No route state.
  */
-function App({ providerKey = 'user-1' }: { providerKey?: string }) {
+function QuickVin() {
+  const navigate = useNavigate()
+  const { reset, setRequest } = useCuratorSession()
+  const [text, setText] = useState('')
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const trimmed = text.trim()
+    if (trimmed) {
+      reset()
+      setRequest(trimmed)
+    }
+    navigate('/vin')
+  }
   return (
-    <MemoryRouter initialEntries={['/vin']}>
+    <form onSubmit={submit}>
+      <label>
+        Quick VIN
+        <input value={text} onChange={(e) => setText(e.target.value)} />
+      </label>
+      <button type="submit">Ask VIN</button>
+    </form>
+  )
+}
+
+/**
+ * Mimics the app's route nesting: CuratorSessionProvider is mounted ABOVE the
+ * route <Outlet>, so it survives navigation between /vin, /collection/:id, and
+ * /dashboard. `providerKey` mirrors the app's `key={user.id}` on the wrapping
+ * provider.
+ */
+function App({
+  providerKey = 'user-1',
+  start = '/vin',
+}: { providerKey?: string; start?: string }) {
+  return (
+    <MemoryRouter initialEntries={[start]}>
       <CollectionDataContext.Provider value={makeCollectionData({ items: [ownedItem()] })}>
         <CuratorSessionProvider key={providerKey}>
           <Routes>
@@ -93,11 +135,13 @@ function App({ providerKey = 'user-1' }: { providerKey?: string }) {
                 <>
                   <nav>
                     <Link to="/vin">Go to VIN</Link>
+                    <Link to="/dashboard">Go to Dashboard</Link>
                   </nav>
                   <Outlet />
                 </>
               }
             >
+              <Route path="/dashboard" element={<QuickVin />} />
               <Route
                 path="/vin"
                 element={<CuratorPanel client={client} userId="user-1" />}
@@ -222,7 +266,13 @@ describe('VIN transient session survives route navigation (M12 fix)', () => {
 
   it('writes no sessionStorage or localStorage across the whole flow', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    render(<App start="/dashboard" />)
+
+    // Quick VIN
+    await user.type(screen.getByLabelText('Quick VIN'), 'something warm')
+    await user.click(screen.getByRole('button', { name: 'Ask VIN' }))
+    await screen.findByLabelText('Your request')
+
     await askVin(user)
     await user.click(screen.getByRole('link', { name: 'View record' }))
     await screen.findByRole('heading', { name: 'Album detail' })
@@ -231,5 +281,66 @@ describe('VIN transient session survives route navigation (M12 fix)', () => {
 
     expect(sessionStorage.length).toBe(0)
     expect(localStorage.length).toBe(0)
+  })
+})
+
+describe('Dashboard "Quick VIN" prefill (M12 fix follow-up)', () => {
+  it('seeds the VIN textarea once and makes no model call', async () => {
+    const user = userEvent.setup()
+    render(<App start="/dashboard" />)
+
+    await user.type(screen.getByLabelText('Quick VIN'), 'jazz for dinner')
+    await user.click(screen.getByRole('button', { name: 'Ask VIN' }))
+
+    const ta = await screen.findByLabelText('Your request')
+    expect(ta).toHaveValue('jazz for dinner')
+    expect(mockedRequest).not.toHaveBeenCalled()
+    // exactly one request field, no recommendations
+    expect(screen.queryByRole('article')).not.toBeInTheDocument()
+  })
+
+  it('Quick VIN -> submit -> Start over leaves the textarea empty and it does not reappear', async () => {
+    const user = userEvent.setup()
+    render(<App start="/dashboard" />)
+
+    await user.type(screen.getByLabelText('Quick VIN'), 'jazz for dinner')
+    await user.click(screen.getByRole('button', { name: 'Ask VIN' }))
+    await screen.findByLabelText('Your request')
+
+    await user.click(screen.getByRole('button', { name: 'Recommend' }))
+    await screen.findByRole('article')
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
+
+    expect(screen.getByLabelText('Your request')).toHaveValue('')
+
+    // navigate away and back - the old Quick VIN prompt must not re-seed
+    await user.click(screen.getByRole('link', { name: 'Go to Dashboard' }))
+    await screen.findByLabelText('Quick VIN')
+    await user.click(screen.getByRole('link', { name: 'Go to VIN' }))
+    expect(await screen.findByLabelText('Your request')).toHaveValue('')
+    expect(screen.queryByRole('article')).not.toBeInTheDocument()
+  })
+
+  it('an explicit new Quick VIN replaces a still-active VIN session', async () => {
+    const user = userEvent.setup()
+    render(<App start="/vin" />)
+
+    // start a session
+    await askVin(user)
+    expect(screen.getByText('OK Computer')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Refine these recommendations' })).toBeInTheDocument()
+
+    // go to Dashboard, submit a NEW Quick VIN
+    await user.click(screen.getByRole('link', { name: 'Go to Dashboard' }))
+    await user.type(screen.getByLabelText('Quick VIN'), 'something upbeat')
+    await user.click(screen.getByRole('button', { name: 'Ask VIN' }))
+
+    const ta = await screen.findByLabelText('Your request')
+    expect(ta).toHaveValue('something upbeat')
+    // the old session is gone
+    expect(screen.queryByRole('article')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Refine these recommendations' }),
+    ).not.toBeInTheDocument()
   })
 })

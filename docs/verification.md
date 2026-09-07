@@ -5075,19 +5075,39 @@ route change):
   telemetry / owned-ID / recommendation / refinement change. `CuratorPanel`'s
   behaviour is identical; only where its state lives changed.
 - **Focused regression tests** — `src/curator/curator-session-navigation.test.tsx`
-  (new, 6 tests) proves: recommendation + conversation survive
+  (new, **9 tests**) proves: recommendation + conversation survive
   VIN → View record → back; "Played now" works after the return; refinement
   state survives; "Start over" clears; a full remount starts empty; a user
   change (keyed provider) discards the session; **zero `sessionStorage` /
-  `localStorage` writes across the whole flow**. `curatorHarness.tsx` and one
-  inline `rerender` in `CuratorPanel.test.tsx` updated to include the provider.
-- **Gate after the fix.** `git diff --check` clean; `typecheck` pass;
-  `lint` pass (0 warnings); `test:run` **62 files / 655 tests pass** (was
-  61 / 649: +1 file, +6 tests); `build` pass — entry
-  **466.53 kB / 135.25 kB gz** (was 465.72 / 135.02; +0.8 kB raw for the
-  provider, still << 200 kB gz); `VinPage` chunk 18.25 kB / 5.74 kB gz;
+  `localStorage` writes across the whole flow**; plus the follow-up cases below.
+  `curatorHarness.tsx` and one inline `rerender` in `CuratorPanel.test.tsx`
+  updated to include the provider.
+
+- **Fix follow-up (2026-09-07, same branch, commit `40b… → see git log`).**
+  Independent review of the session fix found a Quick VIN prefill edge case: the
+  first fix seeded the `/vin` textarea from `location.state.prefill` via an
+  effect "only while the session is pristine", which (a) could re-seed the old
+  prompt right after "Start over" and (b) could ignore a **new** explicit Quick
+  VIN when a prior session still existed. Resolved by making the prefill a
+  **plain event-handler seed in `DashboardPage.submitQuickVin`** — it calls
+  `session.reset()` then `session.setRequest(trimmed)` then `navigate('/vin')`.
+  There is now **no route state and no seeding effect**: `CuratorPanel` lost its
+  `initialRequest` prop and its seed effect; `VinPage` lost the prefill
+  handling. So a Quick VIN is always an explicit new draft that replaces any
+  prior session, is consumed once, and never reappears after "Start over" or a
+  later back-nav. New tests: Quick VIN seeds the textarea once with no model
+  call; Quick VIN → submit → "Start over" → textarea empty and stays empty
+  across away/back nav; an explicit new Quick VIN replaces a still-active
+  session. Files: `src/pages/DashboardPage.tsx`, `src/pages/VinPage.tsx`,
+  `src/curator/CuratorPanel.tsx`, `curator-session-navigation.test.tsx`.
+
+- **Gate after both fixes.** `git diff --check` clean; `typecheck` pass;
+  `lint` pass (0 warnings); `test:run` **62 files / 658 tests pass** (was
+  61 / 649: +1 file, +9 tests); `build` pass — entry
+  **~466.6 kB / ~135.3 kB gz** (was 465.72 / 135.02; +~0.9 kB raw for the
+  provider, still << 200 kB gz); `VinPage` chunk ~17.9 kB / ~5.6 kB gz;
   153 modules. `npx supabase test db` 10 / 507 PASS; `db lint` clean; audit
-  unchanged.
+  unchanged. No storage / fetch / supabase call in the changed files.
 
 **M12 remains NOT COMPLETE.** The fixed behaviour must be re-verified by the
 human in the browser (see the acceptance gate below) before M12 is closed.

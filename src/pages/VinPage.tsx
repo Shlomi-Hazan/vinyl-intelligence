@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { Vinny } from '../brand/Vinny.tsx'
 import { CuratorPanel, type CuratorUiState } from '../curator/CuratorPanel.tsx'
@@ -15,18 +15,18 @@ import { useCollectionData } from '../app/useCollectionData.ts'
  * the left, VIN + real collection context + the current curator state on the
  * right. When the collection is empty, the recommendation UI is replaced by an
  * honest "add records first" state (no model call is possible / made).
- * `prefill` (dashboard Quick VIN) is a client-only textarea seed.
  * `onStatusChange` is a UI-only signal for VIN's thinking state.
+ *
+ * M12: the transient VIN session lives in `CuratorSessionProvider` (mounted
+ * above the route outlet) and survives in-app navigation such as VIN -> View
+ * record -> back. The dashboard "Quick VIN" seed is applied by `DashboardPage`
+ * itself (it resets the session + sets `request` before navigating here), so
+ * this page owns no seeding logic and there is no route state to consume.
  */
 export function VinPage() {
   const { client, userId } = useClient()
-  const location = useLocation()
   const { items, status: collectionStatus } = useCollectionData()
   const [vinState, setVinState] = useState<CuratorUiState>('idle')
-
-  const state = location.state as { prefill?: unknown } | null
-  const prefill =
-    typeof state?.prefill === 'string' ? state.prefill.slice(0, 800) : undefined
 
   const ready = collectionStatus === 'ready'
   const ownedCount = ready ? items.length : null
@@ -69,7 +69,6 @@ export function VinPage() {
             <CuratorPanel
               client={client}
               userId={userId}
-              initialRequest={prefill}
               onStatusChange={setVinState}
             />
           )}

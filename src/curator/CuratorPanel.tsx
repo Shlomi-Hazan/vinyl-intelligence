@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type FormEvent } from 'react'
+import { useCallback, useEffect, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
 import { useCollectionData } from '../app/useCollectionData.ts'
@@ -26,15 +26,8 @@ type CuratorPanelProps = {
   /** Current user id - only used client-side to resolve custom-cover paths. */
   userId: string
   /**
-   * Optional client-only seed for the request textarea (e.g. the dashboard
-   * "Quick VIN" prefill). It only pre-fills the field - nothing is submitted
-   * and no model call is made until the user explicitly asks. The M9/M10
-   * request/response contracts are unchanged.
-   */
-  initialRequest?: string
-  /**
    * Optional UI-only signal so a host (e.g. the /vin page) can show a matching
-   * Vinny state. It is derived from the initial-request flow only and does not
+   * Vinny state. It is derived from the panel's own flow only and does not
    * change any curator behaviour or contract. A true technical error reports
    * `idle` (the panel shows its own error UI) - never `no-match`.
    */
@@ -143,7 +136,6 @@ function OkCards({
 export function CuratorPanel({
   client,
   userId,
-  initialRequest,
   onStatusChange,
 }: CuratorPanelProps) {
   const { items, events, eventsStatus, reloadEvents } = useCollectionData()
@@ -191,22 +183,9 @@ export function CuratorPanel({
     setRefineEmpty,
   } = session
 
-  // One-time seed of the request textarea from the dashboard "Quick VIN"
-  // prefill - only when the session is pristine, so returning to /vin never
-  // clobbers an in-progress session. Not submitted; makes no model call.
-  const seededFor = useRef<string | null>(null)
-  useEffect(() => {
-    if (
-      initialRequest &&
-      seededFor.current !== initialRequest &&
-      status === 'idle' &&
-      conversation === null &&
-      request.length === 0
-    ) {
-      seededFor.current = initialRequest
-      setRequest(initialRequest)
-    }
-  }, [initialRequest, status, conversation, request.length, setRequest])
+  // The dashboard "Quick VIN" prefill is applied by VinPage (it resets the
+  // session and seeds `request` once, then clears the route state), so the
+  // panel itself owns no seeding logic.
 
   const trimmed = request.trim()
   const pending = status === 'loading'
@@ -235,7 +214,6 @@ export function CuratorPanel({
 
   function resetConversation() {
     // "Start over" clears the whole transient session.
-    seededFor.current = null
     session.reset()
   }
 

@@ -9,6 +9,7 @@ import { ErrorState, SkeletonAlbumCard, SkeletonStat } from '../ui/feedback.tsx'
 import { useAuth } from '../auth/useAuth.ts'
 import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
+import { useCuratorSession } from '../curator/useCuratorSession.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
 import {
   collectionStats,
@@ -76,6 +77,8 @@ function Stat({
 export function DashboardPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const { reset: resetCuratorSession, setRequest: setCuratorRequest } =
+    useCuratorSession()
   const {
     items,
     events,
@@ -118,9 +121,15 @@ export function DashboardPage() {
   function submitQuickVin(event: FormEvent) {
     event.preventDefault()
     const trimmed = quickVin.trim()
-    // Client-only navigation with a transient prefill. No curator/model call
-    // happens here - VinPage only pre-fills its textarea.
-    navigate('/vin', trimmed ? { state: { prefill: trimmed } } : undefined)
+    // "Quick VIN" is an EXPLICIT new VIN draft: clear any prior transient VIN
+    // session and seed the request textarea, then go to /vin. Client-only,
+    // React memory only - no model call, no auto-submit, no route-state to
+    // consume, so "Start over" / a later back-nav can never re-apply it.
+    if (trimmed) {
+      resetCuratorSession()
+      setCuratorRequest(trimmed)
+    }
+    navigate('/vin')
   }
 
   const loading = status === 'loading'
