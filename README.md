@@ -55,19 +55,24 @@ As built (see [`docs/architecture.md`](docs/architecture.md) for detail):
 product-quality pass deliberately inserted between Milestone 10 and Milestone 11;
 Phase 0 in PR #12, Phases A–E in **PR #13**, merge commit `49b1534`) are merged
 to `main`. **Milestone 11 (Production Deployment) is complete:** the application
-is **live at <https://vinyl-intelligence.netlify.app>**, deployed from merged
-`main` `55f514c` (PR #14 → #15 → #16). Hosted Supabase, Auth, and Storage are
-configured; **all 13 version-controlled migrations are applied** (zero pending);
-the human production smoke passed; one production defect (curator include-genre
-matching) was fixed via PR #16 and re-verified; the final technical security
-sanity passed. A small post-M11 UX enhancement (VIN recommendation cards gain
-artwork, "View record", and "Played now") shipped in **PR #18** (merge commit
-`ee6d695`). **Milestone 12 (Reliability / Security / Telemetry / Polish) is
-in progress** — a verification + documentation-reconciliation pass (spec
+is **live at <https://vinyl-intelligence.netlify.app>**. Hosted Supabase, Auth,
+and Storage are configured; **all 13 version-controlled migrations are applied**
+(zero pending); the human production smoke passed; one production defect (curator
+include-genre matching) was fixed via PR #16 and re-verified; the final technical
+security sanity passed. M11 was verified at the `main` `55f514c` production
+state (PR #14 → #15 → #16).
+
+A small post-M11 UX enhancement (VIN recommendation cards gain artwork,
+"View record", and "Played now") then shipped in **PR #18**. **Current production
+is deployed from `main` `ee6d695b449e3b7810be3663b5cd5b221fedd059`** — Netlify
+deploy `6a9dfeaacb28d21bd0c88eb6`.
+
+**Milestone 12 (Reliability / Security / Telemetry / Polish) is in progress** — a
+verification + documentation-reconciliation pass (spec
 [`0014`](docs/specs/0014-milestone-12-final-hardening.md), plan
-[`014`](docs/plans/014-milestone-12-final-hardening.md)); no new features, no
-redesign. It is marked complete only after independent PR review and a human
-production regression.
+[`014`](docs/plans/014-milestone-12-final-hardening.md), PR #19); no new
+features, no redesign. It is marked complete only after independent PR review
+and a human production regression.
 
 No Git continuous deployment, no custom domain, no SMTP — deploys are run
 manually from merged `main`, on the default `*.netlify.app` domain, with
@@ -78,9 +83,9 @@ Supabase's built-in email sender.
 
 ### Milestone evidence
 
-Milestone 8 (Listening History - append-only `listening_events`,
-derived listening count / last-listened, and a reverse-chronological history) is
-**merged to `main`** in PR #8 (merge commit
+Milestone 8 (Listening History - `listening_events` as the source of truth,
+append-only as shipped at M8, derived listening count / last-listened, and a
+reverse-chronological history) is **merged to `main`** in PR #8 (merge commit
 `9af8beec701cb108b3ed6de7bdf3962fbf938ee3`), following local automated
 verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
 verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
@@ -214,13 +219,14 @@ Implemented:
   plain-text personal note (<= 1000 chars); partial-patch saves on the browser
   Supabase client with an own-row `UPDATE` policy scoped to the three signal
   columns (Milestone 7)
-- Listening history: append-only `listening_events` as the source of
+- Listening history: `listening_events` as the source of
   truth, "Mark played" on every owned record, browser-derived play count and
   last-listened time (no denormalized columns, no triggers), and a compact
   collapsible reverse-chronological history; authenticated `SELECT` + `INSERT
   (collection_item_id)` only, own-item `INSERT` RLS, both foreign keys
-  `ON DELETE CASCADE` (Milestone 8). *The Visual Experience pass (merged, PR #13)
-  adds an owner-scoped `UPDATE (listened_at)` + `DELETE` grant so a collector can
+  `ON DELETE CASCADE` (Milestone 8, append-only as shipped). *The Visual
+  Experience pass (merged, PR #13) adds an owner-scoped `UPDATE (listened_at)` +
+  `DELETE` grant so a collector can
   correct or remove their own play - see ADR 0006.*
 - AI Curator: `POST /api/curator/recommend` - a single-turn natural-language
   request produces a small set of recommendations drawn only from owned records.
@@ -244,13 +250,17 @@ Implemented:
   (Milestone 11; merged in PR #14)
 - Production deployment: live at <https://vinyl-intelligence.netlify.app> on
   Netlify (frontend + six Functions) + hosted Supabase (`dlkaljnywnrhzfxcfklx`),
-  all 13 migrations applied; deployed from merged `main` `55f514c`; hosted smoke
-  PASS (Milestone 11; PR #14 → #15 → #16)
+  all 13 migrations applied; hosted smoke PASS. M11 verified at `main` `55f514c`
+  (PR #14 → #15 → #16)
+- VIN recommendation cards: artwork + "View record" + "Played now" with live
+  listening-state refresh (post-M11 UX enhancement; PR #18). Current production
+  is `main` `ee6d695`, Netlify deploy `6a9dfeaacb28d21bd0c88eb6`
 
-Planned:
+In progress:
 
 - Reliability, security re-check, telemetry review, and final polish
-  (Milestone 12 — not started)
+  (Milestone 12 — verification + documentation pass, PR #19; not marked complete
+  until PR review + human production regression)
 
 ## Local Setup
 

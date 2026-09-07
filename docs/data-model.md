@@ -48,16 +48,17 @@ update grant on `rating`, `is_favorite`, `notes`, `personal_genres`,
 (no UPDATE/DELETE) - used only to insert the owning row for a verified user in
 the catalog-add flow.
 
-### `listening_events` (append-only history)
+### `listening_events` (listening-event source of truth)
 `id uuid pk`, `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`,
 `collection_item_id uuid not null references collection_items(id) on delete cascade`,
-`listened_at timestamptz not null default now()`, `created_at`. No denormalized
-count / last-listened columns and no counter trigger - both are derived in the
-browser from these rows every render. RLS: own rows for select/insert; the
-Visual pass added own-row `UPDATE(listened_at)` and `DELETE` so a user can
-correct or remove their own play (column-scoped update grant on `listened_at`
-only - a play can never be re-pointed to another item or user). See
-`docs/decisions/0006`.
+`listened_at timestamptz not null default now()`, `created_at`. Each row is one
+play; there are no denormalized count / last-listened columns and no counter
+trigger - both are derived in the browser from these rows every render.
+Originally append-only (Milestone 8); the Visual pass added own-row
+`UPDATE(listened_at)` and `DELETE` so a user can correct or remove **their own**
+play. RLS: own rows for select/insert/update/delete; the update grant is
+column-scoped to `listened_at` only - a play can never be re-pointed to another
+item or user. See `docs/decisions/0006`.
 
 ### `model_calls` (AI telemetry)
 `id uuid pk`, `user_id uuid not null references profiles(id) on delete cascade`,
