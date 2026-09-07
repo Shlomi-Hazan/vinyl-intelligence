@@ -8,28 +8,45 @@ The product is not a generic music recommender. Its core job is to help a collec
 
 Vinyl collectors often remember a mood, setting, decade, or feeling before they remember the exact album. Traditional collection tools answer "what do I own?" Vinyl Intelligence should also answer "given what I own, what should I listen to now, and why?"
 
-## Planned Capabilities
+## Capabilities (shipped)
 
-- Personal authenticated vinyl collection
-- API-based record search and metadata import
-- Manual collection browsing, search, filtering, and editing
-- Organization by artist, genre, style, year, decade, rating, favorites, and listening history
-- Listening history with played count and last-listened tracking
-- AI curator that interprets natural-language listening intent
-- Recommendations limited to records owned by the user
-- AI-assisted cover-photo recognition with catalog candidate confirmation
-- Audit-friendly model/API call logging where practical
+- Personal authenticated vinyl collection (Supabase Auth + RLS)
+- MusicBrainz catalog search and metadata import through a Netlify Function
+- Manual collection browsing, deterministic search / filter / sort, edit, delete
+- Organization by artist, genre, year, decade, rating, favourites, and listening
+  history; user-owned personal genres
+- Append-only listening history with browser-derived play count and last-listened
+  time; a user may correct or delete their own play
+- Ratings, favourites, and personal notes per record
+- AI curator (VIN) that interprets natural-language listening intent and
+  recommends **only** from records the user owns, with grounded explanations and
+  bounded multi-turn refinement; an out-of-scope request gets a fixed bounded
+  reply and makes no selection call
+- AI cover-photo recognition (OpenRouter vision) with catalog candidate
+  confirmation before anything is saved
+- Album artwork from Cover Art Archive at display time, optional user custom
+  covers, optional profile avatar (both in private webp-only Storage buckets)
+- `model_calls` telemetry (provider, feature, success, latency, tokens, error
+  category) and a `/api/health` endpoint
 
 ## Architecture Summary
 
-The recommended baseline is:
+As built (see [`docs/architecture.md`](docs/architecture.md) for detail):
 
-- Frontend: Vite + React + TypeScript.
-- Backend: Netlify Functions for privileged server-side logic.
-- Database/Auth/Storage: Supabase Postgres, Supabase Auth, and Supabase Storage.
-- AI: server-side LLM API access, with OpenRouter as the initial candidate.
-- Music metadata: Discogs and MusicBrainz must be compared in a small documented API spike before implementation.
-- Deployment: Netlify.
+- Frontend: Vite 8 + React 19 + TypeScript SPA, `react-router-dom` v7 with
+  route-level `React.lazy` code splitting, on Netlify static hosting.
+- Backend: six Netlify Functions (`.mts`) for auth-gated catalog / recognition /
+  curator work; server secrets never reach the browser.
+- Database / Auth / Storage: hosted Supabase Postgres (13 migrations, RLS on
+  every table), Supabase Auth (built-in email), two private webp-only Storage
+  buckets.
+- AI: OpenRouter — `google/gemini-3.1-flash-lite` (vision + curator intent),
+  `google/gemini-3.5-flash` (curator selection); strict JSON schemas,
+  allowed-owned-ID validation.
+- Music metadata: MusicBrainz (chosen over Discogs, [`docs/decisions/0002`](docs/decisions/0002-proposed-catalog-provider-boundary.md)); Cover Art Archive for display-time artwork.
+- Deployment: Netlify, default `*.netlify.app` domain, manual deploy from merged
+  `main` (no CI, no custom domain).
+- Not used: RAG / vector DB, multi-agent, Next.js, analytics infrastructure.
 
 ## Project Status
 
@@ -43,8 +60,14 @@ is **live at <https://vinyl-intelligence.netlify.app>**, deployed from merged
 configured; **all 13 version-controlled migrations are applied** (zero pending);
 the human production smoke passed; one production defect (curator include-genre
 matching) was fixed via PR #16 and re-verified; the final technical security
-sanity passed. **Milestone 12 (Reliability / Security / Telemetry / Polish) has
-not started and is next.**
+sanity passed. A small post-M11 UX enhancement (VIN recommendation cards gain
+artwork, "View record", and "Played now") shipped in **PR #18** (merge commit
+`ee6d695`). **Milestone 12 (Reliability / Security / Telemetry / Polish) is
+in progress** — a verification + documentation-reconciliation pass (spec
+[`0014`](docs/specs/0014-milestone-12-final-hardening.md), plan
+[`014`](docs/plans/014-milestone-12-final-hardening.md)); no new features, no
+redesign. It is marked complete only after independent PR review and a human
+production regression.
 
 No Git continuous deployment, no custom domain, no SMTP — deploys are run
 manually from merged `main`, on the default `*.netlify.app` domain, with
@@ -286,20 +309,44 @@ npm run build
 npm run preview
 ```
 
-Browser code must use only `VITE_SUPABASE_URL` and
-`VITE_SUPABASE_PUBLISHABLE_KEY`. Milestone 4 catalog add uses
-`SUPABASE_SERVICE_ROLE_KEY` only inside Netlify Functions after verifying the
-browser Supabase user token. Milestone 5 photo recognition uses
-`OPENROUTER_API_KEY` (server-only) and optional `OPENROUTER_VISION_MODEL` only
-inside the recognition Netlify Function; the key is never sent to the browser,
-logged, or written to a database row. Running the photo-recognition flow makes
-a paid OpenRouter call.
+Environment variables (all names, and which are secret, are in
+[`.env.example`](.env.example)):
 
-Expected future requirements:
+| Variable | Scope | Secret |
+| --- | --- | --- |
+| `VITE_APP_NAME`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | browser + server | no (RLS-safe) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Netlify Functions only | **yes** |
+| `OPENROUTER_API_KEY` | Netlify Functions only | **yes** |
+| `MUSICBRAINZ_USER_AGENT`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_CURATOR_INTENT_MODEL`, `OPENROUTER_CURATOR_SELECTION_MODEL` | Netlify Functions only | no |
+| `OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE` | Netlify Functions only | no (optional attribution headers) |
 
-- Hosted Supabase / Netlify credentials for production deployment
+Browser code uses only the `VITE_*` values. `SUPABASE_SERVICE_ROLE_KEY` is used
+server-side only, with explicit least-privilege SQL grants, after the browser
+user token is verified. `OPENROUTER_API_KEY` is used only inside the recognition
+and curator Functions and is never sent to the browser, logged, or written to a
+row. Running the photo-recognition or curator flows makes paid OpenRouter calls.
 
-Never commit `.env` or local credentials. This repository includes a safe `.env.example` for documented public scaffold settings.
+In production these are set in the Netlify dashboard (the two secrets marked
+"contains secret values"); no `.env` file is deployed.
+
+Never commit `.env` or local credentials. This repository tracks only a safe
+`.env.example` documenting the names.
+
+## Known limitations
+
+- No custom domain — the app runs on the default `*.netlify.app` domain.
+- No Git continuous deployment / CI — deploys are run manually from merged
+  `main`; verification is the local gate + human production runtime.
+- Supabase's built-in email sender is used (no custom SMTP).
+- No daily/global AI spend cap (per-user rate limits, `max_tokens`, an 800-char
+  curator input limit, and ≤ 3 recommendations are the cost guards).
+- `npm audit` reports dev-only findings in build/QA tooling
+  (`@netlify/vite-plugin`, `puppeteer-core`); `npm audit --omit=dev` is 0 —
+  nothing ships to production.
+- Production has been exercised primarily with a single human test account.
+- An unmounted legacy panel subtree (`CollectionPanel`, `CatalogPanel`,
+  `CatalogPhotoPanel`, `CollectionItemCard`, and related files) is retained as
+  optional future cleanup; it is not reachable from any route.
 
 ## Documentation
 

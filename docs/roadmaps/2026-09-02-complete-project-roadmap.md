@@ -284,7 +284,7 @@ The inserted pass added, as standing verification for its surface area: measured
 | 10 | Conversational Refinement | Bounded multi-turn recommendation refinement | **Complete — merged (PR #11)** |
 | — | **Visual Experience & Product Identity Pass** (inserted pre-M11) | Premium coherent product experience | **Complete — merged (PR #13, `49b1534`)** |
 | 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`, deployed from `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS** |
-| 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Not started (next)** |
+| 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **In progress** — verification + docs reconciliation pass (spec `0014`, plan `014`); not marked COMPLETE until PR review + human production regression |
 
 Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). That is **not** the present main. After Milestone 11 completion the current / deployed `main` is `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16).
 
@@ -561,7 +561,9 @@ its core flows.
 
 **Objective:** final cross-system hardening and submission readiness. **Not** permission for uncontrolled feature expansion, and **not** another full UI redesign — the inserted Visual Experience & Product Identity pass already handled the product/UI transformation.
 
-**Not started.** Scope when it begins:
+**In progress (2026-09-07).** Approved scope: a verification + documentation-reconciliation pass — spec `docs/specs/0014-milestone-12-final-hardening.md`, plan `docs/plans/014-milestone-12-final-hardening.md`. Phases A–D (clean-checkout automated verification; read-only security + AI-safety re-proof; reliability + performance evidence; documentation reconciled to as-built + one consolidated `docs/verification.md` "Milestone 12" section + PR). Phase E (removal of the unmounted legacy panel subtree) is **deferred** as optional low-risk future cleanup. No CI, no dependency upgrades, no new features, no redesign, no production deploy. M12 is marked **COMPLETE** only after the M12 PR passes independent review and the human production regression (spec `0014` §5) passes.
+
+Full scope from the original plan:
 
 - **Reliability review:** repeatedly exercise every major flow *and its failure paths* — auth, manual CRUD, catalog add, image recognition, search/filter, ratings/favorites/notes, listening history (incl. edit/delete), AI recommendations, conversation refinement, custom covers, profile avatar.
 - **Security review:** re-check RLS policies, column grants, function privileges, secrets, `.env` tracking, service-role usage, server/client separation, upload validation, model input/output validation, external API validation, cross-user access, auth-state handling, logging/privacy, signed-URL handling.
