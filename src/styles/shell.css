@@ -465,6 +465,12 @@
     display: none;
   }
   .vi-main {
+    /* The app grid collapses to a single explicit column here. `.vi-main`
+       keeps `grid-column: 2` from its desktop rule, which makes CSS Grid add
+       an implicit auto-width second column - the real (empty) `1fr` column
+       then sits to its left and every route is shifted right and squeezed to
+       its content width. Place `.vi-main` back in column 1. */
+    grid-column: 1;
     padding-bottom: var(--bottomnav-h);
   }
   .vi-page {
