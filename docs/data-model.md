@@ -1,8 +1,98 @@
-# Initial Data Model
+# Data Model
 
-Last updated: 2026-08-17.
+As-built section last updated: 2026-09-07 (Milestone 12). The original
+2026-08-17 proposal follows "As-Built Schema"; where they differ the as-built
+section is authoritative.
 
-This is a proposed relational model. Do not create production migrations until reviewed.
+---
+
+## As-Built Schema (current, supersedes the 2026-08-17 proposal)
+
+13 version-controlled migrations in `supabase/migrations/`, all applied to the
+hosted project (zero pending). Every public table has RLS enabled and
+owner-scoped policies; `releases` is globally readable catalog metadata with
+trusted-backend writes. Table privileges are granted only to `authenticated`
+(plus the explicit least-privilege `service_role` grants noted below); no
+`anon` / `public` table grants.
+
+### `profiles`
+`id uuid pk references auth.users(id)`, `display_name text`,
+`avatar_path text` (nullable), `avatar_updated_at timestamptz` (nullable),
+`created_at`, `updated_at`. Created by the `auth.users` insert trigger
+(`create_profile_after_auth_user_insert` -> `private.create_profile_for_new_user`,
+`SECURITY DEFINER`). RLS: own row select/update; column-scoped update grant on
+`display_name`, `avatar_path`, `avatar_updated_at`.
+
+### `releases` (shared catalog metadata)
+`id uuid pk`, `created_by uuid references profiles(id) on delete set null`,
+`source text not null default 'manual'` (`'manual'` = user-entered/editable,
+`'catalog'` = MusicBrainz/read-only), `artist text not null`,
+`title text not null`, `release_year integer`, `label text`,
+`catalog_number text`, `country text`, `format text`,
+`genres text[] not null default '{}'`, `provider text`,
+`provider_release_id text`, `provider_release_group_id text`,
+`created_at`, `updated_at`. No `cover_url` - artwork is resolved at display time
+from `provider_release_id` / `provider_release_group_id` via Cover Art Archive.
+`service_role`: SELECT/INSERT/UPDATE (no DELETE).
+
+### `collection_items` (per-user ownership)
+`id uuid pk`, `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`,
+`release_id uuid not null references releases(id) on delete restrict`,
+`added_at`, `created_at`, plus the Milestone 7 / Visual-pass signal columns:
+`rating smallint` (1-5, nullable), `is_favorite boolean not null default false`,
+`notes text` (nullable), `personal_genres text[] not null default '{}'`,
+`custom_cover_path text` (nullable), `custom_cover_updated_at timestamptz`
+(nullable). RLS: own rows for all of select/insert/update/delete. Column-scoped
+update grant on `rating`, `is_favorite`, `notes`, `personal_genres`,
+`custom_cover_path`, `custom_cover_updated_at`. `service_role`: SELECT/INSERT
+(no UPDATE/DELETE) - used only to insert the owning row for a verified user in
+the catalog-add flow.
+
+### `listening_events` (append-only history)
+`id uuid pk`, `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`,
+`collection_item_id uuid not null references collection_items(id) on delete cascade`,
+`listened_at timestamptz not null default now()`, `created_at`. No denormalized
+count / last-listened columns and no counter trigger - both are derived in the
+browser from these rows every render. RLS: own rows for select/insert; the
+Visual pass added own-row `UPDATE(listened_at)` and `DELETE` so a user can
+correct or remove their own play (column-scoped update grant on `listened_at`
+only - a play can never be re-pointed to another item or user). See
+`docs/decisions/0006`.
+
+### `model_calls` (AI telemetry)
+`id uuid pk`, `user_id uuid not null references profiles(id) on delete cascade`,
+`feature text not null`, `provider text not null`, `model text not null`,
+`success boolean not null`, `latency_ms integer`, `prompt_tokens integer`,
+`completion_tokens integer`, `estimated_cost_usd numeric(12,6)`,
+`error_category text`, `created_at`. Reads (rate-limit counting) go through the
+user's own token + an own-row SELECT policy. Writes go through `service_role`,
+which has **INSERT only** on this table. No prompt text, no response body, no
+image, no personal free text is stored.
+
+### Storage buckets
+`collection-covers` (private, 3 MiB, `image/webp` only) and `profile-avatars`
+(private, 1 MiB, `image/webp` only). `storage.objects` policies are per-bucket,
+owner-scoped, `authenticated` only (INSERT/SELECT/UPDATE/DELETE); no `anon` /
+`public` access; no public listing. Signed URLs are short-TTL and memory-only.
+
+### Deliberately NOT persisted
+- `image_identification_attempts` - the recognition flow is ephemeral and
+  confirmation-based; nothing about an attempt is stored.
+- `conversation_sessions` / curator transcripts - refinement state lives only in
+  browser React memory.
+- Signed cover / avatar URLs - minted on demand, never written anywhere.
+- `decade` - derived from `release_year` in application logic.
+- `listening_count` / `last_listened_at` on `collection_items` - derived from
+  `listening_events`.
+
+---
+
+## Initial Data Model (2026-08-17, historical - modeling rationale)
+
+The rest of this document is the proposed relational model from 2026-08-17. It
+records the modeling direction and trade-offs; some proposed field names and
+optional tables were simplified or dropped during implementation (see the
+as-built schema above).
 
 ## Modeling Direction
 
