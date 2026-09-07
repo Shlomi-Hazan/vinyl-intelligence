@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
+import { renderWithCuratorProviders } from '../test/curatorHarness.tsx'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CuratorPanel } from './CuratorPanel.tsx'
@@ -98,7 +99,7 @@ beforeEach(() => {
 describe('CuratorRefinePanel (Milestone 10)', () => {
   it('the refine area appears only after a successful initial result', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     expect(screen.queryByRole('heading', { name: 'Refine these recommendations' })).not.toBeInTheDocument()
     await doInitial(user)
     expect(screen.getByRole('heading', { name: 'Refine these recommendations' })).toBeInTheDocument()
@@ -107,7 +108,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('chips fill the follow-up textarea and never submit', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
 
     await user.click(screen.getByRole('button', { name: 'More energetic' }))
@@ -117,7 +118,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('a successful refine replaces the cards, appends transcript turns, and passes prior context', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
 
     mockedRefine.mockResolvedValue(refineOk(['Rumours', 'The Bends'], 0))
@@ -140,7 +141,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('shows "Excluded N previous picks" when the refine excluded prior picks', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
     mockedRefine.mockResolvedValue(refineOk(['Rumours', 'The Bends'], 2))
     await user.type(screen.getByLabelText('Your follow-up'), 'something else')
@@ -150,7 +151,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('a refine no_match keeps the previous cards and consumes a turn', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
 
     mockedRefine.mockResolvedValue({ status: 'no_match', interpretedIntent: intent({ minRating: 5 }) })
@@ -166,7 +167,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('advances latestIntent after a no_match so the next refinement sends the new intent + prior successful IDs', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user) // initial ok -> latestIntent = intent(), latestRecommendationIds = ['a','b']
 
     // 1st refinement -> no_match with a DISTINCT changed intent
@@ -202,7 +203,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('a refine error keeps the previous cards, shows a retryable error, and consumes no turn', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
 
     mockedRefine.mockRejectedValueOnce(new CuratorError('provider_unavailable', 'The curator is unavailable.'))
@@ -223,7 +224,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('caps at 3 completed refinements, then only Start over is offered', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
 
     mockedRefine.mockResolvedValue(refineOk(['Rumours', 'The Bends']))
@@ -241,7 +242,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('Start over clears the conversation and returns to single-turn mode', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
 
     await user.click(screen.getByRole('button', { name: 'Start over' }))
@@ -252,7 +253,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('writes no sessionStorage or localStorage across a full conversation', async () => {
     const user = userEvent.setup()
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
     mockedRefine.mockResolvedValue(refineOk(['Rumours', 'The Bends']))
     await user.type(screen.getByLabelText('Your follow-up'), 'only favorites')
@@ -265,11 +266,11 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
 
   it('a remount (refresh) clears the conversation', async () => {
     const user = userEvent.setup()
-    const view = render(<CuratorPanel client={client} />)
+    const view = renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     await doInitial(user)
     view.unmount()
 
-    render(<CuratorPanel client={client} />)
+    renderWithCuratorProviders(<CuratorPanel client={client} userId="user-1" />)
     expect(screen.getByLabelText('Your request')).toBeInTheDocument()
     expect(screen.queryByText('OK Computer')).not.toBeInTheDocument()
   })

@@ -1,6 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
+import { useCollectionData } from '../app/useCollectionData.ts'
+import { useToast } from '../ui/useToast.ts'
+import { addListeningEvent } from '../lib/supabase/listeningEvents.ts'
 import { requestCuratorRecommendation } from '../lib/curator/client.ts'
 import {
   CuratorError,
@@ -14,9 +17,14 @@ import {
   type CuratorResult,
 } from '../lib/curator/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
+import type { LoadPhase } from '../app/collection-data-context.ts'
 
 type CuratorPanelProps = {
   client: BrowserSupabaseClient
+  /** Current user id - only used client-side to resolve custom-cover paths. */
+  userId: string
   /**
    * Optional client-only seed for the request textarea (e.g. the dashboard
    * "Quick VIN" prefill). It only pre-fills the field - nothing is submitted
@@ -86,7 +94,25 @@ function recommendationTitles(recs: CuratorRecommendation[]): string[] {
   return recs.slice(0, 3).map((r) => r.title)
 }
 
-function OkCards({ result }: { result: OkResult }) {
+type OkCardsProps = {
+  result: OkResult
+  items: CollectionItemWithRelease[]
+  events: readonly ListeningEventRecord[]
+  eventsStatus: LoadPhase
+  client: BrowserSupabaseClient
+  userId: string
+  onMarkPlayed: (collectionItemId: string) => Promise<void>
+}
+
+function OkCards({
+  result,
+  items,
+  events,
+  eventsStatus,
+  client,
+  userId,
+  onMarkPlayed,
+}: OkCardsProps) {
   const excluded =
     'excludedPreviousRecommendations' in result ? result.excludedPreviousRecommendations : 0
   return (
@@ -100,7 +126,16 @@ function OkCards({ result }: { result: OkResult }) {
       </p>
       <div className="curator-list" aria-label="Recommendations">
         {result.recommendations.map((rec) => (
-          <CuratorRecommendationCard key={rec.collectionItemId} recommendation={rec} />
+          <CuratorRecommendationCard
+            key={rec.collectionItemId}
+            recommendation={rec}
+            ownedItem={items.find((item) => item.id === rec.collectionItemId) ?? null}
+            client={client}
+            userId={userId}
+            events={events}
+            eventsStatus={eventsStatus}
+            onMarkPlayed={() => onMarkPlayed(rec.collectionItemId)}
+          />
         ))}
       </div>
     </div>
@@ -109,9 +144,26 @@ function OkCards({ result }: { result: OkResult }) {
 
 export function CuratorPanel({
   client,
+  userId,
   initialRequest,
   onStatusChange,
 }: CuratorPanelProps) {
+  const { items, events, eventsStatus, reloadEvents } = useCollectionData()
+  const toast = useToast()
+
+  // Reuses the existing M8 listening-event insert - no new mutation path, no
+  // schema change. On success the shared events are refreshed (events only,
+  // per the CollectionDataProvider contract) so every card that shows this
+  // item's listening facts updates once the reload lands.
+  const markPlayed = useCallback(
+    async (collectionItemId: string) => {
+      await addListeningEvent(client, collectionItemId)
+      reloadEvents()
+      toast.show({ message: 'Marked as played.', tone: 'success' })
+    },
+    [client, reloadEvents, toast],
+  )
+
   const [request, setRequest] = useState(() => initialRequest ?? '')
   const [status, setStatus] = useState<PanelStatus>('idle')
   const [initialResult, setInitialResult] = useState<CuratorResult | null>(null)
@@ -390,7 +442,17 @@ export function CuratorPanel({
                 </div>
               ) : null}
 
-              {lastOkResult ? <OkCards result={lastOkResult} /> : null}
+              {lastOkResult ? (
+                <OkCards
+                  result={lastOkResult}
+                  items={items}
+                  events={events}
+                  eventsStatus={eventsStatus}
+                  client={client}
+                  userId={userId}
+                  onMarkPlayed={markPlayed}
+                />
+              ) : null}
 
               <CuratorRefinePanel
                 client={client}

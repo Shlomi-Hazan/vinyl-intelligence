@@ -19,7 +19,7 @@ import { useCollectionData } from '../app/useCollectionData.ts'
  * `onStatusChange` is a UI-only signal for VIN's thinking state.
  */
 export function VinPage() {
-  const { client } = useClient()
+  const { client, userId } = useClient()
   const location = useLocation()
   const { items, status: collectionStatus } = useCollectionData()
   const [vinState, setVinState] = useState<CuratorUiState>('idle')
@@ -68,6 +68,7 @@ export function VinPage() {
           ) : (
             <CuratorPanel
               client={client}
+              userId={userId}
               initialRequest={prefill}
               onStatusChange={setVinState}
             />

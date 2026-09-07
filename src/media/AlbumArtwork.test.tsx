@@ -27,6 +27,18 @@ describe('AlbumArtwork', () => {
     expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
   })
 
+  it('omits the decorative title/artist overlay when decorativeText is false', () => {
+    const { container } = render(
+      <AlbumArtwork artist="Pink Floyd" title="Meddle" decorativeText={false} />,
+    )
+    // accessible name and the branded fallback vinyl are unaffected
+    expect(
+      screen.getByRole('img', { name: 'Pink Floyd - Meddle (no cover art)' }),
+    ).toBeInTheDocument()
+    expect(container.querySelector('.vi-art__label')).toBeNull()
+    expect(screen.queryByText('Meddle')).not.toBeInTheDocument()
+  })
+
   it('starts at the CAA release tier when a release MBID is present', () => {
     const { container } = render(
       <AlbumArtwork artist="A" title="B" releaseMbid={REL} releaseGroupMbid={RG} />,
