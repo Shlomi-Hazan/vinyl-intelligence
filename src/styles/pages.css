@@ -1471,21 +1471,41 @@ a.vi-histrow__title:hover {
   gap: var(--space-2);
 }
 @media (max-width: 560px) {
+  /* Phone: the thumbnail column spans both rows so "Edit time / Delete" sit
+     compactly under the text instead of a full-width strip that makes every
+     entry a tall block. Title + artist get the horizontal space and may wrap
+     to two lines rather than being squeezed onto one with an ellipsis. */
   .vi-histrow {
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 48px minmax(0, 1fr);
     grid-template-areas:
       'art body'
-      'actions actions';
+      'art actions';
+    align-items: start;
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
   }
   .vi-histrow__art {
     grid-area: art;
+    width: 48px;
+    align-self: start;
   }
   .vi-histrow__body {
     grid-area: body;
   }
+  .vi-histrow__title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
   .vi-histrow__actions {
     grid-area: actions;
     justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .vi-histrow__actions .vi-btn {
+    min-height: 44px;
   }
 }
 
