@@ -4,9 +4,11 @@
 **Course:** Agentic Software Engineering (ASE-26)
 **Repository:** `Shlomi-Hazan/vinyl-intelligence`
 **Primary build workflow:** Human-directed agentic software engineering (Codex, then Claude Code)
-**Roadmap version:** 2026-09-02 (current)
+**Roadmap version:** 2026-09-02 (current); status updated 2026-09-07
 **Supersedes:** `docs/roadmaps/2026-08-18-complete-project-roadmap.md` — preserved unchanged as the historical snapshot
 **Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10
+
+**Project status (2026-09-07): M0–M12 COMPLETE — production accepted — submission-ready.** Live at `https://vinyl-intelligence.netlify.app`, from merged `main` `c2037b8a09b10da796fa2435f268f316f7bb8442` (Netlify deploy `6a9eaf39df3f13d430f76828`). Human production acceptance passed 2026-09-07.
 
 ---
 
@@ -21,8 +23,8 @@ This document is the **current** roadmap. The project mission, product principle
 - The human therefore **deliberately inserted a dedicated pre-M11 product-quality pass**: the **Visual Experience & Product Identity Pass**. This was **not part of the 2026-08-18 plan** — it is a documented mid-project evolution.
 - That pass is **complete and merged to `main`** in PR #13 (merge commit `49b1534d9caad138959363289f770b199e2966a0`).
 - **Milestone 11 (Production Deployment) is COMPLETE.** Production is live at `https://vinyl-intelligence.netlify.app`. Hosted Supabase is configured with all 13 migrations applied (zero pending); production Auth is configured; the human hosted smoke passed; one production defect (curator include-genre matching) was fixed via PR #16 and re-verified. M11 completed at the `main` `55f514c20be15b9f2656aa1d534598b9938e7396` production state.
-- **A small post-M11 UX enhancement** (VIN recommendation cards gain artwork, "View record", and "Played now") shipped in **PR #18** (merge commit `ee6d695b449e3b7810be3663b5cd5b221fedd059`). **Current production is deployed from that commit** — Netlify deploy `6a9dfeaacb28d21bd0c88eb6`.
-- **Milestone 12 (Reliability, Security, Telemetry, and Polish) is IN PROGRESS** — a verification + documentation-reconciliation pass (spec `docs/specs/0014-milestone-12-final-hardening.md`, plan `docs/plans/014-milestone-12-final-hardening.md`), branch `claude/milestone-12-final-hardening`, PR #19. The first human production regression found one real reliability defect (transient VIN session lost on `VIN → View record → back`); a proportional, tested runtime fix landed on the branch (commit `40797d4`, `CuratorSessionProvider`; no curator-contract change). M12 is **not** marked COMPLETE until independent PR review and a human production regression pass (including re-verifying that fix). The inserted visual pass does **not** replace M12.
+- **A small post-M11 UX enhancement** (VIN recommendation cards gain artwork, "View record", and "Played now") shipped in **PR #18** (merge commit `ee6d695b449e3b7810be3663b5cd5b221fedd059`, Netlify deploy `6a9dfeaacb28d21bd0c88eb6`). M12 then moved production forward again — see below.
+- **Milestone 12 (Reliability, Security, Telemetry, and Polish) is COMPLETE** (spec `docs/specs/0014-milestone-12-final-hardening.md`, plan `docs/plans/014-milestone-12-final-hardening.md`; evidence `docs/verification.md` → "Milestone 12 …"). A verification + documentation-reconciliation pass (PR #19). Human production acceptance (2026-09-07) surfaced two real runtime defects, each fixed on its own reviewed PR, merged, deployed, and re-verified on production: **PR #19** (transient VIN session lost on `VIN → View record → back` — fixed with a client-only `CuratorSessionProvider`; React-memory-only privacy contract and every curator contract unchanged; merge `a74d689`) and **PR #20** (mobile app-shell `.vi-main` implicit grid-column, plus History-row polish; merge `c2037b8`). Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`, production deploy `6a9eaf39df3f13d430f76828`.
 
 ```text
 original 2026-08-18 roadmap
@@ -31,8 +33,9 @@ original 2026-08-18 roadmap
   -> human inserted the Visual Experience & Product Identity Pass (Phase 0 + A..E)
   -> pass completed, accepted, and merged to main (PR #13)
   -> M11 Production Deployment executed and completed (production live, main 55f514c)
-  -> PR #18 post-M11 UX enhancement merged (current production: main ee6d695, deploy 6a9dfeaacb28d21bd0c88eb6)
-  -> M12 Reliability / Security / Telemetry / Polish IN PROGRESS (PR #19)
+  -> PR #18 post-M11 UX enhancement merged (main ee6d695, deploy 6a9dfeaacb28d21bd0c88eb6)
+  -> M12 Reliability / Security / Telemetry / Polish COMPLETE (PR #19; runtime fixes PR #19/#20)
+  -> M0-M12 complete, production accepted 2026-09-07 (current: main c2037b8, deploy 6a9eaf39)
 ```
 
 ---
@@ -285,10 +288,10 @@ The inserted pass added, as standing verification for its surface area: measured
 | 9 | AI Curator | Safe owned-collection recommendations | **Complete — merged (PR #10)** |
 | 10 | Conversational Refinement | Bounded multi-turn recommendation refinement | **Complete — merged (PR #11)** |
 | — | **Visual Experience & Product Identity Pass** (inserted pre-M11) | Premium coherent product experience | **Complete — merged (PR #13, `49b1534`)** |
-| 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`; M11 completed at `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS. Current production is `main` `ee6d695` after PR #18 (deploy `6a9dfeaacb28d21bd0c88eb6`).** |
-| 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **In progress** — verification + docs reconciliation pass (spec `0014`, plan `014`); not marked COMPLETE until PR review + human production regression |
+| 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`; M11 completed at `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS.** |
+| 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Complete — verification + docs pass (PR #19); human production acceptance 2026-09-07; two runtime fixes (PR #19, PR #20) merged + deployed + re-verified. Final `main` `c2037b8`, deploy `6a9eaf39`.** |
 
-Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). Milestone 11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16). **The current / deployed `main` is `ee6d695b449e3b7810be3663b5cd5b221fedd059`** (after PR #18; Netlify deploy `6a9dfeaacb28d21bd0c88eb6`). M12 (PR #19) is in progress and not yet merged.
+Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). Milestone 11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16); PR #18 then moved production to `ee6d695b449e3b7810be3663b5cd5b221fedd059`. **The current / accepted `main` is `c2037b8a09b10da796fa2435f268f316f7bb8442`** (after M12: PR #19 → PR #20; Netlify deploy `6a9eaf39df3f13d430f76828`). M0–M12 are complete and production is human-accepted.
 
 ---
 
@@ -505,8 +508,8 @@ This pass handled the major **pre-deployment** product / UI transformation. It d
 `55f514c20be15b9f2656aa1d534598b9938e7396` production state (Netlify deploy
 `6a9de5c190ec8b263f9bc9f8`). Spec `docs/specs/0013`, plan `docs/plans/013`,
 evidence `docs/verification.md` ("Milestone 11 — …" sections). *(Production has
-since moved forward with PR #18 — current deploy is `main` `ee6d695`, Netlify
-`6a9dfeaacb28d21bd0c88eb6`.)*
+since moved forward — PR #18, then M12's PR #19 → PR #20. The current accepted
+deploy is `6a9eaf39df3f13d430f76828` from `main` `c2037b8`; see §22.)*
 
 **What was delivered:**
 
@@ -566,7 +569,16 @@ its core flows.
 
 **Objective:** final cross-system hardening and submission readiness. **Not** permission for uncontrolled feature expansion, and **not** another full UI redesign — the inserted Visual Experience & Product Identity pass already handled the product/UI transformation.
 
-**In progress (2026-09-07).** Approved scope: a verification + documentation-reconciliation pass — spec `docs/specs/0014-milestone-12-final-hardening.md`, plan `docs/plans/014-milestone-12-final-hardening.md`. Phases A–D (clean-checkout automated verification; read-only security + AI-safety re-proof; reliability + performance evidence; documentation reconciled to as-built + one consolidated `docs/verification.md` "Milestone 12" section + PR). Phase E (removal of the unmounted legacy panel subtree) is **deferred** as optional low-risk future cleanup. No CI, no dependency upgrades, no new features, no redesign, no production deploy. M12 is marked **COMPLETE** only after the M12 PR passes independent review and the human production regression (spec `0014` §5) passes.
+**COMPLETE (2026-09-07).** Approved scope: a verification + documentation-reconciliation pass — spec `docs/specs/0014-milestone-12-final-hardening.md`, plan `docs/plans/014-milestone-12-final-hardening.md`. Phases A–D (clean-checkout automated verification; read-only security + AI-safety re-proof; reliability + performance evidence; documentation reconciled to as-built + one consolidated `docs/verification.md` "Milestone 12" section + PR #19). Phase E (removal of the unmounted legacy panel subtree) **deferred** as optional low-risk future cleanup. No CI, no dependency upgrades, no new features, no redesign.
+
+The automated gate passed from a clean checkout (typecheck; lint 0 warnings; **62 files / 658 tests**; build; pgTAP **10 files / 507**; `db lint` clean; `npm audit --omit=dev` **0**, full-audit dev-only findings documented and accepted). Independent PR review passed. **Human production acceptance (2026-09-07, existing account) — PASS**, and it surfaced two real runtime defects, each fixed on its own reviewed PR, merged, deployed from merged `main`, and re-verified on production:
+
+- **PR #19** — the transient VIN session (recommendations + bounded conversation) was lost after `VIN → View record → back`. Fixed by lifting exactly that transient `CuratorPanel` state into a client-only `CuratorSessionProvider` mounted above the route outlet; a Dashboard "Quick VIN" seed is a plain event-handler reset+set. **React-memory-only privacy contract unchanged** (no storage, no server, no transcript; refresh / user-change / "Start over" clear it), and no curator API / prompt / schema / model change. Merge `a74d689593eb796b6d347cb771ca8f3122491abb`.
+- **PR #20** — a shared mobile app-shell defect: at the mobile breakpoint the app grid collapsed to one explicit column but `.vi-main` kept `grid-column: 2`, so CSS Grid added an implicit column and every route was shifted right and squeezed to its content width (surfaced as History looking compressed on a phone). Fixed with `.vi-main { grid-column: 1 }` in the mobile block, plus mobile History-row polish (`104d32b`). CSS only. Merge `c2037b8a09b10da796fa2435f268f316f7bb8442`.
+
+**Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`; production deploy `6a9eaf39df3f13d430f76828`** at `https://vinyl-intelligence.netlify.app`. **M0–M12 complete — production accepted — submission-ready.**
+
+**Not performed / not claimed:** no forced-provider-failure human test (automated provider-failure and model-safety coverage is recorded in the milestone-specific verification sections); no signup / email-confirmation re-test (an existing account was used; that flow was verified in Milestone 11).
 
 Full scope from the original plan:
 
@@ -632,10 +644,13 @@ M10 Conversational Refinement
 M11 Production Deployment  (COMPLETE -> live; M11 at `main` `55f514c`; PR #14/#15/#16)
  |
  v
-PR #18 post-M11 UX enhancement  (current production: `main` `ee6d695`, deploy `6a9dfeaacb28d21bd0c88eb6`)
+PR #18 post-M11 UX enhancement  (`main` `ee6d695`, deploy `6a9dfeaacb28d21bd0c88eb6`)
  |
  v
-M12 Reliability / Security / Telemetry / Final Polish  (IN PROGRESS — PR #19; not COMPLETE)
+M12 Reliability / Security / Telemetry / Final Polish  (COMPLETE -> PR #19; runtime fixes PR #19/#20)
+ |
+ v
+M0-M12 COMPLETE - production accepted 2026-09-07  (current: `main` `c2037b8`, deploy `6a9eaf39`)
 ```
 
 This order is intentional. The AI curator is delayed until authentication, ownership, collection data, structured metadata, preference signals, and listening-history signals are all trustworthy. The Visual Experience & Product Identity pass is deliberately placed **after** the functional product is complete and **before** production deployment: it is a product-quality gate, not a feature milestone, and it must not destabilize the verified M0–M10 behavior.
@@ -683,6 +698,11 @@ The repository should tell the story of the engineering process.
 ---
 
 # 26. Definition of Done
+
+**Met — 2026-09-07.** M0–M12 complete, production human-accepted, submission-ready
+(final `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`, deploy
+`6a9eaf39df3f13d430f76828`). The criteria below are recorded as met; evidence is
+in `docs/verification.md`, the specs and plans, the PR history, and Git.
 
 The entire Vinyl Intelligence project is done only when:
 

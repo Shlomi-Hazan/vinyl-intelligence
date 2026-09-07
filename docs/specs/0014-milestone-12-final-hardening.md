@@ -1,36 +1,48 @@
 # 0014 Milestone 12 — Reliability, Security, Telemetry, and Polish (Specification)
 
-Status (2026-09-07): **IN PROGRESS** — approved scope Phases A–D. Verification +
-documentation reconciliation only; no feature work, no redesign, no
-architecture change, no dependency churn, no CI. Final `M12 COMPLETE` status is
-set only after automated verification, independent PR review, and human
-production acceptance.
+Status (2026-09-07): **COMPLETE.** Approved scope Phases A–D (verification +
+documentation reconciliation) plus two runtime corrections found during human
+acceptance (PR #19, PR #20). Automated gate green, independent PR review passed,
+human production acceptance passed 2026-09-07.
 
-**Update (2026-09-07):** the first human production regression found one real
-reliability defect — the transient VIN session was lost on `VIN → View record →
-back` navigation. A proportional, tested runtime fix landed on this branch
-(commit `40797d4`, `CuratorSessionProvider`; no curator contract / prompt /
-model / schema change; persistence contract unchanged). Evidence:
-`docs/verification.md` → "Human production regression — defect + fix". M12 stays
-NOT COMPLETE until the fix is human-verified.
+- **Final accepted runtime `main`:** `c2037b8a09b10da796fa2435f268f316f7bb8442`
+  (after PR #19 → PR #20).
+- **Final accepted production deploy:** `6a9eaf39df3f13d430f76828`
+  (`https://vinyl-intelligence.netlify.app`).
+- **Human production acceptance:** 2026-09-07 (existing account; see
+  `docs/verification.md` → "Milestone 12 — Human production acceptance").
 
-Baseline: `main` = `ee6d695b449e3b7810be3663b5cd5b221fedd059` (PR #18 merged —
-the VIN recommendation-card enhancement is on `main`). Production is live at
-`https://vinyl-intelligence.netlify.app`, application deploy
-`6a9dfeaacb28d21bd0c88eb6` from `main` `ee6d695…`.
+**Runtime corrections during acceptance (M12 verification found two real
+defects):**
+1. **PR #19** — the transient VIN session was lost on `VIN → View record → back`
+   navigation. Fixed by lifting exactly that transient state into a client-only
+   `CuratorSessionProvider` mounted above the route outlet (no curator
+   contract / prompt / model / schema change; React-memory-only persistence
+   contract unchanged). Merged to `main` as `a74d689593eb796b6d347cb771ca8f3122491abb`.
+2. **PR #20** — a shared mobile app-shell defect: `.vi-main` kept
+   `grid-column: 2` at the mobile breakpoint after the grid collapsed to one
+   column, creating an implicit column that shifted every route right and
+   squeezed it to its content width (surfaced as History looking compressed on a
+   phone). Fixed with `.vi-main { grid-column: 1 }` in the mobile block, plus the
+   History-row polish from `104d32b`. Merged to `main` as
+   `c2037b8a09b10da796fa2435f268f316f7bb8442`.
+
+Baseline when M12 began: `main` = `ee6d695b449e3b7810be3663b5cd5b221fedd059`
+(PR #18 merged — the VIN recommendation-card enhancement).
 
 References (do not duplicate): `docs/roadmaps/2026-09-02-complete-project-roadmap.md`
 §22, `intent.txt`, `docs/security.md`, `docs/verification.md`, `docs/decisions/`,
 specs `0010`–`0013`.
 
-Human approval recorded: 2026-09-07 (this message). Corrections applied: Phase E
-(legacy dead-code removal) **deferred**; no GitHub Actions / CI; no dependency
-upgrades for dev-only audit findings; as-built docs updated **in place**;
-`intent.txt` gets an **appendix only**; historical 2026-08-18 roadmap
-**byte-unchanged** (hash `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`);
-current roadmap not marked COMPLETE yet; human regression reuses the existing
-production account (no repeat signup/email round-trip unless an auth defect
-appears); no production deploy unless a real runtime change is later approved.
+Human approval recorded: 2026-09-07. Corrections applied: Phase E (legacy
+dead-code removal) **deferred**; no GitHub Actions / CI; no dependency upgrades
+for dev-only audit findings; as-built docs updated **in place**; `intent.txt`
+gets an **appendix only**; historical 2026-08-18 roadmap **byte-unchanged**
+(hash `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`); human
+acceptance reused the existing production account (no repeat signup/email
+round-trip). Two production deploys were made from merged `main` for the runtime
+corrections (PR #19 → deploy `6a9e9d455dae76f2dfda6ca5`; PR #20 → deploy
+`6a9eaf39df3f13d430f76828`, the final accepted one).
 
 ---
 
@@ -146,62 +158,83 @@ historical artifacts; cosmetic rewrites of working code.
   commands, actual outputs/counts, dependency triage, security re-proof,
   performance snapshot, known limitations, and the remaining human-acceptance
   gate.
-- `docs/roadmaps/2026-09-02-complete-project-roadmap.md` — updated only to record
-  M12 **in progress** with the approved scope. **Not** marked COMPLETE.
+- `docs/roadmaps/2026-09-02-complete-project-roadmap.md` — M12 marked
+  **COMPLETE**; overall status M0–M12 complete / production accepted /
+  submission-ready.
 - `docs/roadmaps/2026-08-18-complete-project-roadmap.md` — byte-for-byte
-  unchanged; hash re-verified before the PR.
+  unchanged; hash re-verified.
 
 ## 4. Acceptance criteria
 
-- [ ] `git diff --check`, `npm run typecheck`, `npm run lint` (0 warnings),
+- [x] `git diff --check`, `npm run typecheck`, `npm run lint` (0 warnings),
   `npm run test:run`, `npm run build` pass from a clean `npm ci` checkout.
-- [ ] `npx supabase test db` (pgTAP) and `npx supabase db lint` pass locally.
-- [ ] `npm audit --omit=dev` = 0; `npm audit --json` findings recorded and
+  *(Final suite: 62 files / 658 tests after PR #19.)*
+- [x] `npx supabase test db` (pgTAP, 10 files / 507) and `npx supabase db lint`
+  pass locally.
+- [x] `npm audit --omit=dev` = 0; `npm audit --json` findings recorded and
   triaged as dev-only; versions unchanged.
-- [ ] Production secret scan: server-secret identifiers and secret-shaped tokens
+- [x] Production secret scan: server-secret identifiers and secret-shaped tokens
   absent from the built bundle (no values printed).
-- [ ] Unauthenticated `POST /api/curator/recommend` and
+- [x] Unauthenticated `POST /api/curator/recommend` and
   `POST /api/catalog/recognize` → 401 bounded JSON, zero provider calls.
-- [ ] `GET https://vinyl-intelligence.netlify.app/api/health` → 200
+- [x] `GET https://vinyl-intelligence.netlify.app/api/health` → 200
   `{ "status": "ok" }`.
-- [ ] Curator allowed-owned-ID invariant re-proven by an existing test.
-- [ ] `.env.example` documents every env-var name; the two attribution headers
+- [x] Curator allowed-owned-ID invariant re-proven by an existing test
+  (`selectionSchema.ts:165` + `selectionSchema.test.ts`).
+- [x] `.env.example` documents every env-var name; the two attribution headers
   labelled optional; no values.
-- [ ] Documentation set reconciled in place; final architecture overview present;
+- [x] Documentation set reconciled in place; final architecture overview present;
   `docs/verification.md` "Milestone 12" section complete; known limitations
   listed.
-- [ ] Historical 2026-08-18 roadmap hash identical to the starting hash.
-- [ ] No Phase E deletion; no runtime dependency change; no production/config
-  write.
-- [ ] One M12 PR open against `main`; not merged; M12 not marked COMPLETE.
-- [ ] Human production regression (short, existing account) scheduled as the
-  final gate.
+- [x] Historical 2026-08-18 roadmap hash identical to the starting hash
+  (`cca3d3c8…64f213bd…b26a4`).
+- [x] No Phase E deletion; no runtime dependency change. *(Two production
+  deploys were made for the PR #19 / PR #20 runtime corrections, both from
+  merged `main` and human-approved.)*
+- [x] M12 PR reviewed and merged; the two runtime-fix PRs (#19, #20) reviewed,
+  merged, deployed, and human-verified.
+- [x] Human production regression run on the existing account — **PASS**
+  (§5 below; `docs/verification.md`).
 
-## 5. Human acceptance gate (after PR review)
+## 5. Human acceptance gate — run 2026-09-07, existing account — PASS
 
-Short production regression with the **existing** account (no repeat
-signup/email round-trip unless an auth defect appears):
+Performed by the human against `https://vinyl-intelligence.netlify.app` (no
+repeat signup / email-confirmation flow; an existing account was used):
 
-1. Sign in; open dashboard.
-2. Add one manual record; refresh; it persists; open its detail page.
-3. One catalog search + add.
-4. One photo recognition to a confirmed candidate.
-5. One VIN recommendation + one refinement + one out-of-scope request
-   ("what is the capital of France") → bounded VIN-only message, no
-   recommendation.
-6. On a VIN card: **View record**, then **Played now**; listening state updates,
-   toast shows.
-7. Deep-link refresh of `/collection/<id>`; one forced failure shows an honest
-   error, not fake success.
-8. ~390px responsive + keyboard-only spot-check on one core flow.
-9. Sign out.
+- manual collection persistence — **PASS**
+- catalog add — **PASS**
+- photo recognition (to a confirmed candidate) — **PASS**
+- VIN recommendation — **PASS**
+- VIN refinement — **PASS**
+- out-of-scope VIN request → bounded VIN-only message, no recommendation —
+  **PASS**
+- **PR #19 (VIN session lifetime):** View record → return preserves the
+  recommendation / reason / refinement — **PASS**; "Played now" after return —
+  **PASS**; "Start over" clears the session and it stays clear — **PASS**;
+  Dashboard "Quick VIN" seeds the textarea once with no auto-submit — **PASS**;
+  a new Quick VIN replaces an existing active VIN session — **PASS**; a browser
+  refresh clears the transient VIN state (intentional privacy boundary) —
+  **PASS**; `/collection/<id>` deep-link refresh — **PASS**
+- **PR #20 (mobile shell + History rows):** History verified on a real phone on
+  the draft deploy — **PASS**; History verified again on production — **PASS**
+- keyboard focus / Shift+Tab / activation — **PASS**
+- sign out, then protected-route access after sign out (redirects to auth) —
+  **PASS**
 
-Target: ≤ ~6 paid provider calls.
+**Not performed / not claimed:** no forced-provider-failure human test was run
+(automated coverage of provider-failure and model-safety behaviour is recorded
+in the milestone-specific verification sections); no signup / email-confirmation
+flow was re-tested (an existing account was used, and that flow was verified in
+Milestone 11).
 
-## 6. Definition of done
+## 6. Definition of done — MET (2026-09-07)
 
-M12 is complete when: the automated matrix is green from a clean checkout; the
-security / AI-safety re-proof passes read-only; the documentation set is
-reconciled and the M12 evidence section is written; the M12 PR has passed
-independent review; and the human production regression above has passed. Only
-then is `M12 COMPLETE` recorded in the current roadmap and this spec.
+M12 was complete when: the automated matrix was green from a clean checkout; the
+security / AI-safety re-proof passed read-only; the documentation set was
+reconciled and the M12 evidence section written; the M12 PR passed independent
+review; the two runtime-correction PRs (#19, #20) were reviewed, merged,
+deployed, and verified; and the human production regression above passed. All of
+that is done. **`M12 COMPLETE`** — and, with M0–M11 already complete, **M0–M12
+complete / production accepted / submission-ready.** Final accepted `main`
+`c2037b8a09b10da796fa2435f268f316f7bb8442`, production deploy
+`6a9eaf39df3f13d430f76828`.

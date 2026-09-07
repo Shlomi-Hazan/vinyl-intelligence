@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-30.
+Last updated: 2026-09-07.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -4854,15 +4854,24 @@ Spec `docs/specs/0014-milestone-12-final-hardening.md`, plan
 `ee6d695b449e3b7810be3663b5cd5b221fedd059` (PR #18 merged). Approved scope:
 Phases A–D (verification + documentation reconciliation). Phase E (legacy
 unmounted subtree removal) deferred. No CI, no dependency upgrades, no new
-features, no redesign, no production deploy.
+features, no redesign, and no production deploy unless a genuine runtime defect
+required an approved correction.
 
-M12 is marked COMPLETE only after: this automated matrix (below), independent PR
-review, and the human production regression (spec §5). Not complete yet.
+**MILESTONE 12 — COMPLETE (2026-09-07).** The automated matrix (below) passed
+from a clean checkout, independent PR review passed, and the human production
+regression (spec §5) passed. It surfaced **two** real runtime defects — each
+fixed on its own reviewed PR, merged to `main`, deployed from merged `main`, and
+re-verified on production:
+- **PR #19** — transient VIN session lost on `VIN → View record → back`
+  (merge `a74d689593eb796b6d347cb771ca8f3122491abb`; production deploy
+  `6a9e9d455dae76f2dfda6ca5`).
+- **PR #20** — mobile app-shell `.vi-main` implicit grid-column + History-row
+  polish (merge `c2037b8a09b10da796fa2435f268f316f7bb8442`; production deploy
+  `6a9eaf39df3f13d430f76828` — the final accepted deploy).
 
-**The first human production regression (2026-09-07) found one real defect
-(see "Human production regression — defect + fix" below). The earlier
-"Phase A … no defect found" applied to the automated sweep only; the
-runtime-flow defect surfaced only in the browser, in production.**
+Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`. The earlier
+"Phase A … no defect found" applied to the automated sweep only; both
+runtime-flow defects surfaced only in the browser, in production.
 
 ### Phase A — clean-checkout automated verification
 
@@ -4885,10 +4894,10 @@ No test was added in the automated sweep — every M12-required invariant was
 already proven (the out-of-set curator id rejection is
 `src/lib/curator/selectionSchema.ts:165` + `selectionSchema.test.ts` "rejects an
 out-of-set id" + the handler tests). The automated sweep found **no defect**;
-one runtime defect was later found by the human production regression and fixed
-on this branch (see below — after the fix: **62 files / 655 tests**). Zero real
-OpenRouter / MusicBrainz / Cover Art Archive calls; no hosted Supabase or
-Netlify mutation.
+two runtime defects were later found by the human production regression and
+fixed (PR #19, PR #20 — see below). Suite after PR #19: **62 files / 658 tests**
+(PR #20 is CSS-only). Zero real OpenRouter / MusicBrainz / Cover Art Archive
+calls; no hosted Supabase or Netlify mutation.
 
 **Build output — entry + chunk table** (with the documented `VITE_*` build-time
 env present; see the note below):
@@ -5012,13 +5021,14 @@ Functions runtime, and `npm audit --omit=dev` confirms zero runtime exposure.
 ### Documentation reconciled (Phase D)
 
 `README.md` (shipped capabilities, as-built architecture, env table, known
-limitations, M12-in-progress status), `docs/architecture.md`,
-`docs/data-model.md`, `docs/ai-design.md`, `docs/api-integrations.md` (each
-gained an authoritative "as-built" section, 2026-08-17 proposals preserved
-below), `docs/security.md` (ephemeral non-tables reconciled), `intent.txt`
-(section 38 resolved-decisions appendix; body unchanged), and this section.
-`docs/roadmaps/2026-09-02-complete-project-roadmap.md` updated to "M12 in
-progress" only. The historical `docs/roadmaps/2026-08-18-complete-project-roadmap.md`
+limitations, project status), `docs/architecture.md`, `docs/data-model.md`,
+`docs/ai-design.md`, `docs/api-integrations.md` (each gained an authoritative
+"as-built" section, 2026-08-17 proposals preserved below), `docs/security.md`
+(ephemeral non-tables reconciled), `intent.txt` (section 38 resolved-decisions
+appendix; body unchanged), and this section.
+`docs/roadmaps/2026-09-02-complete-project-roadmap.md` records M12 COMPLETE and
+overall M0–M12 complete / production accepted / submission-ready (final closeout
+2026-09-07). The historical `docs/roadmaps/2026-08-18-complete-project-roadmap.md`
 is byte-unchanged (sha256
 `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
 
@@ -5083,7 +5093,7 @@ route change):
   `curatorHarness.tsx` and one inline `rerender` in `CuratorPanel.test.tsx`
   updated to include the provider.
 
-- **Fix follow-up (2026-09-07, same branch, commit `40b… → see git log`).**
+- **Fix follow-up (2026-09-07, PR #19, commit `57fd10d`).**
   Independent review of the session fix found a Quick VIN prefill edge case: the
   first fix seeded the `/vin` textarea from `location.state.prefill` via an
   effect "only while the session is pristine", which (a) could re-seed the old
@@ -5109,19 +5119,72 @@ route change):
   153 modules. `npx supabase test db` 10 / 507 PASS; `db lint` clean; audit
   unchanged. No storage / fetch / supabase call in the changed files.
 
-**M12 remains NOT COMPLETE.** The fixed behaviour must be re-verified by the
-human in the browser (see the acceptance gate below) before M12 is closed.
+### Second runtime defect during acceptance — mobile app shell (PR #20)
 
-### Remaining human acceptance gate
+The human's real-phone responsive check found History looking compressed /
+shifted right versus Collection. Independent review traced it to a **shared
+mobile app-shell defect**, not the History page: at `@media (max-width: 767px)`
+the app grid collapses to a single explicit column (`grid-template-columns:
+1fr`) and `.vi-sidebar` is hidden, but `.vi-main` still carried
+`grid-column: 2` from its desktop rule — so CSS Grid created an implicit
+auto-width second column for it and the real (empty) `1fr` column sat to its
+left, shifting every route right and squeezing it to its content width.
 
-Short production regression with the **existing** account (no repeat
-signup/email round-trip): sign in; add a manual record + refresh + open detail;
-one catalog add; one photo recognition to a confirmed candidate; one VIN
-recommendation + one refinement + one out-of-scope request; **a VIN card
-"View record" → navigate back to VIN → confirm the recommendations + refine
-panel are still there → "Played now" still works on that card**; one deep-link
-refresh and one forced failure state; a ~390px + keyboard spot-check; sign out.
-Target ≤ ~6 paid provider calls. M12 is marked COMPLETE only after this passes
-and the PR is reviewed. (Re-verifying the fixed navigation behaviour requires a
-build carrying commit `40797d4`; if a preview/draft deploy is needed for that,
-it must be explicitly approved — no production deploy in M12.)
+- **Fix (`c360b8f`):** one line — `.vi-main { grid-column: 1 }` inside the
+  existing mobile block. Headless check (built CSS, `.vi-app > .vi-sidebar +
+  .vi-main`): `.vi-main` left `255 → 0` and width `135 → 390` at a 390px
+  viewport; desktop (900px) unchanged (`left 72`, `width 828`); `overflowX 0`
+  throughout, before and after.
+- Plus the mobile History-row polish from `104d32b` (thumbnail column spans
+  body+actions, actions under the text, 2-line title wrap, 44px action targets).
+- CSS only (`src/styles/shell.css`, `src/styles/pages.css`); no markup / data /
+  logic / test change. No new test — the repo has no CSS-layout test pattern
+  (jsdom does not compute grid; vitest stubs CSS imports), and per the
+  instruction a visual-test framework was not invented. Covered by
+  `npm run build` (CSS parse/validate) + the headless check + human
+  verification.
+- **PR #20**, commits `104d32b` + `c360b8f`, merge
+  `c2037b8a09b10da796fa2435f268f316f7bb8442`; production deploy
+  `6a9eaf39df3f13d430f76828`. Verified on a real phone on the draft deploy —
+  **PASS** — and again on production — **PASS**.
+
+### Milestone 12 — Human production acceptance (2026-09-07) — PASS
+
+Performed by the human against `https://vinyl-intelligence.netlify.app` with an
+**existing account** (no signup / email-confirmation flow — that was verified in
+Milestone 11):
+
+| Check | Result |
+| --- | --- |
+| manual collection persistence | **PASS** |
+| catalog add | **PASS** |
+| photo recognition → confirmed candidate | **PASS** |
+| VIN recommendation | **PASS** |
+| VIN refinement | **PASS** |
+| out-of-scope VIN request → bounded VIN-only message, no recommendation | **PASS** |
+| **PR #19:** View record → return preserves recommendation / reason / refinement | **PASS** |
+| **PR #19:** "Played now" after return | **PASS** |
+| **PR #19:** "Start over" clears the session and it stays clear | **PASS** |
+| **PR #19:** Dashboard "Quick VIN" seeds the textarea once, no auto-submit | **PASS** |
+| **PR #19:** a new Quick VIN replaces an existing active VIN session | **PASS** |
+| **PR #19:** browser refresh clears the transient VIN state (intentional privacy boundary) | **PASS** |
+| **PR #19:** `/collection/<id>` deep-link refresh | **PASS** |
+| **PR #20:** History on a real phone — draft deploy, then production | **PASS** / **PASS** |
+| keyboard focus / Shift+Tab / activation | **PASS** |
+| sign out, then protected-route access after sign out (redirect to auth) | **PASS** |
+
+**Not performed / not claimed:** no forced-provider-failure human test was run
+(automated provider-failure and model-safety behaviour is covered in the
+milestone-specific verification sections above); no signup / email-confirmation
+flow was re-tested.
+
+### Milestone 12 — final result
+
+**M12 COMPLETE.** M0–M12 complete — production human-accepted — submission-ready.
+Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`; final accepted
+production deploy `6a9eaf39df3f13d430f76828` at
+`https://vinyl-intelligence.netlify.app`. Runtime corrections during M12
+acceptance: PR #19 (VIN session lifetime), PR #20 (mobile app shell + History
+rows). Historical `docs/roadmaps/2026-08-18-complete-project-roadmap.md` remains
+byte-unchanged (sha256
+`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
