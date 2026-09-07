@@ -1,26 +1,33 @@
 # 014 Milestone 12 — Reliability, Security, Telemetry, and Polish (Implementation Plan)
 
-Status (2026-09-07): **IN PROGRESS.**
+Status (2026-09-07): **COMPLETE.**
 Spec: `docs/specs/0014-milestone-12-final-hardening.md`.
-Branch: `claude/milestone-12-final-hardening`.
-Baseline `main`: `ee6d695b449e3b7810be3663b5cd5b221fedd059`.
+M12 verification branch: `claude/milestone-12-final-hardening` (PR #19).
+Baseline `main` when M12 began: `ee6d695b449e3b7810be3663b5cd5b221fedd059`.
+Final accepted `main`: `c2037b8a09b10da796fa2435f268f316f7bb8442`.
+Final accepted production deploy: `6a9eaf39df3f13d430f76828`.
 
-Human-approved scope: Phases **A–D**. Phase **E deferred** (legacy unmounted
-subtree stays). No CI. No dependency upgrades for dev-only audit findings.
-As-built docs updated in place. `intent.txt` appendix only. Historical
-2026-08-18 roadmap byte-unchanged
-(`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`). Current
-roadmap not marked COMPLETE. No production deploy. Final human production
-regression is a gate before completion.
+Human-approved scope: Phases **A–D** (verification + documentation
+reconciliation). Phase **E deferred** (legacy unmounted subtree stays). No CI.
+No dependency upgrades for dev-only audit findings. As-built docs updated in
+place. `intent.txt` appendix only. Historical 2026-08-18 roadmap byte-unchanged
+(`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
 
-**Update (2026-09-07):** the human production regression found one real
-reliability defect (transient VIN session lost on `VIN → View record → back`).
-A proportional runtime fix + 6 focused regression tests landed on this branch
-(commit `40797d4`) — `CuratorSessionProvider` lifts exactly the transient
-`CuratorPanel` state above the route outlet; persistence contract and every
-curator contract unchanged. Full record: `docs/verification.md` → "Human
-production regression — defect + fix". Gate after the fix: `test:run` 62 files /
-655 tests, typecheck / lint / build pass, pgTAP 10 / 507 PASS.
+**Runtime corrections found during M12 acceptance (each its own reviewed PR,
+merged, deployed, human-verified):**
+- **PR #19** (`40797d4` → merge `a74d689593eb796b6d347cb771ca8f3122491abb`):
+  transient VIN session lost on `VIN → View record → back`. `CuratorSessionProvider`
+  lifts exactly that `CuratorPanel` state above the route outlet; a Quick VIN
+  seed is a plain event-handler reset+set in `DashboardPage`. React-memory-only
+  persistence contract and every curator contract unchanged. Suite after this
+  fix: 62 files / 658 tests.
+- **PR #20** (`104d32b` + `c360b8f` → merge `c2037b8a09b10da796fa2435f268f316f7bb8442`):
+  shared mobile app-shell defect — `.vi-main` kept `grid-column: 2` after the
+  mobile grid collapsed to one column, creating an implicit column that shifted
+  every route right and squeezed it. Fixed with `.vi-main { grid-column: 1 }` in
+  the mobile block, plus History-row mobile polish. CSS only.
+
+Full evidence: `docs/verification.md` → "Milestone 12 …".
 
 ---
 
@@ -146,7 +153,8 @@ M12 evidence; open the PR.
   actual results + dependency triage + security re-proof + performance snapshot
   + known limitations + human-acceptance gate).
 - `docs/roadmaps/2026-09-02-complete-project-roadmap.md` — M12 marked
-  **in progress** with approved scope; **not** COMPLETE.
+  **COMPLETE** (done); overall status M0–M12 complete / production accepted /
+  submission-ready.
 
 **Known limitations (factual, proportional):** no custom domain; no Git CI /
 continuous deployment; Supabase built-in email sender (no custom SMTP); manual
@@ -187,8 +195,13 @@ dependency change; no production/config write.
 
 If no code/test change is required, none is invented.
 
-## After the PR
+## After the PR — done (2026-09-07)
 
-Independent review → human production regression (spec §5) → only then
-`M12 COMPLETE` in the current roadmap + spec `0014`, and (only if a real runtime
-change was made and approved) a production redeploy.
+Independent review passed. Human production regression (spec §5) found two real
+runtime defects; each was fixed on its own reviewed PR (#19, #20), merged, and
+deployed from merged `main`. History and the VIN session flows were re-verified
+by the human on production — **PASS**. `M12 COMPLETE` is now recorded in
+`docs/specs/0014`, this plan, `docs/verification.md`, `README.md`, and
+`docs/roadmaps/2026-09-02-complete-project-roadmap.md`. Final accepted `main`
+`c2037b8a09b10da796fa2435f268f316f7bb8442`; production deploy
+`6a9eaf39df3f13d430f76828`.

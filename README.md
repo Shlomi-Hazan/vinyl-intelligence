@@ -50,32 +50,32 @@ As built (see [`docs/architecture.md`](docs/architecture.md) for detail):
 
 ## Project Status
 
-**Current state (2026-09-07):** Milestones **0–11 are complete**. Milestones
-0–10 and the **Visual Experience & Product Identity pass** (a human-directed
-product-quality pass deliberately inserted between Milestone 10 and Milestone 11;
-Phase 0 in PR #12, Phases A–E in **PR #13**, merge commit `49b1534`) are merged
-to `main`. **Milestone 11 (Production Deployment) is complete:** the application
-is **live at <https://vinyl-intelligence.netlify.app>**. Hosted Supabase, Auth,
-and Storage are configured; **all 13 version-controlled migrations are applied**
-(zero pending); the human production smoke passed; one production defect (curator
-include-genre matching) was fixed via PR #16 and re-verified; the final technical
-security sanity passed. M11 was verified at the `main` `55f514c` production
-state (PR #14 → #15 → #16).
+**Current state (2026-09-07): Milestones 0–12 are COMPLETE — production accepted — submission-ready.**
+The application is **live at <https://vinyl-intelligence.netlify.app>**, from
+merged `main` `c2037b8a09b10da796fa2435f268f316f7bb8442` (Netlify deploy
+`6a9eaf39df3f13d430f76828`). **Human production acceptance passed 2026-09-07.**
 
-A small post-M11 UX enhancement (VIN recommendation cards gain artwork,
-"View record", and "Played now") then shipped in **PR #18**. **Current production
-is deployed from `main` `ee6d695b449e3b7810be3663b5cd5b221fedd059`** — Netlify
-deploy `6a9dfeaacb28d21bd0c88eb6`.
+Milestones 0–10, the **Visual Experience & Product Identity pass** (a
+human-directed product-quality pass deliberately inserted between Milestone 10
+and Milestone 11; Phase 0 in PR #12, Phases A–E in **PR #13** / `49b1534`),
+**Milestone 11 (Production Deployment)**, and **Milestone 12 (Reliability,
+Security, Telemetry, Polish)** are all merged to `main`. Hosted Supabase, Auth,
+and Storage are configured; all 13 version-controlled migrations are applied
+(zero pending).
 
-**Milestone 12 (Reliability / Security / Telemetry / Polish) is in progress** — a
-verification + documentation-reconciliation pass (spec
+M11 completed at `main` `55f514c` (PR #14 → #15 → #16; hosted smoke PASS; one
+curator include-genre defect fixed via PR #16); PR #18 then shipped the VIN
+recommendation-card enhancement (`ee6d695`). **M12** was a verification +
+documentation-reconciliation pass (spec
 [`0014`](docs/specs/0014-milestone-12-final-hardening.md), plan
-[`014`](docs/plans/014-milestone-12-final-hardening.md), PR #19); no new
-features, no redesign. The human production regression found one reliability
-defect — the VIN session was lost on `VIN → View record → back` — fixed on the
-branch (`CuratorSessionProvider`, no curator-contract change). M12 is marked
-complete only after independent PR review and a human production regression
-(including re-verifying that fix).
+[`014`](docs/plans/014-milestone-12-final-hardening.md), PR #19). Its human
+acceptance surfaced two real runtime defects, each fixed on its own reviewed PR,
+merged, deployed, and re-verified on production:
+- **PR #19** — the transient VIN session was lost on `VIN → View record → back`;
+  fixed with a client-only `CuratorSessionProvider` (React-memory-only privacy
+  contract and every curator contract unchanged; merge `a74d689`).
+- **PR #20** — a shared mobile app-shell defect (`.vi-main` implicit
+  grid-column) plus mobile History-row polish; CSS only (merge `c2037b8`).
 
 No Git continuous deployment, no custom domain, no SMTP — deploys are run
 manually from merged `main`, on the default `*.netlify.app` domain, with
@@ -256,14 +256,15 @@ Implemented:
   all 13 migrations applied; hosted smoke PASS. M11 verified at `main` `55f514c`
   (PR #14 → #15 → #16)
 - VIN recommendation cards: artwork + "View record" + "Played now" with live
-  listening-state refresh (post-M11 UX enhancement; PR #18). Current production
-  is `main` `ee6d695`, Netlify deploy `6a9dfeaacb28d21bd0c88eb6`
-
-In progress:
-
-- Reliability, security re-check, telemetry review, and final polish
-  (Milestone 12 — verification + documentation pass, PR #19; not marked complete
-  until PR review + human production regression)
+  listening-state refresh (post-M11 UX enhancement; PR #18)
+- VIN session survives in-app navigation (VIN → View record → back) via a
+  client-only `CuratorSessionProvider` — React-memory only, no storage, no
+  server, no transcript; cleared by refresh / user change / "Start over"
+  (Milestone 12; PR #19)
+- Reliability / security / AI-safety re-proof, dependency triage, as-built
+  documentation reconciliation, and a mobile app-shell + History-row layout fix
+  (Milestone 12; PR #19, PR #20). **M0–M12 complete; production accepted
+  2026-09-07; current `main` `c2037b8`, deploy `6a9eaf39`.**
 
 ## Local Setup
 
