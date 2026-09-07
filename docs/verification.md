@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-08-30.
+Last updated: 2026-09-07.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -4854,7 +4854,8 @@ Spec `docs/specs/0014-milestone-12-final-hardening.md`, plan
 `ee6d695b449e3b7810be3663b5cd5b221fedd059` (PR #18 merged). Approved scope:
 Phases A–D (verification + documentation reconciliation). Phase E (legacy
 unmounted subtree removal) deferred. No CI, no dependency upgrades, no new
-features, no redesign, no production deploy.
+features, no redesign, and no production deploy unless a genuine runtime defect
+required an approved correction.
 
 **MILESTONE 12 — COMPLETE (2026-09-07).** The automated matrix (below) passed
 from a clean checkout, independent PR review passed, and the human production
