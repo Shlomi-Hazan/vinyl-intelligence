@@ -219,4 +219,44 @@ describe('selection schema + prompt', () => {
     expect(collapsed).toContain('never invent a record')
     expect(collapsed).toContain('do not invent ratings')
   })
+
+  it('asks for a request-language reason and verbatim artist/title (spec 0015 §11)', () => {
+    const collapsed = SELECTION_SYSTEM_PROMPT.replace(/\s+/g, ' ').toLowerCase()
+    expect(collapsed).toContain('same language as the user request')
+    expect(collapsed).toContain('never translate or transliterate')
+  })
+})
+
+describe('validateSelection - Hebrew reason (spec 0015 §11)', () => {
+  it('accepts a Hebrew reason but still assembles artist/title from server facts', () => {
+    const cards = validateSelection(
+      {
+        recommendations: [
+          {
+            collectionItemId: 'a',
+            // model tries to also send translated facts - they are ignored
+            artist: 'transliterated',
+            title: 'translated',
+            reason: 'רשומה חמה משנות ה-90 שלא ניגנת מזמן.',
+            evidenceKeys: ['decade'],
+          },
+        ],
+        bestMatchId: 'a',
+      },
+      args(),
+    )
+    expect(cards[0].reason).toBe('רשומה חמה משנות ה-90 שלא ניגנת מזמן.')
+    // artist/title come from the server candidate facts, NOT the model
+    expect(cards[0].artist).toBe('A')
+    expect(cards[0].title).toBe('Album A')
+  })
+
+  it('still rejects an out-of-set id even with a Hebrew reason', () => {
+    expectReject({
+      recommendations: [
+        { collectionItemId: 'zzz', reason: 'סיבה בעברית', evidenceKeys: [] },
+      ],
+      bestMatchId: 'zzz',
+    })
+  })
 })
