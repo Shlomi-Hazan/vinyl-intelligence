@@ -15,6 +15,7 @@ import {
   type CuratorIntent,
   type CuratorListeningEvent,
 } from './types.ts'
+import { canonicalizeGenres } from '../genre/canonical.ts'
 
 const MS_PER_DAY = 86_400_000
 const NEVER_PLAYED_DAYS = 3650
@@ -23,13 +24,20 @@ function decadeOf(year: number | null): number | null {
   return typeof year === 'number' ? Math.floor(year / 10) * 10 : null
 }
 
+/**
+ * Candidate genres use the CANONICAL vocabulary (spec 0015 §8) so genre
+ * equality / token matching operates over one taxonomy - a candidate tagged
+ * `רוק` matches an intent `includeGenres: ['rock']` after both sides are
+ * canonicalized. Ranking, hard-filter architecture and `includeGenreMatches`
+ * token semantics are unchanged.
+ */
 function normalizeGenres(genres: string[] | null | undefined): string[] {
   if (!Array.isArray(genres)) {
     return []
   }
-  return genres
-    .map((g) => (typeof g === 'string' ? g.trim().toLocaleLowerCase() : ''))
-    .filter((g) => g.length > 0)
+  return canonicalizeGenres(
+    genres.filter((g): g is string => typeof g === 'string'),
+  )
 }
 
 /** Derive playCount / lastListenedAt / neverPlayed / decade for every owned item. */

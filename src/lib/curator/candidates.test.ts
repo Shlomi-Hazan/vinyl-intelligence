@@ -75,6 +75,52 @@ describe('deriveCandidateFacts', () => {
     const [c] = deriveCandidateFacts([item({ genres: [' Jazz ', 'ROCK'] })], [])
     expect(c.genres).toEqual(['jazz', 'rock'])
   })
+
+  it('canonicalizes candidate genres to the canonical vocabulary (spec 0015 §8)', () => {
+    const [c] = deriveCandidateFacts(
+      [item({ genres: ['רוק', 'ג׳אז', 'רוק'] })],
+      [],
+    )
+    expect(c.genres).toEqual(['rock', 'jazz'])
+  })
+
+  it('leaves an unknown Hebrew candidate genre unmapped', () => {
+    const [c] = deriveCandidateFacts([item({ genres: ['זמר עברי'] })], [])
+    expect(c.genres).toEqual(['זמר עברי'])
+  })
+})
+
+describe('candidate genre matching across scripts (spec 0015 §8)', () => {
+  it('a canonical rock candidate matches an intent includeGenres ["rock"]', () => {
+    const list = deriveCandidateFacts([item({ id: 'r', genres: ['רוק'] })], [])
+    const out = applyHardFilters(list, baseIntent({ includeGenres: ['rock'] }), NOW)
+    expect(out.map((c) => c.id)).toEqual(['r'])
+  })
+
+  it('a Hebrew rock exclusion removes the canonical rock candidate', () => {
+    const list = deriveCandidateFacts(
+      [
+        item({ id: 'r', genres: ['רוק'] }),
+        item({ id: 'j', genres: ['jazz'] }),
+      ],
+      [],
+    )
+    // exclude value already went through the authoritative normalizer -> "rock"
+    const out = applyHardFilters(list, baseIntent({ excludeGenres: ['rock'] }), NOW)
+    expect(out.map((c) => c.id)).toEqual(['j'])
+  })
+
+  it('English-only candidate + intent filter result is unchanged (regression guard)', () => {
+    const list = deriveCandidateFacts(
+      [
+        item({ id: 'a', genres: ['rock'] }),
+        item({ id: 'b', genres: ['jazz'] }),
+      ],
+      [],
+    )
+    const out = applyHardFilters(list, baseIntent({ includeGenres: ['rock'] }), NOW)
+    expect(out.map((c) => c.id)).toEqual(['a'])
+  })
 })
 
 describe('applyHardFilters', () => {

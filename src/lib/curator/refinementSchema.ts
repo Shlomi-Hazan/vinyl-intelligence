@@ -62,6 +62,8 @@ export const REFINEMENT_SYSTEM_PROMPT = [
   '  the user explicitly asks for it or it is semantically unambiguous. Put',
   '  subjective desires in mood / energy / preference - do NOT invent hard genre',
   '  or decade filters for them.',
+  '- includeGenres / excludeGenres: use canonical lowercase English genre names',
+  '  (e.g. "rock", "jazz", "hip hop") whatever language the follow-up is in.',
   '- decades are four-digit decade-start years: 1990 means the 1990s. Only emit',
   `  a decade that is a multiple of 10 between ${DECADE_MIN} and ${DECADE_MAX}.`,
   '- recentDays: 1 to 365, or null (the app defaults to 30 days).',
