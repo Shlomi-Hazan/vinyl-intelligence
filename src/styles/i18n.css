@@ -1,0 +1,21 @@
+/*
+ * Multilingual / bidirectional dynamic content (spec 0015).
+ *
+ * The application chrome stays English and LTR; these rules only affect the
+ * `<bdi>` runs that `BidiText` renders around dynamic record / user text.
+ */
+
+/* Safety net: keep every bidi-isolate run isolated even if a reset zeroes it. */
+bdi {
+  unicode-bidi: isolate;
+}
+
+/*
+ * Hebrew-dominant runs must not inherit the wide letter-spacing that several
+ * chrome labels use (eyebrows, uppercase chips, section labels). Letter-spacing
+ * on Hebrew forces gaps between letters and detaches combining marks;
+ * text-transform is a harmless no-op for Hebrew and is left alone.
+ */
+bdi[lang='he'] {
+  letter-spacing: normal;
+}

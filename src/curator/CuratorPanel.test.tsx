@@ -17,6 +17,7 @@ import type { CollectionData } from '../app/collection-data-context.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import { nameIgnoringBidi, textIgnoringBidi } from '../test/i18n.ts'
 
 vi.mock('../lib/curator/client.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/curator/client.ts')>()
@@ -155,6 +156,44 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('CuratorPanel - Hebrew & multilingual (spec 0015)', () => {
+  it('gives the request textarea dir="auto"', () => {
+    renderPanel(<CuratorPanel client={client} userId="user-1" />)
+    expect(screen.getByLabelText('Your request')).toHaveAttribute('dir', 'auto')
+  })
+
+  it('renders a Hebrew recommendation reason / title / artist inside <bdi>', async () => {
+    const user = userEvent.setup()
+    const base = okResult()
+    if (base.status !== 'ok') {
+      throw new Error('okResult() must be an ok result')
+    }
+    const heb: CuratorResult = {
+      ...base,
+      recommendations: [
+        {
+          ...base.recommendations[0],
+          artist: 'שלום חנוך',
+          title: 'מחכים למשיח',
+          reason: 'רשומה חמה וישנה שלא ניגנת לאחרונה.',
+        },
+      ],
+    }
+    mockedRequest.mockResolvedValue(heb)
+    renderPanel(<CuratorPanel client={client} userId="user-1" />, {
+      items: [ownedItem({ id: 'a', release: { ...ownedItem().release, artist: 'שלום חנוך', title: 'מחכים למשיח' } })],
+    })
+    await user.type(screen.getByLabelText('Your request'), 'משהו רגוע')
+    await user.click(screen.getByRole('button', { name: 'Recommend' }))
+
+    const card = await screen.findByRole('article')
+    const reason = within(card).getByText('רשומה חמה וישנה שלא ניגנת לאחרונה.')
+    expect(reason.tagName).toBe('BDI')
+    expect(reason.getAttribute('dir')).toBe('auto')
+    expect(reason.getAttribute('lang')).toBe('he')
+  })
+})
+
 describe('CuratorPanel', () => {
   it('disables Recommend while empty and while pending; shows the char counter', async () => {
     const user = userEvent.setup()
@@ -233,8 +272,8 @@ describe('CuratorPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Recommend' }))
 
     expect(await screen.findByText('No owned records match those constraints.')).toBeInTheDocument()
-    expect(screen.getByText('Genres: rock')).toBeInTheDocument()
-    expect(screen.getByText('Excluded genres: jazz')).toBeInTheDocument()
+    expect(screen.getByText(textIgnoringBidi('Genres: rock'))).toBeInTheDocument()
+    expect(screen.getByText(textIgnoringBidi('Excluded genres: jazz'))).toBeInTheDocument()
     expect(screen.getByText('Decades: 1990s')).toBeInTheDocument()
     expect(screen.getByText('Not played in the last 30 days')).toBeInTheDocument()
     expect(screen.getByLabelText('Your request')).toHaveValue('90s rock no jazz not recent')
@@ -360,7 +399,7 @@ describe('CuratorPanel', () => {
       const cards = await screen.findAllByRole('article')
       // The owned item ('a') resolves -> canonical AlbumArtwork uses its real
       // MusicBrainz release id (CAA release tier).
-      const cover = within(cards[0]).getByRole('img', { name: /Radiohead - OK Computer/ })
+      const cover = within(cards[0]).getByRole('img', { name: nameIgnoringBidi('Radiohead - OK Computer') })
       expect(cover.querySelector('img.vi-art__img')).toHaveAttribute(
         'src',
         'https://coverartarchive.org/release/11111111-1111-4111-8111-111111111111/front-250',

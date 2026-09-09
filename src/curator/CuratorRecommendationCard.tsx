@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
 import { summarizeListeningForItem } from '../collection/listeningSummary.ts'
 import type { LoadPhase } from '../app/collection-data-context.ts'
@@ -179,7 +181,9 @@ export function CuratorRecommendationCard({
         <Link
           to={detailPath}
           className="vi-rec__art"
-          aria-label={`View ${recommendation.title} by ${recommendation.artist}`}
+          aria-label={`View ${isolate(recommendation.title)} by ${isolate(
+            recommendation.artist,
+          )}`}
         >
           <AlbumArtwork
             artist={art.artist}
@@ -198,18 +202,29 @@ export function CuratorRecommendationCard({
         <div className="vi-rec__ident">
           <h3>
             <Link to={detailPath} className="vi-rec__title">
-              {recommendation.title}
+              <BidiText>{recommendation.title}</BidiText>
             </Link>
           </h3>
-          <p className="collection-artist">{recommendation.artist}</p>
+          <p className="collection-artist">
+            <BidiText>{recommendation.artist}</BidiText>
+          </p>
           {detail ? <p className="field-hint">{detail}</p> : null}
           {recommendation.genres.length > 0 ? (
-            <p className="collection-genres">{recommendation.genres.join(', ')}</p>
+            <p className="collection-genres">
+              {recommendation.genres.map((genre, index) => (
+                <span key={genre}>
+                  {index > 0 ? ', ' : ''}
+                  <BidiText>{genre}</BidiText>
+                </span>
+              ))}
+            </p>
           ) : null}
         </div>
       </div>
 
-      <p className="curator-reason">{recommendation.reason}</p>
+      <p className="curator-reason">
+        <BidiText>{recommendation.reason}</BidiText>
+      </p>
 
       <p className="field-hint curator-facts">
         {recommendation.rating !== null ? (

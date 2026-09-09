@@ -5,6 +5,7 @@ import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { CuratorRecommendation } from '../lib/curator/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import { nameIgnoringBidi } from '../test/i18n.ts'
 
 const client = {} as BrowserSupabaseClient
 
@@ -80,7 +81,7 @@ function renderCard(props: Partial<Parameters<typeof CuratorRecommendationCard>[
 describe('CuratorRecommendationCard', () => {
   it('feeds the canonical artwork the owned release MusicBrainz ids', () => {
     renderCard()
-    const cover = screen.getByRole('img', { name: /Pink Floyd - Wish You Were Here/ })
+    const cover = screen.getByRole('img', { name: nameIgnoringBidi('Pink Floyd - Wish You Were Here') })
     // tier 2: CAA release front from the owned item's real provider_release_id
     expect(cover.querySelector('img.vi-art__img')).toHaveAttribute(
       'src',
@@ -109,7 +110,7 @@ describe('CuratorRecommendationCard', () => {
     renderCard({ ownedItem: null })
     // no crash; branded fallback artwork, no invented cover art
     expect(
-      screen.getByRole('img', { name: 'Pink Floyd - Wish You Were Here (no cover art)' }),
+      screen.getByRole('img', { name: nameIgnoringBidi('Pink Floyd - Wish You Were Here (no cover art)') }),
     ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'View record' })).toHaveAttribute(
       'href',

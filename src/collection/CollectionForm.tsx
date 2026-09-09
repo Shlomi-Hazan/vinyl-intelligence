@@ -142,6 +142,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.artist + 8}
             name="artist"
+            dir="auto"
             onChange={(event) => updateField('artist', event.target.value)}
             required
             type="text"
@@ -154,6 +155,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.title + 8}
             name="title"
+            dir="auto"
             onChange={(event) => updateField('title', event.target.value)}
             required
             type="text"
@@ -178,6 +180,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.label + 8}
             name="label"
+            dir="auto"
             onChange={(event) => updateField('label', event.target.value)}
             placeholder="Optional"
             type="text"
@@ -190,6 +193,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.catalogNumber + 8}
             name="catalogNumber"
+            dir="auto"
             onChange={(event) => updateField('catalogNumber', event.target.value)}
             placeholder="Optional"
             type="text"
@@ -202,6 +206,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.country + 8}
             name="country"
+            dir="auto"
             onChange={(event) => updateField('country', event.target.value)}
             placeholder="Optional"
             type="text"
@@ -214,6 +219,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.format + 8}
             name="format"
+            dir="auto"
             onChange={(event) => updateField('format', event.target.value)}
             placeholder="Optional"
             type="text"
@@ -226,6 +232,7 @@ export function CollectionForm({
           <input
             maxLength={RELEASE_FIELD_LIMITS.genre + 8}
             name="genre"
+            dir="auto"
             onChange={(event) => updateField('genre', event.target.value)}
             placeholder="Optional"
             type="text"

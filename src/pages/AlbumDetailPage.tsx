@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
 import { CustomCoverControl } from '../collection/CustomCoverControl.tsx'
 import { CollectionItemListeningControls } from '../collection/CollectionItemListeningControls.tsx'
@@ -167,7 +168,9 @@ export function AlbumDetailPage() {
               {meta.map((entry) => (
                 <div key={entry.k}>
                   <dt>{entry.k}</dt>
-                  <dd>{entry.v}</dd>
+                  <dd>
+                    <BidiText>{entry.v}</BidiText>
+                  </dd>
                 </div>
               ))}
             </dl>
@@ -247,9 +250,12 @@ export function AlbumDetailPage() {
       {removing ? (
         <Dialog open onClose={() => setRemoving(false)} title="Remove from collection?">
           <p>
-            This removes <strong>“{release.title}”</strong> and its listening
-            history from your collection. Catalog metadata other collectors share
-            is not affected. This can’t be undone.
+            This removes{' '}
+            <strong>
+              “<BidiText>{release.title}</BidiText>”
+            </strong>{' '}
+            and its listening history from your collection. Catalog metadata
+            other collectors share is not affected. This can’t be undone.
           </p>
           <div className="vi-dialog__actions">
             <Button variant="ghost" size="sm" onClick={() => setRemoving(false)}>
@@ -437,6 +443,7 @@ function NotesEditor({
     <div className="vi-album__notes">
       <textarea
         className="vi-input"
+        dir="auto"
         rows={3}
         maxLength={NOTE_MAX_LENGTH}
         value={draft}

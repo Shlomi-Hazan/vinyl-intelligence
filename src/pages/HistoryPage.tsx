@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { Dialog } from '../ui/Dialog.tsx'
 import { Button } from '../ui/primitives.tsx'
 import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
@@ -57,7 +59,18 @@ type RowProps = {
 function HistoryEventRow({ event, item, client, userId, onEdit, onDelete }: RowProps) {
   const artist = item?.release.artist ?? ''
   const title = item?.release.title ?? 'Record no longer in your collection'
-  const heading = item ? `${artist} - ${title}` : title
+
+  // Each dynamic run is isolated separately so a Hebrew artist + English title
+  // (or the reverse) reads correctly; the " - " separator is chrome.
+  const headingRuns = item ? (
+    <>
+      <BidiText>{artist}</BidiText>
+      {artist ? ' - ' : ''}
+      <BidiText>{title}</BidiText>
+    </>
+  ) : (
+    <BidiText>{title}</BidiText>
+  )
 
   return (
     <li className="vi-histrow">
@@ -80,10 +93,12 @@ function HistoryEventRow({ event, item, client, userId, onEdit, onDelete }: RowP
       <div className="vi-histrow__body">
         {item ? (
           <Link to={`/collection/${item.id}`} className="vi-histrow__title">
-            {heading}
+            {headingRuns}
           </Link>
         ) : (
-          <span className="vi-histrow__title vi-histrow__title--gone">{heading}</span>
+          <span className="vi-histrow__title vi-histrow__title--gone">
+            {headingRuns}
+          </span>
         )}
         <time className="vi-histrow__time mono" dateTime={event.listened_at}>
           {timeOfDay(event.listened_at)}
@@ -260,7 +275,7 @@ function EditTimeDialog({
     <Dialog open onClose={onClose} title="Edit listening time">
       <p className="vi-hint">
         {title
-          ? `When did you actually play “${title}”?`
+          ? `When did you actually play “${isolate(title)}”?`
           : 'When did you actually play this record?'}
       </p>
       <label className="vi-label" htmlFor="vi-edit-listened-at">
@@ -317,8 +332,15 @@ function DeleteEventDialog({
   return (
     <Dialog open onClose={onClose} title="Remove this play?">
       <p>
-        This removes {title ? <strong>one play of “{title}”</strong> : 'this play'} from
-        your listening history. The record stays in your collection.
+        This removes{' '}
+        {title ? (
+          <strong>
+            one play of “<BidiText>{title}</BidiText>”
+          </strong>
+        ) : (
+          'this play'
+        )}{' '}
+        from your listening history. The record stays in your collection.
       </p>
       {message ? (
         <p className="vi-error-text" role="alert">

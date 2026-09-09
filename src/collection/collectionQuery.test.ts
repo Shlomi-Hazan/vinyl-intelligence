@@ -190,6 +190,102 @@ describe('collectionQuery', () => {
     }
   })
 
+  describe('Hebrew & multilingual (spec 0015)', () => {
+    it('finds a Hebrew record by a Hebrew substring and tolerates a geresh variant', () => {
+      const collection = [
+        item({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+        item({ artist: 'אריק איינשטיין', title: 'שבלול' }),
+        item({ artist: "ג'ירפות", title: 'אלבום' }),
+      ]
+
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'חנוך' }), 'recently-added')),
+      ).toEqual([collection[0].id])
+      // gershayim/geresh-insensitive: stored ASCII apostrophe, query with U+05F3
+      expect(
+        ids(
+          applyCollectionQuery(
+            collection,
+            filters({ search: 'ג' + String.fromCodePoint(0x05f3) + 'ירפות' }),
+            'recently-added',
+          ),
+        ),
+      ).toEqual([collection[2].id])
+    })
+
+    it('keeps English search behaviour and does not bridge scripts', () => {
+      const collection = [
+        item({ artist: 'David Bowie', title: 'Heroes' }),
+        item({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+      ]
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'BOWIE' }), 'recently-added')),
+      ).toEqual([collection[0].id])
+      // a transliteration query must NOT match the Hebrew record
+      expect(
+        applyCollectionQuery(collection, filters({ search: 'shalom hanoch' }), 'recently-added'),
+      ).toHaveLength(0)
+    })
+
+    it('matches a substring of ARTIST OR TITLE, never a cross-field join', () => {
+      const collection = [
+        item({ artist: 'David Bowie', title: 'Heroes' }),
+        item({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+      ]
+      // artist-side and title-side substrings both match their own record
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'bowie' }), 'recently-added')),
+      ).toEqual([collection[0].id])
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'heroes' }), 'recently-added')),
+      ).toEqual([collection[0].id])
+      // a query spanning artist + title is NOT a match (no cross-field search)
+      expect(
+        applyCollectionQuery(
+          collection,
+          filters({ search: 'David Bowie Heroes' }),
+          'recently-added',
+        ),
+      ).toHaveLength(0)
+      // Hebrew artist-side and title-side each still match
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'חנוך' }), 'recently-added')),
+      ).toEqual([collection[1].id])
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'למשיח' }), 'recently-added')),
+      ).toEqual([collection[1].id])
+      expect(
+        applyCollectionQuery(collection, filters({ search: 'חנוך מחכים' }), 'recently-added'),
+      ).toHaveLength(0)
+    })
+
+    it('sorts Latin bucket (A-Z) before Hebrew bucket (alef-tav)', () => {
+      const a = item({ artist: 'שלום חנוך', title: 'x' })
+      const b = item({ artist: 'Radiohead', title: 'y' })
+      const c = item({ artist: 'אריק איינשטיין', title: 'z' })
+      const d = item({ artist: 'ABBA', title: 'w' })
+      const collection = [a, b, c, d]
+
+      expect(ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'artist-asc'))).toEqual([
+        d.id, // ABBA
+        b.id, // Radiohead
+        c.id, // אריק
+        a.id, // שלום
+      ])
+    })
+
+    it('English-only sort order is unchanged and deterministic across runs', () => {
+      const z = item({ artist: 'Zappa', title: 'z' })
+      const a = item({ artist: 'ABBA', title: 'a' })
+      const m = item({ artist: 'Miles Davis', title: 'm' })
+      const collection = [z, a, m]
+      const once = ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'artist-asc'))
+      const twice = ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'artist-asc'))
+      expect(once).toEqual([a.id, m.id, z.id])
+      expect(once).toEqual(twice)
+    })
+  })
+
   describe('effective genres (catalog + personal)', () => {
     it('filters on a personal genre the catalog does not carry', () => {
       const withPersonal: CollectionItemWithRelease = {

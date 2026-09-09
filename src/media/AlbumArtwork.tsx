@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { fallbackAccent } from './fallbackCover.ts'
 import {
   caaReleaseFrontUrl,
@@ -115,9 +117,11 @@ export function AlbumArtwork({
   // Tier 1 is still resolving and nothing else can be shown yet.
   const resolvingCustom = wantsCustom && signed.status === 'loading' && sources.length === 0
   const hasImage = currentSrc !== null
+  // Each dynamic run is bidi-isolated so a Hebrew artist / title does not
+  // reorder the English " - " separator or the "(no cover art)" suffix.
   const label = hasImage
-    ? `${artist} - ${title}`
-    : `${artist} - ${title}${resolvingCustom ? '' : ' (no cover art)'}`
+    ? `${isolate(artist)} - ${isolate(title)}`
+    : `${isolate(artist)} - ${isolate(title)}${resolvingCustom ? '' : ' (no cover art)'}`
 
   return (
     <div
@@ -162,8 +166,9 @@ export function AlbumArtwork({
       {showText && !hasImage ? (
         <span className="vi-art__label" aria-hidden="true">
           <span className="vi-art__label-inner" style={{ background: accent }}>
-            <span className="vi-art__title">{title}</span>
-            <span className="vi-art__artist">{artist}</span>
+            {/* each field's <bdi> IS its own ellipsis container (direction-aware) */}
+            <BidiText className="vi-art__title">{title}</BidiText>
+            <BidiText className="vi-art__artist">{artist}</BidiText>
           </span>
         </span>
       ) : null}

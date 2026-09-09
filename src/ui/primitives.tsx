@@ -162,6 +162,7 @@ export function SearchInput({
       <Input
         ref={inputRef}
         type="search"
+        dir="auto"
         aria-label={label}
         placeholder={placeholder}
         value={value}

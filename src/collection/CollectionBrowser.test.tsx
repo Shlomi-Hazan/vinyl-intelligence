@@ -103,6 +103,104 @@ function renderBrowser(
   )
 }
 
+describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
+  it('renders Hebrew artist/title inside <bdi dir="auto"> and finds them by a Hebrew query', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBrowser([
+      item('1', { release: { artist: 'שלום חנוך', title: 'מחכים למשיח' } }),
+      item('2', { release: { artist: 'David Bowie', title: 'Heroes' } }),
+    ])
+
+    const hebTitle = container.querySelector('bdi.vi-albumcard__title') as HTMLElement
+    expect(hebTitle.textContent).toBe('מחכים למשיח')
+    expect(hebTitle.getAttribute('dir')).toBe('auto')
+    expect(hebTitle.getAttribute('lang')).toBe('he')
+
+    await user.type(screen.getByPlaceholderText('Search artist or album'), 'חנוך')
+    await waitFor(() =>
+      expect(screen.getByText('1 of 2 records')).toBeInTheDocument(),
+    )
+  })
+
+  it('gives the collection search input dir="auto"', () => {
+    renderBrowser([item('1')])
+    expect(screen.getByPlaceholderText('Search artist or album')).toHaveAttribute(
+      'dir',
+      'auto',
+    )
+  })
+
+  it('puts direction/language on the native genre <option>, not a nested <bdi>', () => {
+    renderBrowser([
+      item('1', { release: { genres: ['רוק'] } }),
+      item('2', { release: { genres: ['jazz'] } }),
+    ])
+    const select = screen.getByLabelText('Filter by genre')
+    const hebOption = within(select).getByRole('option', { name: 'רוק' })
+    expect(hebOption.querySelector('bdi')).toBeNull()
+    expect(hebOption).toHaveAttribute('dir', 'auto')
+    expect(hebOption).toHaveAttribute('lang', 'he')
+    expect(within(select).getByRole('option', { name: 'jazz' })).not.toHaveAttribute(
+      'lang',
+    )
+  })
+
+  it('sorts the Latin bucket before the Hebrew bucket (Artist alphabetical)', async () => {
+    const user = userEvent.setup()
+    const { container } = renderBrowser([
+      item('1', { release: { artist: 'שלום חנוך', title: 'AA' } }),
+      item('2', { release: { artist: 'Radiohead', title: 'BB' } }),
+      item('3', { release: { artist: 'אריק איינשטיין', title: 'CC' } }),
+      item('4', { release: { artist: 'ABBA', title: 'DD' } }),
+    ])
+    await user.selectOptions(screen.getByLabelText('Sort'), 'artist-asc')
+    const titles = Array.from(
+      container.querySelectorAll('bdi.vi-albumcard__title'),
+    ).map((el) => el.textContent)
+    // Latin bucket A-Z: ABBA(DD), Radiohead(BB); then Hebrew: אריק(CC), שלום(AA)
+    expect(titles).toEqual(['DD', 'BB', 'CC', 'AA'])
+  })
+
+  it('renames the sort labels to English-only', () => {
+    renderBrowser([item('1')])
+    const sort = screen.getByLabelText('Sort')
+    expect(within(sort).getByRole('option', { name: 'Artist alphabetical' })).toBeInTheDocument()
+    expect(within(sort).getByRole('option', { name: 'Album alphabetical' })).toBeInTheDocument()
+  })
+
+  it('renders composite card meta as SEPARATE <bdi> runs (year / Hebrew genre)', () => {
+    const { container } = renderBrowser([
+      item('1', {
+        release: { artist: 'David Bowie', title: 'Low', release_year: 1977, genres: ['רוק'] },
+      }),
+    ])
+    const meta = container.querySelector('.vi-albumcard__meta') as HTMLElement
+    const runs = Array.from(meta.querySelectorAll('bdi')).map((el) => ({
+      text: el.textContent,
+      lang: el.getAttribute('lang'),
+    }))
+    // artist, year, genre - each isolated; one Hebrew field does not set the run
+    expect(runs).toEqual([
+      { text: 'David Bowie', lang: null },
+      { text: '1977', lang: null },
+      { text: 'רוק', lang: 'he' },
+    ])
+    // the " · " separators are literal chrome, outside the isolates
+    expect(meta).toHaveTextContent('David Bowie · 1977 · רוק')
+  })
+
+  it('the actual grid-title ellipsis element is direction-aware (Fix 2)', () => {
+    const { container } = renderBrowser([
+      item('1', { release: { title: 'מחכים למשיח' } }),
+    ])
+    const titleEl = container.querySelector('bdi.vi-albumcard__title') as HTMLElement
+    // the element that owns overflow: hidden / text-overflow: ellipsis IS the <bdi>
+    expect(titleEl.tagName).toBe('BDI')
+    expect(titleEl.getAttribute('dir')).toBe('auto')
+    expect(titleEl.getAttribute('lang')).toBe('he')
+  })
+})
+
 describe('CollectionBrowser', () => {
   it('renders a cover-first grid of every record by default', () => {
     renderBrowser([item('1'), item('2'), item('3')])

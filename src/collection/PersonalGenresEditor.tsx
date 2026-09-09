@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Button } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
+import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import {
   PERSONAL_GENRE_MAX_LENGTH,
   PERSONAL_GENRES_MAX,
@@ -116,7 +118,7 @@ export function PersonalGenresEditor({
           <ul className="vi-chiprow" aria-label="Catalog genres">
             {catalogGenres.map((g) => (
               <li key={g} className="vi-chip vi-chip--static">
-                {g}
+                <BidiText>{g}</BidiText>
               </li>
             ))}
           </ul>
@@ -129,11 +131,11 @@ export function PersonalGenresEditor({
           <ul className="vi-chiprow" aria-label="Your genres">
             {genres.map((g) => (
               <li key={g} className="vi-chip">
-                {g}
+                <BidiText>{g}</BidiText>
                 <button
                   type="button"
                   className="vi-chip__x"
-                  aria-label={`Remove ${g}`}
+                  aria-label={`Remove ${isolate(g)}`}
                   disabled={busy}
                   onClick={() => removeAt(g)}
                 >
@@ -155,6 +157,7 @@ export function PersonalGenresEditor({
             <input
               className="vi-input"
               type="text"
+              dir="auto"
               value={draft}
               maxLength={PERSONAL_GENRE_MAX_LENGTH + 4}
               placeholder="e.g. west coast hip hop"
