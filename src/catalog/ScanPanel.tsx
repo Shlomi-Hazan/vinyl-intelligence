@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
-import { BidiText } from '../components/BidiText.tsx'
+import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { isolate } from '../lib/i18n/isolate.ts'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
 import { Vinny } from '../brand/Vinny.tsx'
@@ -111,10 +111,11 @@ function clueList(r: CoverRecognition): string[] {
   return out
 }
 
-function candidateMeta(c: CatalogCandidate): string {
-  return [c.releaseYear?.toString() ?? null, c.label, c.country, c.format]
-    .filter((x): x is string => Boolean(x))
-    .join(' · ')
+/** The separate meta fields for a catalogue candidate, in display order. */
+function candidateMetaParts(c: CatalogCandidate): string[] {
+  return [c.releaseYear?.toString() ?? null, c.label, c.country, c.format].filter(
+    (x): x is string => Boolean(x),
+  )
 }
 
 export function ScanPanel({
@@ -474,9 +475,9 @@ export function ScanPanel({
                       <h3 className="vi-candidate__title">
                         <BidiText>{c.title}</BidiText>
                       </h3>
-                      {candidateMeta(c) ? (
+                      {candidateMetaParts(c).length > 0 ? (
                         <p className="vi-candidate__meta">
-                          <BidiText>{candidateMeta(c)}</BidiText>
+                          <BidiJoin parts={candidateMetaParts(c)} />
                         </p>
                       ) : null}
                       <div className="vi-candidate__actions">

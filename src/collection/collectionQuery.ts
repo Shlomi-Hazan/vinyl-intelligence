@@ -131,19 +131,22 @@ export function yearFilterIsInvalid(raw: string): boolean {
 }
 
 /**
- * `needle` is already a `buildSearchKey` of the trimmed query (see
- * `applyCollectionQuery`). The stored artist/title are passed through the same
- * comparison-only key so orthographic variants (niqqud, geresh vs apostrophe,
- * maqaf vs hyphen, whitespace, case) match. Stored metadata is never rewritten.
+ * `needle` is already a `buildSearchKey` of the raw query (see
+ * `applyCollectionQuery`). The artist and title are matched as SEPARATE fields -
+ * the historical Collection contract is a substring of artist OR title, never a
+ * cross-field match. Each field is passed through the same comparison-only key
+ * so orthographic variants (niqqud, geresh vs apostrophe, maqaf vs hyphen,
+ * whitespace, case) match. Stored metadata is never rewritten.
  */
 function matchesSearch(item: CollectionItemWithRelease, needle: string): boolean {
   if (needle.length === 0) {
     return true
   }
 
-  return buildSearchKey(
-    `${item.release.artist}\n${item.release.title}`,
-  ).includes(needle)
+  return (
+    buildSearchKey(item.release.artist).includes(needle)
+    || buildSearchKey(item.release.title).includes(needle)
+  )
 }
 
 function matchesYear(

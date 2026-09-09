@@ -111,7 +111,7 @@ describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
       item('2', { release: { artist: 'David Bowie', title: 'Heroes' } }),
     ])
 
-    const hebTitle = container.querySelector('.vi-albumcard__title bdi') as HTMLElement
+    const hebTitle = container.querySelector('bdi.vi-albumcard__title') as HTMLElement
     expect(hebTitle.textContent).toBe('מחכים למשיח')
     expect(hebTitle.getAttribute('dir')).toBe('auto')
     expect(hebTitle.getAttribute('lang')).toBe('he')
@@ -155,7 +155,7 @@ describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
     ])
     await user.selectOptions(screen.getByLabelText('Sort'), 'artist-asc')
     const titles = Array.from(
-      container.querySelectorAll('.vi-albumcard__title bdi'),
+      container.querySelectorAll('bdi.vi-albumcard__title'),
     ).map((el) => el.textContent)
     // Latin bucket A-Z: ABBA(DD), Radiohead(BB); then Hebrew: אריק(CC), שלום(AA)
     expect(titles).toEqual(['DD', 'BB', 'CC', 'AA'])
@@ -166,6 +166,38 @@ describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
     const sort = screen.getByLabelText('Sort')
     expect(within(sort).getByRole('option', { name: 'Artist alphabetical' })).toBeInTheDocument()
     expect(within(sort).getByRole('option', { name: 'Album alphabetical' })).toBeInTheDocument()
+  })
+
+  it('renders composite card meta as SEPARATE <bdi> runs (year / Hebrew genre)', () => {
+    const { container } = renderBrowser([
+      item('1', {
+        release: { artist: 'David Bowie', title: 'Low', release_year: 1977, genres: ['רוק'] },
+      }),
+    ])
+    const meta = container.querySelector('.vi-albumcard__meta') as HTMLElement
+    const runs = Array.from(meta.querySelectorAll('bdi')).map((el) => ({
+      text: el.textContent,
+      lang: el.getAttribute('lang'),
+    }))
+    // artist, year, genre - each isolated; one Hebrew field does not set the run
+    expect(runs).toEqual([
+      { text: 'David Bowie', lang: null },
+      { text: '1977', lang: null },
+      { text: 'רוק', lang: 'he' },
+    ])
+    // the " · " separators are literal chrome, outside the isolates
+    expect(meta).toHaveTextContent('David Bowie · 1977 · רוק')
+  })
+
+  it('the actual grid-title ellipsis element is direction-aware (Fix 2)', () => {
+    const { container } = renderBrowser([
+      item('1', { release: { title: 'מחכים למשיח' } }),
+    ])
+    const titleEl = container.querySelector('bdi.vi-albumcard__title') as HTMLElement
+    // the element that owns overflow: hidden / text-overflow: ellipsis IS the <bdi>
+    expect(titleEl.tagName).toBe('BDI')
+    expect(titleEl.getAttribute('dir')).toBe('auto')
+    expect(titleEl.getAttribute('lang')).toBe('he')
   })
 })
 

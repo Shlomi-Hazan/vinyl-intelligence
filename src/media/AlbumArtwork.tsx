@@ -166,12 +166,9 @@ export function AlbumArtwork({
       {showText && !hasImage ? (
         <span className="vi-art__label" aria-hidden="true">
           <span className="vi-art__label-inner" style={{ background: accent }}>
-            <span className="vi-art__title">
-              <BidiText>{title}</BidiText>
-            </span>
-            <span className="vi-art__artist">
-              <BidiText>{artist}</BidiText>
-            </span>
+            {/* each field's <bdi> IS its own ellipsis container (direction-aware) */}
+            <BidiText className="vi-art__title">{title}</BidiText>
+            <BidiText className="vi-art__artist">{artist}</BidiText>
           </span>
         </span>
       ) : null}

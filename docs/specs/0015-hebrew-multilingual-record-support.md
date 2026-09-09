@@ -35,6 +35,15 @@ of PR 3 (§6.5); PR 1's BiDi scope explicitly covers the VIN recommendation
 remove-dialog title isolation, so PR 2 stays an AI/genre-semantics change with
 no BiDi repair (§6.8, §14).
 
+Rev 5 (2026-09-09, PR #23 pre-merge review): §7 free-text search compares the
+artist and title as SEPARATE fields (`buildSearchKey(artist).includes(needle) ||
+buildSearchKey(title).includes(needle)`), preserving the spec-0007 artist-OR-title
+contract — the earlier joined `` `${artist}\n${title}` `` phrasing is removed
+because `buildSearchKey` collapses the newline and would have introduced a new
+cross-field match. §9 other/neutral order clarified as true Unicode
+scalar-code-point comparison (not UTF-16 `<`). No status change; general docs
+untouched.
+
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).
 
@@ -294,12 +303,16 @@ order:
   preservation contract. (Personal genres have their own dedicated
   canonicalization/write policy — §11 — which is unrelated to `buildSearchKey`.)
 - Data flow: raw `?q=` → raw `filters.search` → **stays visible verbatim in the
-  URL and the search input** → `matchesSearch` derives
-  `buildSearchKey(query)` and `buildSearchKey(storedField)` and compares:
-  `buildSearchKey(storedField).includes(buildSearchKey(query))`, where the
-  stored field is `` `${artist}\n${title}` `` (unchanged join). `CollectionBrowser`
-  does **not** replace or rewrite `q` with the normalized key. No parameter is
-  renamed.
+  URL and the search input** → `matchesSearch` derives `needle =
+  buildSearchKey(query)` and compares it against the **artist and the title as
+  SEPARATE fields** — the historical Collection contract (spec 0007) is a
+  substring of `artist` OR `title`, never a cross-field join:
+  `buildSearchKey(artist).includes(needle) || buildSearchKey(title).includes(needle)`.
+  `CollectionBrowser` does **not** replace or rewrite `q` with the normalized
+  key. No parameter is renamed. (Rev-note: an earlier draft compared a joined
+  `` `${artist}\n${title}` `` string; that is corrected here to preserve the
+  approved artist-OR-title semantics — `buildSearchKey` collapses the newline,
+  which would otherwise have introduced a new cross-field match.)
 - What `buildSearchKey` resolves to the same key: **orthographic variants** of
   the same text — niqqud presence/absence, geresh/gershayim vs ASCII quote,
   maqaf vs hyphen/dash, Unicode compatibility/presentation forms, whitespace
@@ -383,10 +396,12 @@ Extends spec 0007. Applies to the Collection `artist-asc` and `album-asc` sorts.
 3. Compare **Latin-vs-Latin** with the `en` collator, **Hebrew-vs-Hebrew** with
    the `he` collator. Cross-bucket order is fixed by step 1 (Latin < Hebrew <
    other/neutral), so no collator is asked to compare across scripts.
-4. `other/neutral` bucket: deterministic documented fallback — code-point order
-   via a plain `<` comparison (no collator), then the step-5 tiebreak. (This
-   matches how numeric/symbol artist names sort today; it is not locale-
-   dependent.)
+4. `other/neutral` bucket: deterministic **Unicode scalar code-point**
+   lexicographic comparison — iterate whole code points so a supplementary
+   (non-BMP) character compares by its real scalar value, not by its UTF-16
+   surrogate units (a plain string `<` would be UTF-16 code-unit order, which
+   differs for non-BMP). No collator. Then the step-5 tiebreak. Locale-
+   independent.
 5. Existing stable tiebreak preserved for every bucket: original array index
    (`a.index - b.index` in `applyCollectionQuery`).
 

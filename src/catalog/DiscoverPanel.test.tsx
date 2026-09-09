@@ -67,6 +67,34 @@ function renderPanel(owned: CollectionItemWithRelease[] = []) {
 }
 
 describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
+  it('renders composite candidate meta as separate <bdi> runs (year / Hebrew label / Latin format)', async () => {
+    const user = userEvent.setup()
+    searchCatalog.mockResolvedValue([
+      candidate({
+        releaseYear: 1985,
+        label: 'הד ארצי',
+        catalogNumber: null,
+        country: null,
+        format: 'Vinyl',
+      }),
+    ])
+    renderPanel()
+    await user.type(screen.getByLabelText('Search the catalog'), 'test')
+    await user.keyboard('{Enter}')
+    const card = await screen.findByRole('article')
+    const meta = card.querySelector('.vi-candidate__meta') as HTMLElement
+    const runs = Array.from(meta.querySelectorAll('bdi')).map((el) => ({
+      text: el.textContent,
+      lang: el.getAttribute('lang'),
+    }))
+    expect(runs).toEqual([
+      { text: '1985', lang: null },
+      { text: 'הד ארצי', lang: 'he' },
+      { text: 'Vinyl', lang: null },
+    ])
+    expect(meta).toHaveTextContent('1985 · הד ארצי · Vinyl')
+  })
+
   it('gives the catalog search input dir="auto" and isolates a Hebrew candidate', async () => {
     const user = userEvent.setup()
     searchCatalog.mockResolvedValue([
@@ -115,7 +143,10 @@ describe('DiscoverPanel', () => {
     const card = await screen.findByRole('article')
     expect(within(card).getByText('Portishead')).toBeInTheDocument()
     expect(within(card).getByText('Dummy')).toBeInTheDocument()
-    expect(within(card).getByText('1994 · Go! Beat · GB · LP')).toBeInTheDocument()
+    // each meta field is its own <bdi>; the row keeps the exact order/values
+    expect(card.querySelector('.vi-candidate__meta')).toHaveTextContent(
+      '1994 · Go! Beat · GB · LP',
+    )
     expect(searchCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead')
   })
 

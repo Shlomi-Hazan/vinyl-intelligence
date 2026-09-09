@@ -84,14 +84,18 @@ describe('AlbumArtwork', () => {
     const { container } = render(
       <AlbumArtwork artist="שלום חנוך" title="Heroes" />,
     )
-    const label = container.querySelector('.vi-art__label') as HTMLElement
-    const runs = label.querySelectorAll('bdi')
-    expect(runs).toHaveLength(2)
-    // title run (English) then artist run (Hebrew), each isolated independently
-    expect(runs[0].textContent).toBe('Heroes')
-    expect(runs[0].getAttribute('lang')).toBeNull()
-    expect(runs[1].textContent).toBe('שלום חנוך')
-    expect(runs[1].getAttribute('lang')).toBe('he')
+    // the actual ellipsis containers (.vi-art__title / .vi-art__artist) ARE the
+    // <bdi> elements, so each is direction-aware (Fix 2), and each field is
+    // isolated independently (Fix 1).
+    const titleEl = container.querySelector('bdi.vi-art__title') as HTMLElement
+    const artistEl = container.querySelector('bdi.vi-art__artist') as HTMLElement
+    expect(titleEl.tagName).toBe('BDI')
+    expect(titleEl.textContent).toBe('Heroes')
+    expect(titleEl.getAttribute('dir')).toBe('auto')
+    expect(titleEl.getAttribute('lang')).toBeNull()
+    expect(artistEl.textContent).toBe('שלום חנוך')
+    expect(artistEl.getAttribute('dir')).toBe('auto')
+    expect(artistEl.getAttribute('lang')).toBe('he')
     // and the accessible name isolates each field too
     expect(
       screen.getByRole('img', { name: nameIgnoringBidi('שלום חנוך - Heroes (no cover art)') }),

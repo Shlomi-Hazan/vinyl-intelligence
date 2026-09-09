@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
-import { BidiText } from '../components/BidiText.tsx'
+import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
 import { Button, SearchInput } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -28,16 +28,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'That did not work. Try again.'
 }
 
-function candidateMeta(c: CatalogCandidate): string {
+/** The separate meta fields for a catalogue candidate, in display order. */
+function candidateMetaParts(c: CatalogCandidate): string[] {
   return [
     c.releaseYear?.toString() ?? null,
     c.label,
     c.catalogNumber,
     c.country,
     c.format,
-  ]
-    .filter((x): x is string => Boolean(x))
-    .join(' · ')
+  ].filter((x): x is string => Boolean(x))
 }
 
 type DiscoverPanelProps = {
@@ -249,7 +248,7 @@ export function DiscoverPanel({
         <ul className="vi-candidate__list" aria-label="Catalog results">
           {candidates.map((c) => {
             const owned = ownedReleaseIds.has(c.providerReleaseId)
-            const meta = candidateMeta(c)
+            const metaParts = candidateMetaParts(c)
             return (
               <li key={c.providerReleaseId}>
                 <article className="vi-candidate" data-owned={owned}>
@@ -270,9 +269,9 @@ export function DiscoverPanel({
                     <h3 className="vi-candidate__title">
                       <BidiText>{c.title}</BidiText>
                     </h3>
-                    {meta ? (
+                    {metaParts.length > 0 ? (
                       <p className="vi-candidate__meta">
-                        <BidiText>{meta}</BidiText>
+                        <BidiJoin parts={metaParts} />
                       </p>
                     ) : null}
                     <div className="vi-candidate__actions">

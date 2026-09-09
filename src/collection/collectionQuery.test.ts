@@ -227,6 +227,38 @@ describe('collectionQuery', () => {
       ).toHaveLength(0)
     })
 
+    it('matches a substring of ARTIST OR TITLE, never a cross-field join', () => {
+      const collection = [
+        item({ artist: 'David Bowie', title: 'Heroes' }),
+        item({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+      ]
+      // artist-side and title-side substrings both match their own record
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'bowie' }), 'recently-added')),
+      ).toEqual([collection[0].id])
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'heroes' }), 'recently-added')),
+      ).toEqual([collection[0].id])
+      // a query spanning artist + title is NOT a match (no cross-field search)
+      expect(
+        applyCollectionQuery(
+          collection,
+          filters({ search: 'David Bowie Heroes' }),
+          'recently-added',
+        ),
+      ).toHaveLength(0)
+      // Hebrew artist-side and title-side each still match
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'חנוך' }), 'recently-added')),
+      ).toEqual([collection[1].id])
+      expect(
+        ids(applyCollectionQuery(collection, filters({ search: 'למשיח' }), 'recently-added')),
+      ).toEqual([collection[1].id])
+      expect(
+        applyCollectionQuery(collection, filters({ search: 'חנוך מחכים' }), 'recently-added'),
+      ).toHaveLength(0)
+    })
+
     it('sorts Latin bucket (A-Z) before Hebrew bucket (alef-tav)', () => {
       const a = item({ artist: 'שלום חנוך', title: 'x' })
       const b = item({ artist: 'Radiohead', title: 'y' })

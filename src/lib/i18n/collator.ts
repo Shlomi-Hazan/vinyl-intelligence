@@ -40,12 +40,34 @@ function bucketOf(value: string): SortBucket {
   }
 }
 
-/** Deterministic code-point comparison (BMP-safe; locale-independent). */
+/**
+ * Deterministic Unicode *scalar code-point* lexicographic comparison,
+ * locale-independent. The string iterator yields whole code points, so a
+ * supplementary (non-BMP) character compares by its real scalar value rather
+ * than by its UTF-16 surrogate units (`'\u{10000}' > '￿'`, which a plain
+ * `<` on the string would get wrong).
+ */
 function codePointCompare(a: string, b: string): number {
-  if (a === b) {
-    return 0
+  const ai = a[Symbol.iterator]()
+  const bi = b[Symbol.iterator]()
+  for (;;) {
+    const an = ai.next()
+    const bn = bi.next()
+    if (an.done && bn.done) {
+      return 0
+    }
+    if (an.done) {
+      return -1
+    }
+    if (bn.done) {
+      return 1
+    }
+    const ac = an.value.codePointAt(0) as number
+    const bc = bn.value.codePointAt(0) as number
+    if (ac !== bc) {
+      return ac < bc ? -1 : 1
+    }
   }
-  return a < b ? -1 : 1
 }
 
 /**

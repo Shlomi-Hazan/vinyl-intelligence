@@ -68,9 +68,18 @@ describe('compareNames', () => {
     expect(compareNames('bowie', 'BOWIE')).not.toBe(0) // sensitivity: variant
   })
 
-  it('orders the other/neutral bucket by code point deterministically', () => {
-    // both have no letters -> other/neutral bucket -> code-point order
+  it('orders the other/neutral bucket by true Unicode code point (non-BMP safe)', () => {
+    // both have no letters -> other/neutral bucket -> scalar code-point order
     expect(compareNames('!!!', '???')).toBeLessThan(0) // 0x21 < 0x3F
     expect(compareNames('???', '!!!')).toBeGreaterThan(0)
+
+    // U+FFFF (BMP) vs U+1F600 (supplementary). By scalar code point
+    // 0xFFFF < 0x1F600, so the BMP char sorts first. A plain UTF-16 `<` would
+    // get this WRONG (the astral char's first unit 0xD83D < 0xFFFF).
+    const bmpMax = String.fromCodePoint(0xffff)
+    const astral = String.fromCodePoint(0x1f600)
+    expect(compareNames(bmpMax, astral)).toBeLessThan(0)
+    expect(compareNames(astral, bmpMax)).toBeGreaterThan(0)
+    expect(compareNames(astral, astral)).toBe(0)
   })
 })
