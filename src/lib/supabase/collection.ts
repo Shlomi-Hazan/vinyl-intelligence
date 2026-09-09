@@ -3,6 +3,7 @@ import type {
   CollectionItem,
   Release,
 } from './client.ts'
+import { canonicalizeGenre, canonicalizeGenres } from '../genre/canonical.ts'
 
 export const RELEASE_FIELD_LIMITS = {
   artist: 160,
@@ -490,16 +491,18 @@ export const PERSONAL_GENRE_MAX_LENGTH = 40
 export const PERSONAL_GENRES_MAX = 12
 
 /**
- * Deterministic normalisation for a personal-genre list: trim + lowercase each
- * entry, drop blanks, drop duplicates (after normalisation), preserving first
- * occurrence order. Mirrors the release-genre rules so a record filters the
- * same way whether the genre came from the catalog or from the user. Throws on
- * an over-long entry or too many genres so the caller can surface it.
+ * Deterministic write-time normalisation for a personal-genre list
+ * (spec 0015 §11.2): each entry is canonicalised - a known Hebrew / spelling
+ * alias from the closed map becomes its canonical English value
+ * (`רוק` -> `rock`), an unknown or ambiguous value (`זמר עברי`, `פאנק`) is
+ * preserved as normalised text, never translated or guessed. Blanks are
+ * dropped, duplicates (by canonical form) removed preserving first occurrence.
+ * Throws on an over-long entry or too many genres so the caller can surface it.
  */
 export function normalizePersonalGenres(input: readonly string[]): string[] {
   const out: string[] = []
   for (const raw of input) {
-    const g = raw.trim().toLocaleLowerCase()
+    const g = canonicalizeGenre(raw)
     if (g.length === 0) {
       continue
     }
@@ -519,24 +522,17 @@ export function normalizePersonalGenres(input: readonly string[]): string[] {
 }
 
 /**
- * The effective genres for a collection item: the union of the shared catalog
- * genres and the owner's personal genres, normalised + deduped, catalog first.
- * Neither source is mutated.
+ * The effective genres for a collection item: the CANONICAL union of the shared
+ * catalog genres and the owner's personal genres, deduped by canonical form,
+ * catalog first (spec 0015 §10.5 / §11). Catalog raw values are NEVER mutated -
+ * canonicalisation happens only here, at read/use time. Legacy personal Hebrew
+ * aliases resolve correctly with no migration.
  */
 export function effectiveGenres(item: CollectionItemWithRelease): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const raw of [
+  return canonicalizeGenres([
     ...(item.release.genres ?? []),
     ...(item.personal_genres ?? []),
-  ]) {
-    const g = raw.trim().toLocaleLowerCase()
-    if (g && !seen.has(g)) {
-      seen.add(g)
-      out.push(g)
-    }
-  }
-  return out
+  ])
 }
 
 /**

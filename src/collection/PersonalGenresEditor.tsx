@@ -3,6 +3,7 @@ import { Button } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { BidiText } from '../components/BidiText.tsx'
 import { isolate } from '../lib/i18n/isolate.ts'
+import { canonicalizeGenre } from '../lib/genre/canonical.ts'
 import {
   PERSONAL_GENRE_MAX_LENGTH,
   PERSONAL_GENRES_MAX,
@@ -67,7 +68,10 @@ export function PersonalGenresEditor({
     }
   }
 
-  const catalogNormalized = catalogGenres.map((g) => g.trim().toLocaleLowerCase())
+  // Dedupe by CANONICAL form (spec 0015 §11.2 / P13): `רוק` and `rock` are the
+  // same genre. A legacy personal chip may still hold a raw alias in state.
+  const catalogCanonical = new Set(catalogGenres.map(canonicalizeGenre))
+  const personalCanonical = new Set(genres.map(canonicalizeGenre))
 
   function addDraft() {
     let candidate: string[]
@@ -82,14 +86,14 @@ export function PersonalGenresEditor({
       setDraft('')
       return
     }
-    if (catalogNormalized.includes(value)) {
+    if (catalogCanonical.has(value)) {
       // The shared catalog release already carries this genre; adding it as a
       // personal genre would only show a confusing duplicate chip. Effective
       // filtering already includes it.
       setMessage('That genre is already listed under the catalog genres.')
       return
     }
-    if (genres.includes(value)) {
+    if (personalCanonical.has(value)) {
       setDraft('')
       return
     }
