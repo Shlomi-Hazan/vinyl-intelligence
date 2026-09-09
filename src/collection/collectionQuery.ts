@@ -9,6 +9,8 @@ import {
   effectiveGenres,
   type CollectionItemWithRelease,
 } from '../lib/supabase/collection.ts'
+import { buildSearchKey } from '../lib/i18n/searchKey.ts'
+import { compareNames } from '../lib/i18n/collator.ts'
 
 export type CollectionFilters = {
   /** Free text; case-insensitive substring of artist OR title; trimmed. */
@@ -39,8 +41,10 @@ export const DEFAULT_SORT: CollectionSort = 'recently-added'
 
 export const COLLECTION_SORTS: { value: CollectionSort; label: string }[] = [
   { value: 'recently-added', label: 'Recently added' },
-  { value: 'artist-asc', label: 'Artist A-Z' },
-  { value: 'album-asc', label: 'Album A-Z' },
+  // English-only labels (spec 0015 §9): a Latin-then-Hebrew ordering is not
+  // "A-Z", and application chrome stays English.
+  { value: 'artist-asc', label: 'Artist alphabetical' },
+  { value: 'album-asc', label: 'Album alphabetical' },
   { value: 'year-desc', label: 'Year (newest)' },
   { value: 'year-asc', label: 'Year (oldest)' },
 ]
@@ -126,14 +130,20 @@ export function yearFilterIsInvalid(raw: string): boolean {
   return raw.trim().length > 0 && parseYear(raw) === null
 }
 
+/**
+ * `needle` is already a `buildSearchKey` of the trimmed query (see
+ * `applyCollectionQuery`). The stored artist/title are passed through the same
+ * comparison-only key so orthographic variants (niqqud, geresh vs apostrophe,
+ * maqaf vs hyphen, whitespace, case) match. Stored metadata is never rewritten.
+ */
 function matchesSearch(item: CollectionItemWithRelease, needle: string): boolean {
   if (needle.length === 0) {
     return true
   }
 
-  return `${item.release.artist}\n${item.release.title}`
-    .toLocaleLowerCase()
-    .includes(needle)
+  return buildSearchKey(
+    `${item.release.artist}\n${item.release.title}`,
+  ).includes(needle)
 }
 
 function matchesYear(
@@ -200,9 +210,9 @@ function compareBySort(
 ): number {
   switch (sort) {
     case 'artist-asc':
-      return a.release.artist.localeCompare(b.release.artist)
+      return compareNames(a.release.artist, b.release.artist)
     case 'album-asc':
-      return a.release.title.localeCompare(b.release.title)
+      return compareNames(a.release.title, b.release.title)
     case 'year-desc':
       return yearSort(a, b, 'desc')
     case 'year-asc':
@@ -223,7 +233,9 @@ export function applyCollectionQuery(
   filters: CollectionFilters,
   sort: CollectionSort,
 ): CollectionItemWithRelease[] {
-  const needle = filters.search.trim().toLocaleLowerCase()
+  // Comparison-only search key of the raw query (spec 0015 §7). The raw
+  // `filters.search` string is untouched - it stays in the URL and the input.
+  const needle = buildSearchKey(filters.search)
   const year = parseYear(filters.year)
   const decade = filters.decade.trim()
   const genre = filters.genre.trim().toLocaleLowerCase()
