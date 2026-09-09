@@ -5,9 +5,23 @@ Spec: `docs/specs/0015-hebrew-multilingual-record-support.md`.
 Decision: `docs/decisions/0007-hebrew-multilingual-record-support.md`.
 Baseline `main`: `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21).
 
-Three sequential implementation PRs. **Do not create one giant branch.** Each
+Rev 2 (2026-09-09): independent review corrections — (1) a separate
+documentation-only **closeout PR** after PR 3 acceptance holds all
+final-status / final-SHA / final-acceptance / general-docs work; no
+implementation PR claims post-merge evidence; (2) the English-compatibility
+contract and PR 2 stop condition now name the approved personal-genre /
+alias-dedupe deltas; (3) the genre facet (`availableGenres`, `matchesGenre`,
+`?genre=`) is entirely PR 2 — PR 1 makes no genre-semantics change and does not
+reference `canonicalizeGenre`; (4) the ambiguous Hebrew alias `פאנק` is removed
+from the map; (5) the script-dominance rule is fully specified (spec §8); (6)
+the real-provider human-test budget is bounded (≈ 4 model calls in PR 2, one
+Vision call in PR 3).
+
+**Three sequential implementation PRs, then one documentation-only closeout
+PR** (the M12 final-closeout pattern). **Do not create one giant branch.** Each
 implementation PR starts from **then-current `main`** after the previous PR is
 independently reviewed, merged, deployed from merged `main`, and human-accepted.
+The closeout PR starts from `main` after PR 3 is accepted.
 
 Global constraints for every PR (from the spec + `AGENTS.md`):
 
@@ -67,12 +81,16 @@ New:
 - Test files for each of the above.
 
 Modified (runtime):
-- `src/collection/collectionQuery.ts` — `matchesSearch`, `availableGenres`,
-  `matchesGenre`, `compareBySort` use the new helpers; `COLLECTION_SORTS` labels
-  → `Artist A–Z / א–ת`, `Album A–Z / א–ת`.
+- `src/collection/collectionQuery.ts` — **only** `matchesSearch` (uses
+  `buildSearchKey`) and `compareBySort` (uses `compareNames`); `COLLECTION_SORTS`
+  labels → `Artist A–Z / א–ת`, `Album A–Z / א–ת`. **`availableGenres`,
+  `matchesGenre`, and any `?genre=` handling are NOT touched in PR 1** — they
+  move to PR 2 with the canonical-genre module.
 - `src/collection/CollectionBrowser.tsx` — `BidiText` on card title/artist/meta,
-  list-row cells, genre `<option>` labels, filter-status record name context;
-  normalize the `?q=` / `?genre=` param values on read.
+  list-row cells, genre `<option>` label **rendering only** (no value/semantics
+  change), filter-status record-name context; normalize the `?q=` param value on
+  read for comparison (raw string stays in the URL and the input). The `?genre=`
+  param is unchanged in PR 1.
 - `src/pages/AlbumDetailPage.tsx` — `BidiText` on title, metadata values, genre
   chips (display only in PR 1 — no canonicalization yet), notes render, remove
   dialog title; pass artist/title through `BidiText` via `PageHeader`.
@@ -112,19 +130,22 @@ test whose rendered output now contains `<bdi>` wrappers
 
 ### 1.2 Ordered steps
 
-1. `script.ts` + tests (the six §8 example rows; record the "dominant"
-   threshold).
+1. `script.ts` + tests. Implement the **exact locked rule from spec §8** (count
+   Hebrew vs Latin letters only; `H>=2L → hebrew`, `L>=2H → latin`, else
+   `mixed`; zero letters → `neutral`). Assert all six §8 example rows.
 2. `searchKey.ts` + tests. **Decide and document the Unicode normalization form**
    (NFKC unless narrower is safer) and the exact combining-mark code points
    removed; assert maqaf `U+05BE` is preserved. Use a meaningful combining-mark /
    presentation-form test case (not plain `עברית`).
 3. `collator.ts` + tests (bucketing, `Intl.Collator(['en','he'],…)`, the §9
    example ordering, determinism, `numeric:true`).
-4. `isolate.ts` + `BidiText.tsx` + tests (attributes only; `lang` policy per §8).
-5. Wire `collectionQuery.ts` to the helpers; run
-   `collectionQuery.test.ts` — add Hebrew cases, **add English regression cases**
-   asserting identical filtered result and identical sort order for English-only
-   fixtures.
+4. `isolate.ts` + `BidiText.tsx` + tests (attributes only; `lang` policy per §8:
+   `lang="he"` only for `hebrew`, none for `latin`/`mixed`/`neutral`).
+5. Wire `collectionQuery.ts` — `matchesSearch` → `buildSearchKey`,
+   `compareBySort` → `compareNames`, sort labels. Run `collectionQuery.test.ts`
+   — add Hebrew cases and **English regression cases** asserting an identical
+   filtered result and identical sort order for English-only fixtures. Do
+   **not** touch the genre facet.
 6. Integrate `BidiText` / `isolate` across the mounted components (§1.1), one
    component per commit where practical.
 7. CSS safety net + eyebrow fix + clamped-element `dir` audit.
@@ -152,18 +173,22 @@ one phone width (390–430 px). VoiceOver spot check on one Hebrew card.
 
 ### 1.6 Explicitly NOT done in PR 1
 
-- No genre canonicalization. Genre chips render raw values as today.
+- **No genre-semantics change of any kind.** `availableGenres`, `matchesGenre`,
+  the `?genre=` param, and the `canonicalizeGenre` module are all PR 2. Genre
+  chips / `<option>` labels render raw values as today (only wrapped in
+  `BidiText` for direction).
 - No Dashboard `topGenres` source change.
 - No curator server change; no `personal_genres` in the curator select.
 - No prompt change of any kind (intent, refinement, selection, vision).
 - No Vision behaviour change.
 - No new webfont; no font-file change.
+- No general-docs change; no spec/plan status change (all closeout).
 - No schema / migration / dependency / env / Netlify / Supabase change.
 
 ### 1.7 Stop conditions
 
-- A search/sort change cannot preserve English behaviour without a semantic
-  change users would notice → STOP, report the specific case.
+- English free-text search or an all-English sort order cannot be preserved
+  without a change users would notice → STOP, report the specific case.
 - `Intl.Collator` behaves non-deterministically in the CI/test runtime → STOP,
   report (do not add an ICU dependency).
 - A `BidiText` integration forces a structural change to a shared component that
@@ -238,17 +263,26 @@ Modified (tests):
 
 ### 2.2 Ordered steps
 
-1. `canonical.ts` + exhaustive tests for every §10.2 row and the unknown
-   pass-through / no-guess rule.
+1. `canonical.ts` + exhaustive tests for every §10.2 row (15 canonical outputs)
+   and the unknown pass-through / no-guess rule. **`canonicalizeGenre('פאנק')`
+   must return `'פאנק'` unchanged** (ambiguous punk/funk — deliberately not
+   mapped); `canonicalizeGenre('punk')` → `'punk'`. The alias map must not
+   contain `פאנק`.
 2. `effectiveGenres` + `normalizePersonalGenres` canonicalization + tests
    (dedupe `rock`/`רוק`; unknown personal genre preserved; existing persisted
    alias canonicalizes on read).
-3. `collectionQuery` genre facet + `?genre=` param; English regression assert.
+3. `collectionQuery` genre facet — `availableGenres` / `matchesGenre` consume
+   canonical effective genres; `?genre=` param canonicalized on read (raw label
+   still shown). English regression assert with a canonical-English-only fixture.
 4. `PersonalGenresEditor` canonical dedupe.
 5. `insights.topGenres` → canonical effective input; update `insights.test.ts`
-   (one row for `rock`+`רוק`; personally-tagged record counted).
-6. `candidates.ts` candidate-side canonicalization; **English regression test**:
-   fixed intent + fixed collection → byte-identical filtered + ranked set.
+   (one row for `rock`+`רוק`; personally-tagged record counted). This is an
+   **approved §19.2 delta** — the English test fixtures for the "unchanged"
+   assertions use `personal_genres: []` + canonical catalog genres.
+6. `candidates.ts` candidate-side canonicalization; **English regression test**
+   using the spec §19.4 fixture (`personal_genres: []`, already-canonical
+   English catalog genres): fixed intent + fixed collection → byte-identical
+   filtered + ranked set.
 7. `intentSchema.ts` level-2 canonicalization + `INTENT_SYSTEM_PROMPT` line;
    `refinementSchema.ts` line; tests for Hebrew `includeGenres` / `excludeGenres`
    → canonical, and English unchanged.
@@ -267,16 +301,31 @@ groups in full, plus the English regression guards in steps 6–7.
 
 ### 2.4 Automated gates
 
-The global gate. Plus an explicit assertion in the PR description that the
-English-only curator filter/rank output is unchanged (cite the regression
-test).
+The global gate. Plus an explicit statement in the PR description that, with the
+spec §19.4 fixture (`personal_genres: []` + already-canonical English catalog
+genres), the English curator filter/rank output and the English Dashboard
+insight output are byte-identical to pre-change (cite the regression tests), and
+that the only English-visible deltas are the three approved §19.2 items.
 
 ### 2.5 Human gates
 
-Spec §21 "After PR 2" checks 8–13 on the existing production account. This is
-the **only** PR whose human gate exercises the real provider; run it **only
-after** the automated gate and independent review pass. Telemetry check
-(check 12) confirms the two-call budget is intact.
+Spec §21 "After PR 2" on the existing production account, run **only after** the
+automated gate and independent review pass. This is the **only** implementation
+PR whose human gate exercises the real curator provider, and it is bounded to:
+
+- check 8 — Dashboard / genre-filter / personal-genre-save verification (**no
+  provider call**);
+- **live interaction A** — one Hebrew initial VIN request with an approved
+  canonicalizable Hebrew genre (verifies Hebrew reason, original-script
+  artist/title, correct owned-candidate filtering);
+- **live interaction B** — one Hebrew refinement (`"בלי רוק"`, verifies
+  refinement canonicalization).
+
+≈ **4 model calls total** (the pipeline makes two per successful interaction).
+English regression, out-of-scope-Hebrew, and unknown-Hebrew-genre behaviour are
+**mocked** automated coverage (spec §20) and do **not** get a live call unless a
+new defect specifically needs one. The two-call-per-interaction budget is
+confirmed from `model_calls` telemetry during interactions A and B.
 
 ### 2.6 Explicitly NOT done in PR 2
 
@@ -284,19 +333,25 @@ after** the automated gate and independent review pass. Telemetry check
 - No model change; no reasoning-effort / token-budget change.
 - No change to `includeGenreMatches` token semantics or the include/exclude
   asymmetry.
-- No new alias beyond §10.2 (any proposed addition is reported, not added).
+- No new alias beyond §10.2 (any proposed addition is reported, not added);
+  **`פאנק` is not mapped** (ambiguous punk/funk).
 - No LLM genre translation / inference.
 - No Vision change (PR 3).
 - No BiDi work beyond what PR 1 already shipped (genre chips are already
   isolated).
+- No general-docs change; no spec/plan status change (closeout PR).
 - No schema / migration / dependency / env / Netlify / Supabase change.
 - No notes added to model context.
 
 ### 2.7 Stop conditions
 
-- Canonicalization changes an English-only collection's filter/rank/insight
-  output → STOP, report the case (the map is too broad or applied in the wrong
-  place).
+- With the spec §19.4 fixture (`personal_genres: []` + already-canonical English
+  catalog genres), any English-visible search / sort / filter / insight / rank
+  change → STOP. And with any fixture, any English-visible change **beyond** the
+  three explicitly approved §19.2 deltas (personal genres now participate in
+  Dashboard insights; personal genres now participate in VIN candidate genres;
+  approved aliases dedupe to one canonical genre) → STOP, report the case (the
+  map is too broad or applied in the wrong place).
 - A prompt addition measurably raises the `provider_bad_response` rate or breaks
   the `{ inScope, intent }` wrapper in the mocked tests → STOP, revert the line,
   report.
@@ -315,14 +370,16 @@ begin, from the then-current `main`.
 
 ---
 
-## PR 3 — Scan + Accessibility + Final Polish
+## PR 3 — Scan + Accessibility + Final Runtime Polish
 
 **Goal:** vision preserves the original script; Scan multilingual rendering
-completed; final accessibility / BiDi sweep; typography decision; documentation
-closeout.
+completed; final accessibility / BiDi sweep; typography decision. **This is the
+last implementation PR — it makes no final-status / final-SHA / general-docs
+claim (that is the closeout PR, which cannot run until PR 3 is merged, deployed,
+and accepted).**
 
 **Risk level: LOW–MEDIUM.** One trusted vision-prompt line needs a real-provider
-human retest; the rest is UI/CSS/docs.
+human retest; the rest is UI/CSS.
 
 ### 3.1 Expected scoped files
 
@@ -352,32 +409,12 @@ Modified (tests):
 - `src/catalog/ScanPanel.test.tsx`, `src/catalog/DiscoverPanel.test.tsx` — BiDi
   attributes on candidate cards.
 
-Modified (docs — closeout; this is where the general docs are reconciled):
-- `docs/architecture.md` — the `src/lib/i18n/*` modules, `BidiText`, the
-  canonical-genre module, and the effective-genre single-source-of-truth flow.
-- `docs/ai-design.md` — the three trusted-prompt additions; genre
-  canonicalization as an authoritative post-validation normalization step;
-  request-language reasons.
-- `docs/data-model.md` — note: no migration; genre canonicalization is
-  read-time for catalog, write-time for personal; the curator load now includes
-  `personal_genres` (resolves the ADR 0006 deferral).
-- `docs/security.md` — prompt changes reviewed; no new retained data; model
-  output still untrusted; canonicalization is normalization not a trust
-  boundary.
-- `README.md` — a one-line capability note (multilingual dynamic content).
-- `docs/verification.md` — one consolidated "Hebrew & Multilingual Record
-  Support" section: automated gate results per PR, human acceptance per PR
-  (existing account; no provider-forced-failure test; no signup/email test),
-  known limitations, the typography decision.
-- `docs/specs/README.md` / `docs/decisions/README.md` — add the 0015 / 0007
-  index entries.
-- `docs/specs/0015-*.md` / `docs/plans/015-*.md` — status → COMPLETE with the
-  final `main` SHA and the three merge/deploy SHAs.
-- `docs/decisions/0007-*.md` — status already `accepted`; add the
-  implemented-and-verified note.
-- `intent.txt` — **only if** product intent / DoD / scope genuinely changed
-  (likely a short appendix line that multilingual dynamic content is in scope);
-  otherwise untouched.
+**No documentation change in PR 3** beyond what a code change conventionally
+carries inline. The general-docs reconciliation
+(`architecture.md`, `ai-design.md`, `data-model.md`, `security.md`, `README.md`,
+`verification.md`, the spec/decision index READMEs, the ADR "implemented" note,
+`intent.txt` if genuinely needed) and the spec/plan **status → COMPLETE** with
+final SHAs and acceptance evidence are the **closeout PR** below.
 
 ### 3.2 Ordered steps
 
@@ -390,10 +427,11 @@ Modified (docs — closeout; this is where the general docs are reconciled):
    attributes in mounted components; fix with `isolate()`.
 4. Human visual check at phone + desktop widths to decide the typography
    question (spec §13 / P10). Apply the additive fallback stack entries **only**
-   if the seam is unacceptable; record the decision either way.
+   if the seam is unacceptable; the decision (either way) is recorded in the
+   closeout PR's `docs/verification.md` section.
 5. Full automated gate from a clean checkout.
-6. Documentation closeout (§3.1 docs list). Verify the historical roadmap hash
-   is unchanged.
+6. Verify the historical roadmap hash is unchanged; confirm no doc/status file
+   was touched.
 
 ### 3.3 Tests to add / update
 
@@ -407,9 +445,11 @@ dev-only findings are documented, versions unchanged (M12 practice).
 
 ### 3.5 Human gates
 
-Spec §21 "After PR 3" checks 14–16: Scan a Hebrew sleeve end to end, Scan an
-English sleeve (unchanged), full mobile + desktop regression across all seven
-mounted routes. This exercises the real vision provider once.
+Spec §21 "After PR 3" on the existing production account. Real-provider budget:
+**one Hebrew Vision recognition call** — check 11 (scan one Hebrew sleeve end to
+end). Check 12 (English sleeve unchanged) is covered by mocked regression and is
+re-run live only if a defect appears; check 13 (full mobile + desktop regression
+across the seven mounted routes) is visual, no provider call.
 
 ### 3.6 Explicitly NOT done in PR 3
 
@@ -419,8 +459,8 @@ mounted routes. This exercises the real vision provider once.
 - No genre / VIN behaviour change (PR 2 owns that).
 - No schema / migration / dependency / env / Netlify / Supabase change.
 - No changes to the deferred legacy subtree.
-- `intent.txt` body unchanged (appendix only, and only if intent genuinely
-  changed).
+- **No general-docs change, no spec/plan status change, no final-SHA / final-
+  acceptance claim, no `intent.txt` change** — all of that is the closeout PR.
 
 ### 3.7 Stop conditions
 
@@ -435,23 +475,80 @@ mounted routes. This exercises the real vision provider once.
 
 Open PR 3 → independent review → automated gate + review green → human-approved
 merge → `git pull --ff-only` → deploy merged `main` → non-provider smoke → human
-acceptance (§3.5). On acceptance, the enhancement is complete; the closeout docs
-in this PR are the final reconciliation.
+acceptance (§3.5). On acceptance, the runtime work is complete; the **closeout
+PR** below is then opened from the then-current `main`.
+
+---
+
+## Final Documentation Closeout PR (documentation-only)
+
+Opened **after PR 3 production acceptance**, from the then-current `main`. Same
+shape as the M12 final-closeout PR (#21).
+
+**Risk level: NONE (documentation only).**
+
+### C.1 Expected scoped files
+
+- `docs/specs/0015-hebrew-multilingual-record-support.md` — status → **COMPLETE**;
+  final `main` SHA; the three implementation-PR merge SHAs; the three production
+  deploy SHAs.
+- `docs/plans/015-hebrew-multilingual-record-support.md` — status → **COMPLETE**;
+  same SHAs; per-PR outcome notes.
+- `docs/decisions/0007-hebrew-multilingual-record-support.md` — add an
+  "implemented and verified" note (status stays `accepted`).
+- `docs/architecture.md` — the `src/lib/i18n/*` modules, `BidiText`, the
+  canonical-genre module, the effective-genre single-source-of-truth flow.
+- `docs/ai-design.md` — the three trusted curator-prompt additions + the vision
+  prompt addition; genre canonicalization as an authoritative post-validation
+  normalization step; request-language reasons.
+- `docs/data-model.md` — no migration; catalog genre canonicalization is
+  read-time, personal-genre canonicalization is write-time; the curator load now
+  includes `personal_genres` (resolves the ADR 0006 deferral).
+- `docs/security.md` — prompt changes reviewed; no new retained data; model
+  output still untrusted; canonicalization is normalization, not a trust
+  boundary.
+- `README.md` — one-line capability note (multilingual dynamic record content).
+- `docs/verification.md` — one consolidated "Hebrew & Multilingual Record
+  Support" section: per-PR automated gate results, per-PR human acceptance
+  (existing account; the exact real-provider call counts — ≈ 4 curator model
+  calls in PR 2, one Vision call in PR 3; **no** provider-forced-failure test;
+  **no** signup/email test), known limitations, the typography decision.
+- `docs/specs/README.md` / `docs/decisions/README.md` — add the 0015 / 0007
+  index entries.
+- `intent.txt` — **only if** product intent / stakeholders / constraints / DoD /
+  scope genuinely changed (likely a one-line appendix that multilingual dynamic
+  content is in scope); otherwise untouched.
+
+### C.2 Constraints
+
+Documentation only. No runtime / CSS / test / config / dependency change. No
+deploy (the accepted production deploy stays whatever PR 3 produced). No provider
+call. Historical roadmap byte-unchanged
+(`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`). The
+closeout PR records facts that already exist; it invents none.
+
+### C.3 Gate
+
+`git diff --check`; only the C.1 files changed; historical roadmap hash
+identical; no runtime/test/config change. Independent review; human-approved
+merge (normal merge commit); **no deploy**.
 
 ---
 
 ## Cross-PR summary
 
-| | PR 1 | PR 2 | PR 3 |
-|---|---|---|---|
-| Theme | BiDi + search + sort | canonical genres + VIN | vision + a11y + docs |
-| AI behaviour change | none | 3 trusted-prompt lines + server canonicalization | 1 trusted vision-prompt line |
-| Schema / migration | none | none | none |
-| Real provider in human gate | no | yes (once) | yes (once) |
-| Risk | LOW–MEDIUM | MEDIUM | LOW–MEDIUM |
-| Starts from | `main` @ `dd3f948` | then-current `main` after PR 1 | then-current `main` after PR 2 |
-| New files | 5 + tests | 1 + tests | 0 |
-| Approx. modified runtime files | ~15 | ~10 (incl. 1 `.mts`) | ~4 |
+| | PR 1 | PR 2 | PR 3 | Closeout PR |
+|---|---|---|---|---|
+| Theme | BiDi + search + sort | canonical genres + VIN | vision + a11y + Scan | docs / status / evidence |
+| AI behaviour change | none | 3 trusted curator-prompt lines + server canonicalization | 1 trusted vision-prompt line | none |
+| Genre-semantics change | **none** | all of it | none | none |
+| Schema / migration | none | none | none | none |
+| Real provider in human gate | no | yes — ≈ 4 curator model calls (1 Hebrew request + 1 Hebrew refine) | yes — 1 Hebrew Vision call | no |
+| General-docs / status change | no | no | no | yes (all of it) |
+| Risk | LOW–MEDIUM | MEDIUM | LOW–MEDIUM | NONE |
+| Starts from | `main` @ `dd3f948` | `main` after PR 1 | `main` after PR 2 | `main` after PR 3 |
+| New files | 5 + tests | 1 + tests | 0 | 0 |
+| Approx. modified runtime files | ~15 | ~10 (incl. 1 `.mts`) | ~4 | 0 |
 
 ## Open items requiring product input before the relevant PR
 

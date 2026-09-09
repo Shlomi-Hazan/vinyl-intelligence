@@ -2,9 +2,19 @@
 
 Status (2026-09-09): **PLANNING ONLY — not started.** Post-M12 enhancement.
 Product contract approved by the human 2026-09-09 (this document records it).
-Implementation is planned as three sequential PRs; see
+Implementation is planned as **three sequential implementation PRs, then one
+documentation-only closeout PR** (the M12 final-closeout pattern); see
 `docs/plans/015-hebrew-multilingual-record-support.md`. Decision record:
 `docs/decisions/0007-hebrew-multilingual-record-support.md`.
+
+Rev 2 (2026-09-09): independent review corrections — final closeout moved to a
+separate docs-only PR (no implementation PR may claim post-merge evidence); the
+English-compatibility contract now names the approved personal-genre /
+alias-dedupe deltas explicitly; the genre facet (`availableGenres`,
+`matchesGenre`, `?genre=`) moves entirely to the canonical-genre PR so PR 1 has
+no genre-semantics change; the ambiguous Hebrew alias `פאנק` is removed from the
+map; the script-dominance rule is fully specified; the real-provider human-test
+budget is bounded.
 
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).
@@ -176,9 +186,15 @@ Desktop grid track definitions are unchanged.
 
 ## 7. Search normalization contract
 
-Applies to Collection search and the Collection genre facet only (the
-deterministic client-side filter from spec 0007). **No server, no LLM, no DB
-query.**
+Applies to the Collection **free-text search** only — the `?q=` / `matchesSearch`
+path of the deterministic client-side filter from spec 0007. **No server, no
+LLM, no DB query.**
+
+The Collection **genre facet** (`availableGenres`, `matchesGenre`, the `?genre=`
+URL parameter) is **out of scope for `buildSearchKey`**; its
+normalization/canonicalization is specified in §10 / §13 and lands with the
+canonical-genre work (plan PR 2), not with the free-text search work (plan
+PR 1). PR 1 makes **no genre-semantics change**.
 
 A pure `buildSearchKey(input: string): string` derives a comparison key by, in
 order:
@@ -208,14 +224,18 @@ order:
 
 - Comparison is: `buildSearchKey(storedField).includes(buildSearchKey(needle))`,
   where the stored field is `` `${artist}\n${title}` `` (unchanged join).
-- The genre facet compares `canonicalizeGenre(buildSearchKey(x))` equality.
-- The `?q=` and `?genre=` URL parameters are normalized/canonicalized on read so
-  a Hebrew-typed or English-typed link resolves to the same result set (fixes
-  P14). No parameter is renamed.
-- **Original `releases.artist` / `releases.title` / genre values are never
-  rewritten for search.** The key is derived per comparison. Collections are
-  bounded (`api.max_rows` 1000; already fully in memory) so per-render derivation
-  is acceptable; the implementer may memoize.
+- The raw `?q=` string stays in the URL and in the search input verbatim
+  (displayed user text is never rewritten); `buildSearchKey` is derived only for
+  the comparison. The `?q=` value is also passed through `buildSearchKey` when
+  read so a Hebrew-typed and an English-typed link that mean the same thing
+  match the same records. No parameter is renamed.
+- The `?genre=` parameter is **not** touched in the free-text search work; its
+  canonicalization is specified in §10 / §13 and lands with plan PR 2 (fixes
+  P14 there).
+- **Original `releases.artist` / `releases.title` values are never rewritten for
+  search.** The key is derived per comparison. Collections are bounded
+  (`api.max_rows` 1000; already fully in memory) so per-render derivation is
+  acceptable; the implementer may memoize.
 
 **Test data requirement:** normalization tests must use a **meaningful**
 example that actually contains a Hebrew combining mark or a compatibility /
@@ -225,24 +245,34 @@ as an NFC/NFD case — it has no decomposable mark.
 
 ## 8. Language / script policy
 
-A pure `classifyScript(input: string)` returns one of:
-`hebrew` (Hebrew-dominant), `latin` (Latin-dominant), `mixed`, `neutral`
-(digits / punctuation / whitespace only or empty).
+A pure `classifyScript(input: string)` returns one of `hebrew`, `latin`,
+`mixed`, `neutral`.
 
-"Dominant" is defined by the implementer as a clear majority of
-script-bearing characters (records the threshold in the PR); a string with
-meaningful runs of both scripts is `mixed`.
+**Exact deterministic rule (locked — no implementer discretion):**
 
-Examples the classifier must satisfy:
+1. Count `H` = number of **Hebrew letters** and `L` = number of **Latin
+   letters** in the input.
+2. Count **letters only**. Ignore digits, punctuation, whitespace, and Hebrew
+   combining marks / niqqud / cantillation.
+3. Classification:
+   - `H == 0 && L == 0` → `neutral`
+   - `H > 0 && L == 0` → `hebrew`
+   - `L > 0 && H == 0` → `latin`
+   - both present:
+     - `H >= 2 * L` → `hebrew`
+     - `L >= 2 * H` → `latin`
+     - otherwise → `mixed`
 
-| Input | Class |
-|---|---|
-| `שלום חנוך` | `hebrew` |
-| `Radiohead` | `latin` |
-| `שלום Hanoch` | `mixed` |
-| `אביב גפן - III` | `hebrew` (the `- III` is a minority run) |
-| `1979` | `neutral` |
-| `` (empty) | `neutral` |
+Required examples (all must hold):
+
+| Input | H | L | Class |
+|---|---|---|---|
+| `שלום חנוך` | 7 | 0 | `hebrew` |
+| `Radiohead` | 0 | 9 | `latin` |
+| `שלום Hanoch` | 4 | 6 | `mixed` (6 < 2·4 and 4 < 2·6) |
+| `אביב גפן - III` | 7 | 3 | `hebrew` (7 ≥ 2·3) |
+| `1979` | 0 | 0 | `neutral` |
+| `` (empty) | 0 | 0 | `neutral` |
 
 **`BidiText` behaviour:**
 
@@ -317,7 +347,7 @@ each alias normalize to the same canonical output.
 | `היפ הופ`, `היפ-הופ`, `hip hop`, `hip-hop` | `hip hop` |
 | `פופ`, `pop` | `pop` |
 | `בלוז`, `blues` | `blues` |
-| `פאנק`, `punk` | `punk` |
+| `punk` | `punk` |
 | `מטאל`, `metal` | `metal` |
 | `רגאיי`, `reggae` | `reggae` |
 | `קלאסי`, `classical` | `classical` |
@@ -328,12 +358,19 @@ each alias normalize to the same canonical output.
 | `רוק ישראלי`, `israeli rock` | `israeli rock` |
 | `מזרחית`, `mizrahi` | `mizrahi` |
 
+The table has **15 canonical outputs**. Hebrew `פאנק` is **deliberately not
+mapped** — it is ambiguous between "punk" and "funk", so mapping it either way
+would violate the conservative / no-guess contract. `פאנק` passes through
+unchanged (§10.4) until a future explicitly approved disambiguation strategy
+exists. `punk` (English) still canonicalizes to `punk`.
+
 **10.3 Expanding the map** requires reporting each proposed alias for product
-approval. The implementer does **not** add aliases unilaterally.
+approval. The implementer does **not** add aliases unilaterally, and does **not**
+add `פאנק → punk` or `פאנק → funk`.
 
 **10.4 Unknown genre.** Normalized safely, passed through, never guessed, never
-translated. A VIN `includeGenres: ["זמר עברי"]` (not in the map, not owned)
-produces an honest `no_match`, not a crash and not a wrong bucket.
+translated. A VIN `includeGenres: ["זמר עברי"]` or `["פאנק"]` (not in the map,
+not owned) produces an honest `no_match`, not a crash and not a wrong bucket.
 
 **10.5 Where canonicalization runs** — read/use time for catalog genres,
 write-normalization boundary for personal genres (see §11):
@@ -530,15 +567,45 @@ Unchanged and re-affirmed:
 
 ## 19. Compatibility / backward-compatibility
 
-- **English collections:** search, sort, genre filter, Dashboard insights, and
-  VIN must behave **identically** to today for English-only data. Regression
-  tests lock this (fixed intent + fixed collection → byte-identical filtered /
-  ranked set; fixed artist list → identical order).
+**19.1 What must NOT change for English data:**
+
+- **English free-text search and sort** behave exactly as today for English
+  input (search is still a case-insensitive substring match; sort order for an
+  all-English list is unchanged except that it is now locale-pinned rather than
+  host-locale-dependent — asserted with a fixed English fixture).
+- **Canonical English catalog-genre semantics** are unchanged: `rock` is still
+  `rock`, an already-canonical English catalog genre is untouched by the alias
+  map.
+
+**19.2 Approved intentional deltas (these ARE expected to change behaviour):**
+
+- **Personal genres begin participating in Dashboard genre insights.** An
+  English-only collection that has any `personal_genres` may show different
+  "Top genres" counts / gate behaviour after PR 2. This is the §13 consistency
+  fix.
+- **Personal genres begin participating in VIN candidate genres.** An
+  English-only collection with `personal_genres` may filter / rank differently
+  in VIN after PR 2, because the curator server now loads `personal_genres`
+  (closing the ADR 0006 deferral).
+- **Approved aliases dedupe to one canonical genre.** `רוק`/`Rock`/`rock`
+  collapse to a single `rock` row/value everywhere.
+
+**19.3 No other English behaviour may change.** Any English-visible
+search/sort/filter/insight/rank change **beyond** the three deltas in §19.2 is a
+defect → STOP (plan PR 2 §2.7).
+
+**19.4 Regression fixtures.** A "byte-identical curator filter/rank" regression
+fixture **must** use `personal_genres: []` and already-canonical English catalog
+genres — that is the configuration in which the output is required to be
+unchanged. A fixture with non-empty `personal_genres` or a non-canonical alias
+tests one of the §19.2 deltas, not the no-change guarantee.
+
 - **Existing persisted Hebrew personal genres:** canonicalize correctly at
   read/use time; no backfill, no migration (§11.3).
-- **Bookmarked / shared filter URLs:** `?q=` and `?genre=` resolve to the same
-  set whether typed in Hebrew or English after normalization; no parameter
-  renamed or removed.
+- **Bookmarked / shared filter URLs:** `?q=` resolves the same whether typed in
+  Hebrew or English after normalization (PR 1); `?genre=` gains the same
+  property with the canonical-genre work (PR 2). No parameter renamed or
+  removed.
 - **`sessionStorage` collection-view key and catalog-search draft:** unaffected
   (they store view mode / query text, not genre tokens).
 - **Curator refinement `context.previousIntent`:** already round-trips through
@@ -567,34 +634,43 @@ independent lower).
 `latin` bucket then `hebrew` bucket; determinism across two runs; `numeric:true`
 orders `Vol. 2` before `Vol. 10`; stable tiebreak preserved.
 
-**Canonical genre:** every alias row in §10.2 (all variants → canonical);
-`includeGenreMatches('rock','progressive rock')` still true; an unknown Hebrew
-genre passes through unchanged and is never mapped; `effectiveGenres` dedupes
-`release.genres=['rock']` + `personal_genres=['רוק']` → `['rock']`;
-`normalizePersonalGenres(['רוק'])` → `['rock']`;
+**Canonical genre:** every alias row in §10.2 (all variants → canonical, 15
+canonical outputs); `includeGenreMatches('rock','progressive rock')` still true;
+an unknown Hebrew genre passes through unchanged and is never mapped;
+**`canonicalizeGenre('פאנק')` returns `'פאנק'` unchanged** (ambiguous punk/funk —
+deliberately not mapped) while `canonicalizeGenre('punk')` returns `'punk'`;
+`effectiveGenres` dedupes `release.genres=['rock']` + `personal_genres=['רוק']`
+→ `['rock']`; `normalizePersonalGenres(['רוק'])` → `['rock']`;
 `normalizePersonalGenres(['זמר עברי'])` → `['זמר עברי']`;
+`normalizePersonalGenres(['פאנק'])` → `['פאנק']`;
 `PersonalGenresEditor` rejects `רוק` when the catalog already has `rock`.
 
 **Dashboard consistency:** `topGenres` counts `רוק`+`rock` as one row and
 includes a personally-tagged record; same effective input as Collection.
 
-**VIN (mocked model):**
+**VIN (mocked model — no live provider call):**
 - model intent `{inScope:true, intent:{includeGenres:['רוק'], decades:[1970], …}}`
   → server canonicalizes → a `genres:['rock'], year:1975` candidate is filtered
   **in**;
 - model intent `excludeGenres:['רוק']` → a `rock` candidate is excluded;
-- English `includeGenres:['rock']` → filtered/ranked set **byte-identical** to
-  pre-change (regression guard);
-- refinement `"בלי רוק"` → `excludeGenres` canonicalized; English refinement
-  unchanged;
+- **English regression guard:** with a fixture of `personal_genres: []` and
+  already-canonical English catalog genres, `includeGenres:['rock']` produces a
+  filtered + ranked set **byte-identical** to pre-change;
+- refinement `"בלי רוק"` → `excludeGenres` canonicalized; English refinement with
+  the §19.4 fixture unchanged;
 - selection: Hebrew `request` + Hebrew-named candidate → mocked model returns a
   Hebrew `reason` and the verbatim Hebrew artist/title; `validateSelection`
   still rejects an out-of-set id and still assembles card facts from
   `candidatesById`;
 - server select includes `personal_genres` (assert the select string / mocked
-  row shape);
+  row shape); candidate genres are the canonical effective set;
 - telemetry: an out-of-scope Hebrew request records exactly one `curator_intent`
   row and zero `curator_selection`.
+
+English regression, out-of-scope Hebrew, and unknown-Hebrew-genre behaviour are
+covered here as **mocked** regression tests; they do **not** require a live
+provider call in human acceptance (§21) unless a new defect specifically needs
+one.
 
 **Vision (mocked):** recognition returning Hebrew `artist` / `albumTitle` /
 `visibleText` survives `normalizeRecognition` unchanged and produces the correct
@@ -632,50 +708,87 @@ claimed. Signup / email-confirmation flows are **not** re-exercised.
 6. History with Hebrew plays: rows read correctly; mobile layout still correct.
 7. VoiceOver spot check: a Hebrew title in a card is announced as Hebrew.
 
-**After PR 2 (genres + VIN):**
-8. Tag one English `rock` record; add personal genre `רוק` to another. Dashboard
-   "Top genres" shows one `rock` row counting both; Collection genre filter
-   `rock` returns both; the personal genre saved as `rock`.
-9. VIN `"תן לי רוק רגוע משנות ה-70"` → owned 70s rock records, **Hebrew
-   reasons**, best-match marked, artist/album names in original script.
-10. VIN refine `"בלי רוק"` → rock records drop out of the next set.
-11. VIN English regression: an equivalent English request behaves as before.
-12. VIN out-of-scope Hebrew (`"כתוב לי שיר"`) → out-of-scope notice, no
-    recommendation, one `curator_intent` telemetry row, zero `curator_selection`.
-13. VIN unknown Hebrew genre → honest "no owned records match", not a crash.
+**After PR 2 (genres + VIN).** Real-provider budget: **exactly two Hebrew VIN
+interactions (≈ 4 model calls total** — the pipeline makes two per successful
+interaction). No English, out-of-scope, or unknown-genre live calls (those are
+mocked regression per §20).
 
-**After PR 3 (scan + polish):**
-14. Scan a Hebrew sleeve → clues show Hebrew artist/title; catalogue candidates
-    render right-to-left; confirm → record added with Hebrew metadata.
-15. Scan an English sleeve → unchanged.
-16. Full mobile + desktop regression across Dashboard / Collection / Discover /
-    Scan / Ask VIN / History / Settings: chrome still English/LTR, content
-    gutter unchanged, no overflow.
+8. **(no provider)** Tag one English `rock` record; add personal genre `רוק` to
+   another. Dashboard "Top genres" shows one `rock` row counting both;
+   Collection genre filter `rock` returns both; the personal genre saved as
+   `rock`.
+9. **Live interaction A — one Hebrew initial VIN request** that exercises Hebrew
+   free text and includes an approved canonicalizable Hebrew genre, e.g.
+   `"תן לי רוק רגוע משנות ה-70"`. Verify: Hebrew recommendation reason;
+   original-script artist/title (not transliterated); best-match marked; only
+   owned records; correct owned-candidate filtering (70s rock).
+10. **Live interaction B — one Hebrew refinement**, e.g. `"בלי רוק"`. Verify the
+    refinement canonicalizes and rock records drop out of the next set.
+
+**After PR 3 (scan + polish).** Real-provider budget: **one Hebrew Vision
+recognition call.**
+
+11. **Live — scan one Hebrew sleeve** → clues show Hebrew artist/title;
+    catalogue candidates render right-to-left; confirm → record added with
+    Hebrew metadata.
+12. **(no provider)** Scan an English sleeve behaves as before — covered by
+    mocked regression (§20); re-run live only if a defect appears.
+13. **(no provider)** Full mobile + desktop regression across Dashboard /
+    Collection / Discover / Scan / Ask VIN / History / Settings: chrome still
+    English/LTR, content gutter unchanged, no overflow.
 
 ## 22. Definition of Done
 
-- All three PRs merged to `main`, each reviewed independently, each deployed from
-  merged `main`, each human-accepted per §21.
-- Every automated gate green from a clean checkout for the final `main`.
-- English behaviour verified unchanged (search, sort, genre filter, Dashboard,
-  VIN) by regression tests and human spot check.
-- Hebrew and mixed records display, search, sort, filter, recommend, and scan
-  correctly, desktop and mobile; chrome unchanged.
-- One canonical effective-genre taxonomy across Collection, Dashboard, and VIN;
-  the curator server loads `personal_genres`.
-- Hebrew VIN requests/refinements canonicalize deterministically server-side;
-  no genuine listening request is silently reduced to `no_match` by language;
-  reasons are in the request language; artist/title never translated.
-- Cover recognition preserves the original script.
+The enhancement is **three implementation PRs followed by one
+documentation-only closeout PR** (the M12 final-closeout pattern). No
+implementation PR may claim evidence — a merge SHA, a deploy SHA, a "final
+`main`", a human acceptance result — that can only exist after it merges.
+
+**Implementation PRs (1, 2, 3) — done when:**
+
+- Each is independently reviewed, human-approved, merged with a normal merge
+  commit, deployed from merged `main`, and human-accepted per §21 (with the
+  §21 real-provider budget — ≈ 4 model calls in PR 2, one Vision call in PR 3).
+- Every automated gate is green from a clean checkout for that PR's head.
+- English behaviour is verified unchanged per §19.1 / §19.3 (no change beyond
+  the §19.2 deltas), locked by the §19.4 regression fixtures and a human spot
+  check.
+- PR 1: Hebrew/mixed records display, free-text search, and sort correctly on
+  every mounted surface, desktop + mobile; chrome unchanged; **no
+  genre-semantics change**.
+- PR 2: one canonical effective-genre taxonomy across Collection, Dashboard, and
+  VIN; the curator server loads `personal_genres`; Hebrew VIN
+  requests/refinements canonicalize deterministically server-side; no genuine
+  listening request is silently reduced to `no_match` by language; reasons are
+  in the request language; artist/title never translated; all curator security
+  invariants (§18) hold.
+- PR 3: cover recognition preserves the original script; Scan renders Hebrew
+  correctly; the accessibility/BiDi sweep is complete; the typography decision
+  is made and recorded; pgTAP unchanged and green.
 - No schema/migration change; no dependency change; no new secret/env var; no
-  new bundled webfont (unless PR 3 human visual evidence justifies a fallback
-  family name — additive stack entry only, no new file).
-- All curator/vision security invariants (§18) hold; pgTAP unchanged and green.
-- `docs/decisions/0007-*` accepted; at implementation closeout,
-  `docs/architecture.md`, `docs/ai-design.md`, `docs/data-model.md`,
-  `docs/security.md`, `README.md`, `docs/verification.md`, and the
-  `docs/specs/README.md` / `docs/decisions/README.md` indexes are reconciled
-  (closeout, not part of this planning PR).
+  new bundled webfont (PR 3 may add a Hebrew fallback **family name** to a CSS
+  stack only if human visual evidence justifies it — additive entry only, no
+  new file).
+- `docs/decisions/0007-*` stays `accepted`.
+
+**Final documentation-only closeout PR — done when** (after PR 3 production
+acceptance):
+
+- `docs/specs/0015-*` and `docs/plans/015-*` status → **COMPLETE**, with the
+  final `main` SHA, the three implementation-PR merge SHAs, and the three
+  production deploy SHAs.
+- The final human acceptance evidence for all three PRs is recorded in
+  `docs/verification.md` (existing account; no provider-forced-failure test; no
+  signup/email test; the exact real-provider call counts).
+- `docs/architecture.md`, `docs/ai-design.md`, `docs/data-model.md`,
+  `docs/security.md`, `README.md` are reconciled to as-built.
+- `docs/specs/README.md` and `docs/decisions/README.md` gain the 0015 / 0007
+  index entries; `docs/decisions/0007-*` gets an "implemented and verified" note.
+- `intent.txt` is updated **only if** product intent / stakeholders /
+  constraints / DoD / scope genuinely changed (likely a one-line appendix that
+  multilingual dynamic content is in scope); otherwise untouched.
+- This PR changes **documentation only** — no runtime / CSS / test / config /
+  dependency change, no deploy, no provider call.
 - Historical roadmap `docs/roadmaps/2026-08-18-complete-project-roadmap.md`
   byte-unchanged
   (`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).

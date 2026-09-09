@@ -1,7 +1,8 @@
 # 0007 Hebrew & Multilingual Record Support
 
 Status: **accepted** 2026-09-09 (human product-contract approval). Post-M12
-enhancement. Not yet implemented — planned as three sequential PRs in
+enhancement. Not yet implemented — planned as **three sequential implementation
+PRs, then one documentation-only closeout PR** in
 `docs/plans/015-hebrew-multilingual-record-support.md`; full behaviour contract
 in `docs/specs/0015-hebrew-multilingual-record-support.md`.
 
@@ -9,6 +10,14 @@ Baseline `main` at decision time: `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b`
 (PR #21 — M12 final closeout).
 
 Date: 2026-09-09
+
+Rev 2 (2026-09-09): independent review corrections folded in — final
+status/SHA/acceptance/general-docs work moved to a separate documentation-only
+closeout PR; English-compatibility contract names the approved personal-genre /
+alias-dedupe deltas explicitly; the genre facet is entirely PR 2 (PR 1 has no
+genre-semantics change); the ambiguous Hebrew alias `פאנק` is removed; the
+script-dominance rule is fully specified (§6); the real-provider human-test
+budget is bounded.
 
 ## Context
 
@@ -86,15 +95,21 @@ never rewritten for search.**
 - Existing persisted Hebrew personal aliases canonicalize correctly at read/use
   time, so **no backfill and no migration** are needed.
 
-The initial approved alias map (closed):
+The initial approved alias map (closed, 15 canonical outputs):
 `רוק|rock→rock`, `ג'אז|ג׳אז|jazz→jazz`,
 `היפ הופ|היפ-הופ|hip hop|hip-hop→hip hop`, `פופ|pop→pop`, `בלוז|blues→blues`,
-`פאנק|punk→punk`, `מטאל|metal→metal`, `רגאיי|reggae→reggae`,
+`punk→punk`, `מטאל|metal→metal`, `רגאיי|reggae→reggae`,
 `קלאסי|classical→classical`, `אלקטרוני|electronic→electronic`,
 `פולק|folk→folk`, `סול|soul→soul`,
 `רוק מתקדם|progressive rock→progressive rock`,
 `רוק ישראלי|israeli rock→israeli rock`, `מזרחית|mizrahi→mizrahi`.
-Expanding the map requires per-alias product approval.
+
+Hebrew **`פאנק` is deliberately NOT mapped** — it is ambiguous between "punk"
+and "funk", so mapping it either way would violate the conservative / no-guess
+contract. `פאנק` passes through unchanged until a future explicitly approved
+disambiguation strategy exists. English `punk` still canonicalizes to `punk`.
+Expanding the map (adding `פאנק` in either direction, or any other alias)
+requires per-alias product approval.
 
 ### 4. One effective-genre source of truth
 
@@ -115,15 +130,27 @@ normalization, which is not evidence for a schema change. **Final conclusion: no
 migration.** If implementation proves otherwise, it STOPS and returns the exact
 evidence to the human before any migration is written.
 
-### 6. Language detection is dominance-based
+### 6. Language detection is dominance-based (exact rule, no implementer discretion)
 
-`BidiText` always emits `<bdi dir="auto">`; it sets `lang="he"` **only** for
-Hebrew-**dominant** strings. Latin-dominant strings inherit the document `en`;
-`mixed` and `neutral` strings get **no** language override. `BidiText` never
-sets `lang="he"` just because a string contains a Hebrew character. For
-`aria-label` / plain-string contexts, Unicode isolate controls
-(`U+2068`/`U+2069`) wrap the dynamic run rather than `dir="auto"` on the whole
-English sentence.
+`classifyScript(s)` counts **Hebrew letters `H`** and **Latin letters `L`**
+only — digits, punctuation, whitespace, and Hebrew combining marks / niqqud /
+cantillation are ignored. Then:
+
+- `H == 0 && L == 0` → `neutral`
+- `H > 0 && L == 0` → `hebrew`
+- `L > 0 && H == 0` → `latin`
+- both present: `H >= 2*L` → `hebrew`; `L >= 2*H` → `latin`; otherwise → `mixed`
+
+Examples: `שלום חנוך` → `hebrew`; `Radiohead` → `latin`;
+`שלום Hanoch` → `mixed`; `אביב גפן - III` → `hebrew` (7 ≥ 2·3);
+`1979` → `neutral`.
+
+`BidiText` always emits `<bdi dir="auto">`; it sets `lang="he"` **only** when
+`classifyScript` returns `hebrew`. `latin` inherits the document `en`; `mixed`
+and `neutral` get **no** language override. `BidiText` never sets `lang="he"`
+just because a string contains a Hebrew character. For `aria-label` /
+plain-string contexts, Unicode isolate controls (`U+2068`/`U+2069`) wrap the
+dynamic run rather than `dir="auto"` on the whole English sentence.
 
 ### 7. Deterministic sort with an explicit mixed-script bucket order
 
@@ -155,12 +182,16 @@ PR 3 may append Hebrew fallback **family names** to the CSS stacks if human
 visual testing shows the seam is unacceptable — additive stack entries only, no
 new font file, no `@font-face`.
 
-### 10. Three sequential PRs, not one branch
+### 10. Three sequential implementation PRs, then a documentation-only closeout PR
 
-PR 1 (BiDi + search + sort, no AI change) → PR 2 (canonical genres + VIN) →
-PR 3 (vision + accessibility + docs closeout). Each PR starts from then-current
-`main` after the previous PR is reviewed, merged, deployed from merged `main`,
-and human-accepted.
+PR 1 (BiDi + search + sort, no AI change, no genre-semantics change) →
+PR 2 (canonical genres + VIN) → PR 3 (vision + accessibility + Scan) →
+**closeout PR** (status → COMPLETE, final SHAs, human-acceptance evidence,
+general-docs reconciliation). Each PR starts from then-current `main` after the
+previous is reviewed, merged, deployed from merged `main`, and human-accepted.
+**No implementation PR claims post-merge evidence** (a merge SHA, a deploy SHA,
+a "final `main`", an acceptance result) — that can only exist after it merges,
+so it lives in the closeout PR, exactly as in the M12 pattern (PR #21).
 
 ## Consequences
 
@@ -174,17 +205,28 @@ and human-accepted.
   collections** (a `רוק`+`rock` split collapses to one row; personally-tagged
   records start counting). This is the intended consistency fix and is called
   out for human acceptance.
-- Three trusted-prompt additions (intent, refinement, selection) plus one vision
-  prompt addition require a real-provider human retest — one in PR 2's human
-  gate, one in PR 3's.
-- English-only collections must behave byte-identically for search, sort, genre
-  filter, Dashboard insights, and curator filtering/ranking — locked by
-  regression tests.
+- Three trusted curator-prompt additions (intent, refinement, selection) plus
+  one vision prompt addition require a real-provider human retest, **bounded**:
+  ≈ 4 curator model calls in PR 2's human gate (one Hebrew request + one Hebrew
+  refinement, two model calls each), one Hebrew Vision call in PR 3's. English
+  regression, out-of-scope-Hebrew, and unknown-genre behaviour are mocked
+  automated coverage, not live calls.
+- **English compatibility is scoped, not absolute.** English free-text search,
+  all-English sort order, and already-canonical English catalog-genre semantics
+  are unchanged (locked by regression fixtures that use `personal_genres: []`
+  and canonical catalog genres). Three deltas ARE expected and approved:
+  personal genres begin participating in Dashboard genre insights; personal
+  genres begin participating in VIN candidate genres (curator server now loads
+  `personal_genres`); approved aliases dedupe to one canonical genre. Any other
+  English-visible change is a defect → STOP.
 - No schema change, no migration, no dependency, no new secret/env var, no
   Netlify/Supabase config change, no new bundled webfont.
-- At implementation closeout (PR 3), `docs/architecture.md`, `docs/ai-design.md`,
-  `docs/data-model.md`, `docs/security.md`, `README.md`,
-  `docs/verification.md`, and the spec/decision index READMEs are reconciled.
+- The **documentation-only closeout PR** (after PR 3 production acceptance)
+  reconciles `docs/architecture.md`, `docs/ai-design.md`, `docs/data-model.md`,
+  `docs/security.md`, `README.md`, `docs/verification.md`, the spec/decision
+  index READMEs, and this ADR's "implemented" note, and sets spec/plan status →
+  COMPLETE with the final SHAs and acceptance evidence. No implementation PR
+  does this.
 - Historical roadmap `docs/roadmaps/2026-08-18-*` stays byte-unchanged
   (`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
 
@@ -215,6 +257,12 @@ and human-accepted.
 - **LLM-assisted genre translation / inference.** Violates the AI-boundary rule
   (deterministic code where it is clearly better) and introduces non-determinism
   and cost into a filter path. Rejected — closed deterministic map only.
+- **Map Hebrew `פאנק` to `punk`** (it was in the first draft of the alias
+  table). `פאנק` is ambiguous — it is the common Hebrew spelling of both "punk"
+  and "funk". Mapping it either way is a guess and violates the
+  conservative/no-guess contract. Removed; `פאנק` passes through unchanged
+  pending a future explicitly approved disambiguation. English `punk` is
+  unambiguous and stays mapped.
 - **`localeCompare()` with a locale argument but no script bucketing** (DUCET
   interleaving of Hebrew and Latin). Defensible, but users expect "the English
   records, then the Hebrew records" like a physical shelf. Chose explicit
@@ -230,5 +278,9 @@ and human-accepted.
   server-side Hebrew search is ever introduced (out of scope).
 - **One implementation branch for the whole enhancement.** Too large to review
   safely and mixes a zero-AI-risk UI change with authoritative curator-path and
-  prompt changes. Chose three sequential PRs, each independently
+  prompt changes. Chose three sequential implementation PRs, each independently
   reviewed/deployed/accepted.
+- **Final status / SHA / acceptance work inside implementation PR 3.**
+  Temporally impossible — a PR cannot cite its own merge SHA, deploy SHA, or
+  human-acceptance result. Chose a separate documentation-only closeout PR after
+  PR 3 acceptance, matching the M12 pattern (PR #21).
