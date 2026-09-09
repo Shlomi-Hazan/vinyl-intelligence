@@ -87,6 +87,32 @@ async function selectFileAndAnalyse() {
   await user.click(screen.getByRole('button', { name: 'Analyse cover' }))
 }
 
+describe('ScanPanel - Hebrew & multilingual (spec 0015)', () => {
+  it('renders a Hebrew recognition clue and a Hebrew candidate with isolation', async () => {
+    recognizeCover.mockResolvedValue(
+      recognition({ artist: 'שלום חנוך', albumTitle: 'מחכים למשיח' }),
+    )
+    searchCatalog.mockResolvedValue([
+      candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+    ])
+    setup()
+    await selectFileAndAnalyse()
+
+    // the candidate title is a Hebrew-isolated <bdi>
+    const candTitle = await screen.findByText('מחכים למשיח')
+    expect(candTitle.tagName).toBe('BDI')
+    expect(candTitle.getAttribute('lang')).toBe('he')
+
+    // the "Artist:" clue chip keeps its English label and contains the Hebrew
+    // value bracketed by bidi isolate controls (invisible U+2068 / U+2069).
+    const clue = screen
+      .getAllByText((_c, el) => el?.className === 'vi-scan__clue')
+      .find((el) => el.textContent?.includes('Artist:'))
+    expect(clue?.textContent).toContain('שלום חנוך')
+    expect(clue?.textContent).toContain(String.fromCodePoint(0x2068))
+  })
+})
+
 describe('ScanPanel', () => {
   it('analysing and catalogue-searching are distinct phases', async () => {
     let resolveRec: (v: CoverRecognition) => void = () => {}

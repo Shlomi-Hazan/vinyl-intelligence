@@ -100,6 +100,7 @@ export function CuratorRefinePanel({
             <label className="curator-request">
               Your follow-up
               <textarea
+                dir="auto"
                 maxLength={MAX_REQUEST_LENGTH}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Only favorites."

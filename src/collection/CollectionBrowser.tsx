@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
+import { classifyScript } from '../lib/i18n/script.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
 import { RatingControl, SegmentedControl, Select } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -205,6 +207,7 @@ export function CollectionBrowser({
           <Icon name="search" size={16} />
           <input
             type="search"
+            dir="auto"
             placeholder="Search artist or album"
             value={filters.search}
             onChange={(e) =>
@@ -223,7 +226,14 @@ export function CollectionBrowser({
           >
             <option value="">All genres</option>
             {genres.map((g) => (
-              <option key={g} value={g}>
+              // A native <option> cannot contain <bdi>; put direction/language
+              // on the element itself. Value + genre semantics are unchanged.
+              <option
+                key={g}
+                value={g}
+                dir="auto"
+                lang={classifyScript(g) === 'hebrew' ? 'he' : undefined}
+              >
                 {g}
               </option>
             ))}
@@ -414,10 +424,17 @@ function AlbumCard(props: CardProps) {
     <div className="vi-albumcard">
       <Link to={`/collection/${item.id}`} className="vi-albumcard__link">
         <AlbumArtwork size="grid" {...artProps(item, userId, client)} />
-        <span className="vi-albumcard__title">{item.release.title}</span>
+        <span className="vi-albumcard__title">
+          <BidiText>{item.release.title}</BidiText>
+        </span>
         <span className="vi-albumcard__meta">
-          {item.release.artist}
-          {metaLine(item) ? ` · ${metaLine(item)}` : ''}
+          <BidiText>{item.release.artist}</BidiText>
+          {metaLine(item) ? (
+            <>
+              {' · '}
+              <BidiText>{metaLine(item)}</BidiText>
+            </>
+          ) : null}
         </span>
       </Link>
       {item.rating ? (
@@ -438,9 +455,15 @@ function AlbumRow(props: CardProps & { playsLabel: string }) {
         <span className="vi-albumrow__art">
           <AlbumArtwork size="thumb" {...artProps(item, userId, client)} />
         </span>
-        <span className="vi-albumrow__title">{item.release.title}</span>
-        <span className="vi-albumrow__artist">{item.release.artist}</span>
-        <span className="vi-albumrow__meta">{metaLine(item) || '—'}</span>
+        <span className="vi-albumrow__title">
+          <BidiText>{item.release.title}</BidiText>
+        </span>
+        <span className="vi-albumrow__artist">
+          <BidiText>{item.release.artist}</BidiText>
+        </span>
+        <span className="vi-albumrow__meta">
+          {metaLine(item) ? <BidiText>{metaLine(item)}</BidiText> : '—'}
+        </span>
         <span className="vi-albumrow__rating">
           {item.rating ? <RatingControl value={item.rating} readOnly /> : null}
         </span>

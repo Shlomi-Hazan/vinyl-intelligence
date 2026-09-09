@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
 import { Vinny } from '../brand/Vinny.tsx'
 import { Button } from '../ui/primitives.tsx'
@@ -96,12 +98,15 @@ function recognitionError(error: unknown): ScanState {
   }
 }
 
+// Dynamic values (which may be Hebrew - the cover script is preserved) are
+// wrapped in Unicode bidi isolates so they render correctly beside the English
+// "Artist:" / "Album:" labels.
 function clueList(r: CoverRecognition): string[] {
   const out: string[] = []
-  if (r.artist) out.push(`Artist: ${r.artist}`)
-  if (r.albumTitle) out.push(`Album: ${r.albumTitle}`)
-  if (r.label) out.push(`Label: ${r.label}`)
-  if (r.catalogNumber) out.push(`Cat #: ${r.catalogNumber}`)
+  if (r.artist) out.push(`Artist: ${isolate(r.artist)}`)
+  if (r.albumTitle) out.push(`Album: ${isolate(r.albumTitle)}`)
+  if (r.label) out.push(`Label: ${isolate(r.label)}`)
+  if (r.catalogNumber) out.push(`Cat #: ${isolate(r.catalogNumber)}`)
   if (r.releaseYearHint !== null) out.push(`Year ~ ${r.releaseYearHint}`)
   return out
 }
@@ -463,10 +468,16 @@ export function ScanPanel({
                       />
                     </span>
                     <div className="vi-candidate__body">
-                      <p className="vi-candidate__artist">{c.artist}</p>
-                      <h3 className="vi-candidate__title">{c.title}</h3>
+                      <p className="vi-candidate__artist">
+                        <BidiText>{c.artist}</BidiText>
+                      </p>
+                      <h3 className="vi-candidate__title">
+                        <BidiText>{c.title}</BidiText>
+                      </h3>
                       {candidateMeta(c) ? (
-                        <p className="vi-candidate__meta">{candidateMeta(c)}</p>
+                        <p className="vi-candidate__meta">
+                          <BidiText>{candidateMeta(c)}</BidiText>
+                        </p>
                       ) : null}
                       <div className="vi-candidate__actions">
                         <Button

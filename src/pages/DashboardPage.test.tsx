@@ -235,6 +235,36 @@ describe('DashboardPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('gives the Quick VIN input dir="auto" and renders a Hebrew record in <bdi>', async () => {
+    loadCollection.mockResolvedValue([
+      makeItem('01', {
+        release: {
+          id: 'rel-01',
+          artist: 'שלום חנוך',
+          title: 'מחכים למשיח',
+          release_year: 1985,
+          label: null,
+          catalog_number: null,
+          country: null,
+          format: null,
+          genres: [],
+          updated_at: '2026-08-01T00:00:00.000Z',
+        },
+      }),
+    ])
+    loadListeningEvents.mockResolvedValue([])
+    renderApp({ client: authedClient(), route: '/dashboard' })
+
+    expect(await screen.findByLabelText('Quick VIN prompt')).toHaveAttribute(
+      'dir',
+      'auto',
+    )
+    const heb = await screen.findAllByText('מחכים למשיח')
+    expect(heb.some((el) => el.tagName === 'BDI' && el.getAttribute('lang') === 'he')).toBe(
+      true,
+    )
+  })
+
   it('Quick VIN navigates to /vin with a prefill and never calls the curator', async () => {
     loadCollection.mockResolvedValue([makeItem('01')])
     loadListeningEvents.mockResolvedValue([])

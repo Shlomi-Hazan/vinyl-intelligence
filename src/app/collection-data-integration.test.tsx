@@ -153,7 +153,7 @@ describe('CollectionDataProvider is the single post-auth source (Finding 1)', ()
 
     await waitFor(() => {
       expect(
-        screen.getByText('Radiohead - OK Computer'),
+        screen.getByRole('link', { name: 'Radiohead - OK Computer' }),
       ).toBeInTheDocument()
     })
   })
@@ -271,7 +271,9 @@ describe('Independent collection / listening error handling (Finding 2)', () => 
     renderApp({ client: authedClient(), route: '/collection' })
 
     // collection still renders
-    await waitFor(() => expect(screen.getByText('Oasis')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getAllByText('Oasis').length).toBeGreaterThan(0),
+    )
 
     await goTo('History')
     await waitFor(() => {
@@ -299,7 +301,7 @@ describe('Independent collection / listening error handling (Finding 2)', () => 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Suede')).toBeInTheDocument()
+      expect(screen.getAllByText('Suede').length).toBeGreaterThan(0)
     })
   })
 })

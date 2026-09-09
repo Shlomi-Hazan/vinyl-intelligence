@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
 import { Button, SearchInput } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -186,8 +187,8 @@ export function DiscoverPanel({
 
       {searched && submittedQuery ? (
         <p className="vi-hint vi-discover__current">
-          Showing results for &ldquo;{submittedQuery}&rdquo; &middot; press Enter
-          to run it again
+          Showing results for &ldquo;<BidiText>{submittedQuery}</BidiText>&rdquo;
+          &middot; press Enter to run it again
         </p>
       ) : null}
 
@@ -263,9 +264,17 @@ export function DiscoverPanel({
                     />
                   </span>
                   <div className="vi-candidate__body">
-                    <p className="vi-candidate__artist">{c.artist}</p>
-                    <h3 className="vi-candidate__title">{c.title}</h3>
-                    {meta ? <p className="vi-candidate__meta">{meta}</p> : null}
+                    <p className="vi-candidate__artist">
+                      <BidiText>{c.artist}</BidiText>
+                    </p>
+                    <h3 className="vi-candidate__title">
+                      <BidiText>{c.title}</BidiText>
+                    </h3>
+                    {meta ? (
+                      <p className="vi-candidate__meta">
+                        <BidiText>{meta}</BidiText>
+                      </p>
+                    ) : null}
                     <div className="vi-candidate__actions">
                       {owned ? (
                         <span className="vi-candidate__owned">

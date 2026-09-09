@@ -15,6 +15,7 @@ import {
   type CuratorResult,
 } from '../lib/curator/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import { textIgnoringBidi } from '../test/i18n.ts'
 
 vi.mock('../lib/curator/client.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/curator/client.ts')>()
@@ -136,7 +137,7 @@ describe('CuratorRefinePanel (Milestone 10)', () => {
     const transcript = screen.getByRole('list', { name: 'Conversation so far' })
     expect(within(transcript).getByText(/give me 90s rock/)).toBeInTheDocument()
     expect(within(transcript).getByText(/only favorites/)).toBeInTheDocument()
-    expect(within(transcript).getByText(/recommended Rumours, The Bends/)).toBeInTheDocument()
+    expect(within(transcript).getByText(textIgnoringBidi('recommended Rumours, The Bends'))).toBeInTheDocument()
   })
 
   it('shows "Excluded N previous picks" when the refine excluded prior picks', async () => {

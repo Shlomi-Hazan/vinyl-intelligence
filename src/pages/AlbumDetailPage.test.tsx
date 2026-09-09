@@ -12,6 +12,7 @@ import {
 import { ToastProvider } from '../ui/ToastProvider.tsx'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import { nameIgnoringBidi } from '../test/i18n.ts'
 
 const updateManualRelease = vi.fn()
 const updateCollectionItemPersonalGenres = vi.fn()
@@ -179,7 +180,7 @@ describe('AlbumDetailPage', () => {
     ).not.toBeInTheDocument()
 
     const yours = screen.getByRole('list', { name: 'Your genres' })
-    expect(within(yours).getByRole('button', { name: 'Remove g-funk' })).toBeInTheDocument()
+    expect(within(yours).getByRole('button', { name: nameIgnoringBidi('Remove g-funk') })).toBeInTheDocument()
 
     const u = userEvent.setup()
     await u.type(screen.getByLabelText('Add a genre'), 'west coast')

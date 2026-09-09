@@ -1,6 +1,7 @@
 import { useCallback, useEffect, type FormEvent } from 'react'
 import { CuratorRecommendationCard } from './CuratorRecommendationCard.tsx'
 import { CuratorRefinePanel } from './CuratorRefinePanel.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
 import { useCuratorSession } from './useCuratorSession.ts'
 import { useToast } from '../ui/useToast.ts'
@@ -48,13 +49,17 @@ const STARTER_PROMPTS = [
 
 type OkResult = Extract<CuratorResult | CuratorRefineResult, { status: 'ok' }>
 
+// Dynamic values (genre names, which PR 2 may make Hebrew) are wrapped in
+// Unicode bidi isolates so they render correctly inside the English label text
+// wherever this string is shown (constraint list, transcript). The English
+// labels stay LTR.
 function describeConstraints(intent: CuratorIntent): string[] {
   const lines: string[] = []
   if (intent.includeGenres.length > 0) {
-    lines.push(`Genres: ${intent.includeGenres.join(', ')}`)
+    lines.push(`Genres: ${intent.includeGenres.map(isolate).join(', ')}`)
   }
   if (intent.excludeGenres.length > 0) {
-    lines.push(`Excluded genres: ${intent.excludeGenres.join(', ')}`)
+    lines.push(`Excluded genres: ${intent.excludeGenres.map(isolate).join(', ')}`)
   }
   if (intent.decades.length > 0) {
     lines.push(`Decades: ${intent.decades.map((d) => `${d}s`).join(', ')}`)
@@ -358,6 +363,7 @@ export function CuratorPanel({
             <span className="vi-label">Your request</span>
             <textarea
               className="vi-textarea"
+              dir="auto"
               maxLength={MAX_REQUEST_LENGTH}
               onChange={(e) => setRequest(e.target.value)}
               placeholder="I had a stressful day. Give me something relaxing but not sleepy."

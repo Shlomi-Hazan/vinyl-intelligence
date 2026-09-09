@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
+import { BidiText } from '../components/BidiText.tsx'
 import { Vinny } from '../brand/Vinny.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { Button, Input } from '../ui/primitives.tsx'
@@ -49,8 +50,12 @@ function AlbumMini({ item }: { item: CollectionItemWithRelease }) {
         client={client}
         customCoverVersion={item.custom_cover_updated_at ?? null}
       />
-      <span className="vi-albumcard__title">{item.release.title}</span>
-      <span className="vi-albumcard__meta">{item.release.artist}</span>
+      <span className="vi-albumcard__title">
+        <BidiText>{item.release.title}</BidiText>
+      </span>
+      <span className="vi-albumcard__meta">
+        <BidiText>{item.release.artist}</BidiText>
+      </span>
     </Link>
   )
 }
@@ -248,6 +253,7 @@ export function DashboardPage() {
                   <form onSubmit={submitQuickVin}>
                     <Input
                       aria-label="Quick VIN prompt"
+                      dir="auto"
                       placeholder="e.g. something warm from the 70s I have not played lately"
                       value={quickVin}
                       onChange={(e) => setQuickVin(e.target.value)}
@@ -388,7 +394,8 @@ export function DashboardPage() {
                           <div className="vi-genre-tags">
                             {genres.map((g) => (
                               <span className="vi-chip" key={g.genre}>
-                                {g.genre} <span className="vi-bar__val">{g.count}</span>
+                                <BidiText>{g.genre}</BidiText>{' '}
+                                <span className="vi-bar__val">{g.count}</span>
                               </span>
                             ))}
                           </div>

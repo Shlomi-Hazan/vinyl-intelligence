@@ -116,6 +116,25 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('HistoryPage - Hebrew & multilingual (spec 0015)', () => {
+  it('renders the artist and title as separate isolated runs in a row heading', () => {
+    const { container } = renderHistory(
+      baseData({
+        items: [makeItem('i1', 'שלום חנוך', 'מחכים למשיח')],
+        events: [ev('e1', '2026-08-10T20:00:00.000Z')],
+      }),
+    )
+    const heading = container.querySelector('.vi-histrow__title') as HTMLElement
+    const runs = heading.querySelectorAll('bdi')
+    expect(runs).toHaveLength(2)
+    expect(runs[0].textContent).toBe('שלום חנוך')
+    expect(runs[1].textContent).toBe('מחכים למשיח')
+    expect(runs[0].getAttribute('lang')).toBe('he')
+    // the " - " separator sits between the two isolated runs, not inside them
+    expect(heading.textContent).toBe('שלום חנוך - מחכים למשיח')
+  })
+})
+
 describe('HistoryPage journal', () => {
   it('a loading events state is not an empty state', () => {
     renderHistory(baseData({ eventsStatus: 'loading', events: [] }))

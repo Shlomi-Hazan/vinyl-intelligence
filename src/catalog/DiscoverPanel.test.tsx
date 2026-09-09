@@ -66,6 +66,27 @@ function renderPanel(owned: CollectionItemWithRelease[] = []) {
   return { onCollectionChanged, ...view }
 }
 
+describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
+  it('gives the catalog search input dir="auto" and isolates a Hebrew candidate', async () => {
+    const user = userEvent.setup()
+    searchCatalog.mockResolvedValue([
+      candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+    ])
+    const { container } = renderPanel()
+    expect(screen.getByLabelText('Search the catalog')).toHaveAttribute('dir', 'auto')
+
+    await user.type(screen.getByLabelText('Search the catalog'), 'שלום חנוך')
+    await user.keyboard('{Enter}')
+
+    const title = await screen.findByText('מחכים למשיח')
+    expect(title.tagName).toBe('BDI')
+    expect(title.getAttribute('lang')).toBe('he')
+    expect(container.querySelector('.vi-candidate__artist bdi')?.textContent).toBe(
+      'שלום חנוך',
+    )
+  })
+})
+
 describe('DiscoverPanel', () => {
   it('starts with an initial prompt (no search fired)', () => {
     renderPanel()

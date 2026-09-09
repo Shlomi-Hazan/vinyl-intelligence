@@ -1,7 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { BidiText } from '../components/BidiText.tsx'
 
 type PageHeaderProps = {
+  /** Plain string - a Hebrew/mixed value is BiDi-isolated internally. */
   title: string
+  /** Plain string - a Hebrew/mixed value is BiDi-isolated internally. */
   eyebrow?: string
   actions?: ReactNode
   /** Move focus here on mount so route changes are announced to AT. */
@@ -27,9 +30,13 @@ export function PageHeader({
   return (
     <header className="vi-page-header">
       <div className="vi-page-header__titles">
-        {eyebrow ? <p className="vi-page-header__eyebrow">{eyebrow}</p> : null}
+        {eyebrow ? (
+          <p className="vi-page-header__eyebrow">
+            <BidiText>{eyebrow}</BidiText>
+          </p>
+        ) : null}
         <h1 ref={headingRef} tabIndex={-1}>
-          {title}
+          <BidiText>{title}</BidiText>
         </h1>
       </div>
       {actions ? <div className="vi-page-header__actions">{actions}</div> : null}

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PersonalGenresEditor } from './PersonalGenresEditor.tsx'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import { nameIgnoringBidi } from '../test/i18n.ts'
 
 const updateCollectionItemPersonalGenres = vi.fn()
 
@@ -34,12 +35,33 @@ function renderEditor(personal: string[] = ['jazz'], catalog: string[] = ['hip h
 
 beforeEach(() => vi.clearAllMocks())
 
+describe('PersonalGenresEditor - Hebrew & multilingual (spec 0015)', () => {
+  it('renders catalog + personal genre chips inside <bdi> and isolates the Remove label', () => {
+    renderEditor(['רוק'], ['ג׳אז'])
+    const catalog = screen.getByRole('list', { name: 'Catalog genres' })
+    expect(within(catalog).getByText('ג׳אז').tagName).toBe('BDI')
+    const yours = screen.getByRole('list', { name: 'Your genres' })
+    const chip = within(yours).getByText('רוק')
+    expect(chip.tagName).toBe('BDI')
+    expect(chip.getAttribute('lang')).toBe('he')
+    // aria-label keeps the English verb and isolates the value
+    expect(
+      within(yours).getByRole('button', { name: nameIgnoringBidi('Remove רוק') }),
+    ).toBeInTheDocument()
+  })
+
+  it('gives the draft genre input dir="auto"', () => {
+    renderEditor([], [])
+    expect(screen.getByLabelText('Add a genre')).toHaveAttribute('dir', 'auto')
+  })
+})
+
 describe('PersonalGenresEditor', () => {
   it('removes a personal genre and persists the remaining list', async () => {
     updateCollectionItemPersonalGenres.mockResolvedValue([])
     const { onSaved } = renderEditor(['jazz'])
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Remove jazz' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: nameIgnoringBidi('Remove jazz') }))
 
     await waitFor(() =>
       expect(updateCollectionItemPersonalGenres).toHaveBeenCalledWith(
@@ -55,7 +77,7 @@ describe('PersonalGenresEditor', () => {
     updateCollectionItemPersonalGenres.mockRejectedValue(new Error('denied by RLS'))
     renderEditor(['jazz'])
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Remove jazz' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: nameIgnoringBidi('Remove jazz') }))
 
     await waitFor(() =>
       expect(screen.getByText('denied by RLS')).toBeInTheDocument(),
