@@ -269,6 +269,106 @@ describe('CollectionBrowser', () => {
     expect(sessionStorage.getItem('vi:collection:view')).toBe('list')
   })
 
+  it('list rows keep the same structural column regions regardless of content', async () => {
+    const user = userEvent.setup()
+    const listenEvent = (id: string, itemId: string): ListeningEventRecord => ({
+      id,
+      collection_item_id: itemId,
+      listened_at: '2026-08-10T20:00:00.000Z',
+      created_at: '2026-08-10T20:00:00.000Z',
+    })
+    renderBrowser(
+      [
+        // A: unrated + never played
+        item('1', { release: { title: 'A', artist: 'Alpha' } }),
+        // B: rated + never played
+        item('2', { rating: 4, release: { title: 'B', artist: 'Beta' } }),
+        // C: rated + 1 play
+        item('3', { rating: 5, release: { title: 'C', artist: 'Gamma' } }),
+        // D: unrated + 2 plays + favorite
+        item('4', { is_favorite: true, release: { title: 'D', artist: 'Delta' } }),
+        // E: long English title
+        item('5', {
+          release: {
+            title:
+              'METRO BOOMIN PRESENTS SPIDER-MAN: ACROSS THE SPIDER-VERSE (SOUNDTRACK FROM AND INSPIRED BY THE MOTION PICTURE)',
+            artist: 'Metro Boomin',
+          },
+        }),
+        // F: Hebrew title + Hebrew artist
+        item('6', { release: { title: 'מחכים למשיח', artist: 'שלום חנוך' } }),
+      ],
+      '/collection',
+      {
+        eventsStatus: 'ready',
+        events: [
+          listenEvent('e1', '3'),
+          listenEvent('e2', '4'),
+          listenEvent('e3', '4'),
+        ],
+      },
+    )
+    await user.click(screen.getByRole('button', { name: 'List' }))
+
+    const rows = screen
+      .getByRole('list', { name: 'Records' })
+      .querySelectorAll('li')
+    expect(rows).toHaveLength(6)
+
+    for (const row of rows) {
+      const link = row.querySelector('.vi-albumrow__link') as HTMLElement
+      // one fixed grid template on every row - never content-dependent
+      expect(link.style.gridTemplateColumns).toBe('')
+      // every structural region is present on every row (rating stays as an
+      // empty reserved track when the record is unrated)
+      for (const region of [
+        'bdi.vi-albumrow__title',
+        'bdi.vi-albumrow__artist',
+        '.vi-albumrow__meta',
+        '.vi-albumrow__rating',
+        '.vi-albumrow__plays',
+        '.vi-albumcard__actions',
+      ]) {
+        expect(row.querySelector(region), `${region} present`).not.toBeNull()
+      }
+      // the two quick-action buttons are on every row
+      expect(
+        row.querySelectorAll('.vi-albumcard__actions button'),
+      ).toHaveLength(2)
+    }
+
+    // listening status column shows the three distinct labels, all in
+    // `.vi-albumrow__plays`
+    const playsCells = Array.from(
+      screen.getByRole('list', { name: 'Records' }).querySelectorAll('.vi-albumrow__plays'),
+    ).map((el) => el.textContent)
+    expect(playsCells).toEqual([
+      'Never played',
+      'Never played',
+      '1 play',
+      '2 plays',
+      'Never played',
+      'Never played',
+    ])
+
+    // the long English title still lives in its own truncating title <bdi>
+    const longTitle = Array.from(
+      screen.getByRole('list', { name: 'Records' }).querySelectorAll('bdi.vi-albumrow__title'),
+    ).find((el) => el.textContent?.startsWith('METRO BOOMIN'))
+    expect(longTitle?.tagName).toBe('BDI')
+    expect(longTitle?.getAttribute('dir')).toBe('auto')
+
+    // the Hebrew row keeps its title/artist directionality
+    const hebTitle = Array.from(
+      screen.getByRole('list', { name: 'Records' }).querySelectorAll('bdi.vi-albumrow__title'),
+    ).find((el) => el.textContent === 'מחכים למשיח')
+    expect(hebTitle?.getAttribute('lang')).toBe('he')
+    const hebArtist = Array.from(
+      screen.getByRole('list', { name: 'Records' }).querySelectorAll('bdi.vi-albumrow__artist'),
+    ).find((el) => el.textContent === 'שלום חנוך')
+    expect(hebArtist?.getAttribute('lang')).toBe('he')
+  })
+
   it('the log-listen quick action records a listen and confirms it', async () => {
     addListeningEvent.mockResolvedValue({})
     const onMutated = vi.fn()

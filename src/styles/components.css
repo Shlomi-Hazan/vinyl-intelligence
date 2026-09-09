@@ -677,6 +677,12 @@ span.vi-rating__star {
   padding: 0;
   display: grid;
   gap: 2px;
+  /* Stable reserved tracks for the rating and play-count columns so their
+     content presence ("Never played" vs "1 play", rated vs unrated) can never
+     shift the title / artist / metadata columns or each other. 90px fits the
+     five 15px read-only stars (5x15 + 4x2 gap); 6rem fits "Never played". */
+  --vi-list-rating-w: 90px;
+  --vi-list-plays-w: 6rem;
 }
 .vi-albumrow {
   position: relative;
@@ -687,7 +693,13 @@ span.vi-rating__star {
 }
 .vi-albumrow__link {
   display: grid;
-  grid-template-columns: 40px minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  grid-template-columns:
+    40px
+    minmax(0, 2.2fr)
+    minmax(0, 1.4fr)
+    minmax(0, 1fr)
+    var(--vi-list-rating-w)
+    var(--vi-list-plays-w);
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) 5.5rem var(--space-2) var(--space-2);
@@ -718,6 +730,15 @@ span.vi-rating__star {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The rating occupies its reserved track left-aligned; an unrated row keeps the
+   empty track so later columns do not move. */
+.vi-albumrow__rating {
+  justify-self: start;
+  overflow: hidden;
+}
+.vi-albumrow__plays {
+  justify-self: start;
 }
 .vi-albumrow .vi-albumcard__actions {
   opacity: 1;
