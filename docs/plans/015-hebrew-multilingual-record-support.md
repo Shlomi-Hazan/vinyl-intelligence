@@ -26,6 +26,18 @@ stable-`title` focus dependency; the two sort labels become English-only
 (`Artist alphabetical` / `Album alphabetical`); `H(שלום חנוך) = 8`; the
 `AlbumArtwork` fallback isolates title and artist separately.
 
+Rev 4 (2026-09-09): final implementation-readiness corrections — (1) the sort
+uses **two script-specific `Intl.Collator` singletons** (`'en'` and `'he'`), not
+a `['en','he']` fallback array; (2) PR 1 gives `dir="auto"` to **every mounted
+free-text input/textarea** (collection search, `CollectionForm` metadata fields,
+`PersonalGenresEditor` draft, `NotesEditor`, Quick VIN, the primary
+`CatalogSearchForm` query input — moved from PR 3, curator request + refine);
+(3) PR 1 BiDi scope now includes the `CuratorRecommendationCard` **reason** (BiDi
+prep for the PR 2 Hebrew reason), the full `PersonalGenresEditor` display
+(chips + `Remove {genre}` aria + draft input), and the `AlbumDetailPage`
+remove-dialog title isolation. PR 2 touches `PersonalGenresEditor` / the
+selection prompt for **semantics only** — no BiDi repair.
+
 **Three sequential implementation PRs, then one documentation-only closeout
 PR** (the M12 final-closeout pattern). **Do not create one giant branch.** Each
 implementation PR starts from **then-current `main`** after the previous PR is
@@ -83,8 +95,15 @@ the main review surface.
 
 New:
 - `src/lib/i18n/script.ts` — `classifyScript(s): 'hebrew'|'latin'|'mixed'|'neutral'`
-- `src/lib/i18n/searchKey.ts` — `buildSearchKey(s): string`
-- `src/lib/i18n/collator.ts` — shared `Intl.Collator` + `compareNames(a,b)` with script bucketing
+- `src/lib/i18n/searchKey.ts` — `buildSearchKey(s): string` (comparison-only)
+- `src/lib/i18n/collator.ts` — **two module-level singletons**
+  `new Intl.Collator('en', APPROVED_OPTIONS)` and
+  `new Intl.Collator('he', APPROVED_OPTIONS)` (not a `['en','he']` array — that
+  is a fallback request, not a per-string policy), plus `compareNames(a,b)`:
+  bucket by leading script (Latin → Hebrew → other/neutral), compare
+  Latin-vs-Latin with the `en` collator, Hebrew-vs-Hebrew with the `he`
+  collator, other/neutral by code point, then the stable original-index
+  tiebreak. `APPROVED_OPTIONS` baseline `{ numeric: true, sensitivity: 'variant', caseFirst: 'false' }`.
 - `src/lib/i18n/isolate.ts` — `isolate(s): string` (FSI/PDI wrap)
 - `src/components/BidiText.tsx` — `<bdi dir="auto" lang={…}>` primitive
 - Test files for each of the above.
@@ -107,28 +126,49 @@ Modified (runtime):
   input; `buildSearchKey` is derived only inside `matchesSearch` for the
   comparison — `CollectionBrowser` does not replace or rewrite `q`. The
   `?genre=` param is unchanged in PR 1.
-- `src/pages/AlbumDetailPage.tsx` — `BidiText` on the metadata values, genre
-  chips (display only in PR 1 — no canonicalization yet), notes render, remove
-  dialog title. The header title/eyebrow are isolated **inside `PageHeader`**
-  (below), so the page still passes plain strings.
+- `src/pages/AlbumDetailPage.tsx` — `BidiText` on the metadata values and genre
+  chips (display only in PR 1 — no canonicalization yet); the **remove dialog**
+  copy isolates the interpolated `release.title` as a dynamic run
+  (`isolate()` / `<bdi>` around the title, English sentence stays `dir="ltr"`);
+  the `NotesEditor` `<textarea>` gets `dir="auto"`. Header title/eyebrow are
+  isolated **inside `PageHeader`** (below), so the page still passes plain
+  strings.
 - `src/app/PageHeader.tsx` — keep the props `title: string` and
   `eyebrow?: string` (do **not** widen to `ReactNode`); `PageHeader` renders
   each string through the BiDi primitive internally; the `useEffect` focus
   dependency stays `[focusOnMount, title]` (the stable string), so the
   focus-on-route-change behaviour does not regress.
-- `src/pages/HistoryPage.tsx` — `BidiText` on the row heading and dialog titles.
-- `src/pages/DashboardPage.tsx` — `BidiText` on `AlbumMini` title/artist and the
-  Quick-VIN nothing-genre-related bits (genre chips stay untouched in PR 1).
-- `src/collection/CollectionForm.tsx` — `dir="auto"` on the artist/title inputs.
-- `src/curator/CuratorRecommendationCard.tsx` — `BidiText` on title/artist/genre
-  list; `isolate()` in the art-link `aria-label`. (No reason/language change.)
+- `src/pages/HistoryPage.tsx` — `BidiText` on the row heading; the edit/delete
+  dialog copy isolates the interpolated record title.
+- `src/pages/DashboardPage.tsx` — `BidiText` on `AlbumMini` title/artist; the
+  **Quick VIN `<Input>`** gets `dir="auto"`. Genre chips stay untouched in PR 1.
+- `src/collection/CollectionForm.tsx` — `dir="auto"` on **every free-text
+  metadata control that can hold human-readable text**: at minimum `artist`,
+  `title`, `label`, `country`, `genre`. `releaseYear` stays numeric / LTR.
+  `catalogNumber` / `format` may also take `dir="auto"` if the shared generic
+  text input makes it simpler and neutral/Latin values do not regress.
+- `src/collection/PersonalGenresEditor.tsx` — **BiDi display only** (PR 1):
+  catalog genre chip text and personal genre chip text → `BidiText`; the
+  `Remove {genre}` `aria-label` → `isolate(genre)`; the draft `<input>` →
+  `dir="auto"`. (PR 2 revisits this file **only** for canonical dedupe
+  semantics; the BiDi behaviour is already in place from PR 1.)
+- `src/curator/CuratorRecommendationCard.tsx` — **BiDi preparation for the
+  Hebrew reason PR 2 will produce** (this is not an AI change): `BidiText` on
+  `recommendation.reason`, `title`, `artist`; each genre value isolated
+  individually; `isolate()` around the dynamic title/artist in the art-link
+  `aria-label`. No reason **content/language** logic here — that is PR 2.
 - `src/curator/CuratorTranscript.tsx` — isolate the user text and the
   `recommended {titles}` dynamic run.
 - `src/curator/CuratorPanel.tsx` / `src/curator/CuratorRefinePanel.tsx` —
   `BidiText`/`isolate` on `describeConstraints` values and the transcript;
   `dir="auto"` on the request + refine textareas.
+- `src/catalog/CatalogSearchForm.tsx` — **`dir="auto"` on the catalog-search
+  query input** (moved from PR 3 into PR 1: the primary catalog search box must
+  be multilingual in the foundation PR). PR 3 keeps only the final Scan/Discover
+  candidate-rendering sweep.
 - `src/catalog/ScanPanel.tsx` — `BidiText` on clue chips and candidate cards;
-  isolate the interpolated query in low-confidence/no-match copy.
+  isolate the interpolated query in low-confidence/no-match copy. (Any
+  Scan-only manual text field may stay PR 3 as final-polish.)
 - `src/catalog/CatalogCandidateCard.tsx` / `src/catalog/DiscoverPanel.tsx` —
   `BidiText` on artist/title where rendered.
 - `src/media/AlbumArtwork.tsx` — `isolate()` in the computed `aria-label`; the
@@ -144,11 +184,19 @@ Modified (CSS):
 - `src/styles/components.css`, `src/styles/shell.css` — add `dir` awareness to
   the clamped / `text-overflow: ellipsis` blocks that render dynamic fields.
 
+Modified (runtime, cont.):
+- `src/collection/CollectionBrowser.tsx` also gets `dir="auto"` on the
+  collection **search `<input>`** (in addition to the `?q=`-raw + option
+  handling already listed above).
+
 Modified (tests): `src/collection/collectionQuery.test.ts` and any component
-test whose rendered output now contains `<bdi>` wrappers
-(`CuratorRecommendationCard.test.tsx`, `CuratorPanel.test.tsx`,
-`HistoryPage.test.tsx`, `DashboardPage.test.tsx`, `CollectionBrowser.test.tsx`,
-`ScanPanel.test.tsx`, `AlbumDetailPage.test.tsx` as needed).
+test whose rendered output now contains `<bdi>` wrappers or a new `dir="auto"`
+input (`CuratorRecommendationCard.test.tsx`, `CuratorPanel.test.tsx`,
+`CuratorRefinePanel.test.tsx`, `HistoryPage.test.tsx`, `DashboardPage.test.tsx`,
+`CollectionBrowser.test.tsx`, `CollectionForm.test.tsx` if present,
+`PersonalGenresEditor.test.tsx`, `AlbumDetailPage.test.tsx`,
+`DiscoverPanel.test.tsx` / catalog search test, `ScanPanel.test.tsx`,
+`AlbumArtwork.test.tsx` as needed).
 
 ### 1.2 Ordered steps
 
@@ -161,10 +209,15 @@ test whose rendered output now contains `<bdi>` wrappers
    (NFKC unless narrower is safer) and the exact combining-mark code points
    removed; assert maqaf `U+05BE` is preserved. Use a meaningful combining-mark /
    presentation-form test case (not plain `עברית`).
-3. `collator.ts` + tests (bucketing, `Intl.Collator(['en','he'],…)`, the §9
-   example ordering, determinism, `numeric:true`).
-4. `isolate.ts` + `BidiText.tsx` + tests (attributes only; `lang` policy per §8:
-   `lang="he"` only for `hebrew`, none for `latin`/`mixed`/`neutral`).
+3. `collator.ts` + tests. **Two script-specific singletons** — `Intl.Collator('en', …)`
+   and `Intl.Collator('he', …)`, **not** a `['en','he']` array (spec §9 / ADR §7).
+   Tests: script bucketing (Latin → Hebrew → other/neutral); Latin-vs-Latin via
+   `en`, Hebrew-vs-Hebrew via `he`; the §9 example ordering; `other/neutral` by
+   code point; determinism across two runs; `numeric:true` within a bucket;
+   stable original-index tiebreak.
+4. `isolate.ts` + `BidiText.tsx` + tests (attributes only; `BidiText` renders as
+   `<bdi>` and is never nested in `<option>`; `lang` policy per §8: `lang="he"`
+   only for `hebrew`, none for `latin`/`mixed`/`neutral`).
 5. Wire `collectionQuery.ts` — `matchesSearch` compares derived
    `buildSearchKey` values only (nothing persisted), `compareBySort` →
    `compareNames`, rename the two sort **labels** to `Artist alphabetical` /
@@ -174,7 +227,11 @@ test whose rendered output now contains `<bdi>` wrappers
    Hebrew query does not match Latin-script stored text. Do **not** touch the
    genre facet.
 6. Integrate `BidiText` / `isolate` across the mounted components (§1.1), one
-   component per commit where practical.
+   component per commit where practical — including the `dir="auto"` pass over
+   every mounted free-text input/textarea (collection search, `CollectionForm`
+   metadata fields, `PersonalGenresEditor` draft, `NotesEditor`, Quick VIN,
+   `CatalogSearchForm`, curator request + refine) and the `CuratorRecommendationCard`
+   reason/title/artist/genre BiDi preparation for the PR 2 Hebrew reason.
 7. CSS safety net + eyebrow fix + clamped-element `dir` audit.
 8. Update affected component tests to the new DOM (assert `dir` / `lang` /
    isolate chars, never geometry).
@@ -184,13 +241,23 @@ test whose rendered output now contains `<bdi>` wrappers
 
 Per spec §20: script classification (incl. `H(שלום חנוך) == 8`), search key
 (comparison-only; maqaf-preserved; a meaningful combining-mark case; a
-Hebrew-query-vs-Latin-stored non-match), sort (Hebrew / English / mixed /
-determinism / numeric / stable tiebreak; renamed English labels), `BidiText`
-attributes (renders as `<bdi>`, never inside `<option>`), the genre `<option>`
-carrying `dir`/`lang` with a plain-string child, the `AlbumArtwork` fallback
-isolating title and artist separately, `PageHeader` keeping `title: string` and
-the stable-`title` focus dependency, English search+sort regression. Update
-component snapshots/queries for the new `<bdi>` wrappers.
+Hebrew-query-vs-Latin-stored non-match), sort (Hebrew via `he` collator /
+English via `en` collator / mixed buckets / other-neutral by code point /
+determinism / numeric / stable tiebreak / renamed English labels / **the `en`
+and `he` singletons are separate, not a locale array**), `BidiText` attributes
+(renders as `<bdi>`, never inside `<option>`), the genre `<option>` carrying
+`dir`/`lang` with a plain-string child, the `AlbumArtwork` fallback isolating
+title and artist separately, `PageHeader` keeping `title: string` and the
+stable-`title` focus dependency, English search+sort regression. Add
+`dir="auto"` assertions for the mounted free-text inputs (collection search,
+`CollectionForm` metadata fields, `PersonalGenresEditor` draft, `NotesEditor`,
+Quick VIN, `CatalogSearchForm`, curator request + refine). Add
+`CuratorRecommendationCard` BiDi assertions: `reason` / `title` / `artist`
+wrapped, genres isolated individually, `aria-label` contains isolate characters.
+Add `PersonalGenresEditor` BiDi assertions: catalog + personal genre chips
+wrapped, `Remove {genre}` aria isolated. Add `AlbumDetailPage` remove-dialog
+assertion: the interpolated title is an isolated run. Update component
+snapshots/queries for the new `<bdi>` wrappers.
 
 ### 1.4 Automated gates
 
@@ -216,10 +283,18 @@ one phone width (390–430 px). VoiceOver spot check on one Hebrew card.
   stored text).
 - **No `PageHeader` prop-type change** (`title`/`eyebrow` stay `string`); no
   regression to the route-change focus effect.
+- **`dir="auto"` on inputs only changes the editable text direction** — no
+  stored value is rewritten, no validation/semantics change; `releaseYear` stays
+  LTR.
+- **`CuratorRecommendationCard` gets BiDi wrapping but no reason content/language
+  logic** — the Hebrew-reason behaviour is PR 2's selection-prompt change.
+- **`PersonalGenresEditor` gets BiDi display only** — canonical genre semantics /
+  dedupe stay PR 2.
 - No Dashboard `topGenres` source change.
 - No curator server change; no `personal_genres` in the curator select.
 - No prompt change of any kind (intent, refinement, selection, vision).
-- No Vision behaviour change.
+- No Vision behaviour change (the `CatalogSearchForm` input `dir="auto"` is a
+  UI-direction change, not a Vision or catalog-search behaviour change).
 - No new webfont; no font-file change.
 - No general-docs change; no spec/plan status change (all closeout).
 - No schema / migration / dependency / env / Netlify / Supabase change.
@@ -230,6 +305,10 @@ one phone width (390–430 px). VoiceOver spot check on one Hebrew card.
   without a change users would notice → STOP, report the specific case.
 - `Intl.Collator` behaves non-deterministically in the CI/test runtime → STOP,
   report (do not add an ICU dependency).
+- The `he` (or `en`) collator is unavailable / falls back in the runtime, or a
+  single `['en','he']` array collator is the only thing that passes → STOP,
+  report (the two singletons are the contract; do not silently accept a fallback
+  array).
 - A `BidiText` integration forces a structural change to a shared component that
   ripples beyond the dynamic-field render → STOP, report.
 - Isolating the `PageHeader` title/eyebrow cannot be done without widening the
@@ -271,13 +350,16 @@ Modified (runtime — client):
   (spec §11.2), preserving unknowns.
 - `src/collection/collectionQuery.ts` — `availableGenres` / `matchesGenre` /
   genre facet consume canonical effective genres; `?genre=` param canonicalized.
-- `src/collection/PersonalGenresEditor.tsx` — "already a catalog genre" dedupe
-  compares canonical forms (fixes P13); chip render already `BidiText` from PR 1.
+- `src/collection/PersonalGenresEditor.tsx` — **semantics only**: the "already a
+  catalog genre" dedupe compares canonical forms (fixes P13). Chip `BidiText`,
+  the `Remove {genre}` isolate, and the draft-input `dir="auto"` are already in
+  place from PR 1 and are not re-touched.
 - `src/lib/dashboard/insights.ts` — `topGenres` consumes canonical
   `effectiveGenres(item)` input (not `item.release.genres`); `MIN_INSIGHT_ITEMS`
   gate counts records with ≥ 1 effective genre.
 - `src/pages/DashboardPage.tsx` — pass the effective-genre-based `topGenres`
-  through unchanged; genre chip already `BidiText`.
+  through unchanged; genre chip `BidiText` and Quick-VIN input `dir="auto"` are
+  already from PR 1.
 - `src/lib/curator/candidates.ts` — `normalizeGenres` (candidate side) applies
   `canonicalizeGenres`; `includeGenreMatches` / exclude equality operate on the
   canonical vocabulary; token semantics unchanged.
@@ -289,7 +371,10 @@ Modified (runtime — client):
   `normalizeCuratorIntent` path; `REFINEMENT_SYSTEM_PROMPT` gains the same
   genre-vocabulary instruction.
 - `src/lib/curator/selectionSchema.ts` — `SELECTION_SYSTEM_PROMPT` gains:
-  reason in the request language; artist/title verbatim, never translated.
+  reason in the request language; artist/title verbatim, never translated. The
+  **UI already renders a Hebrew `reason` correctly** — `CuratorRecommendationCard`
+  wraps `reason` / `title` / `artist` / genres in `BidiText` from PR 1, so PR 2
+  is purely the prompt/behaviour change, not a BiDi repair.
 
 Modified (runtime — server):
 - `netlify/functions/_shared/curator-handlers.mts` — `loadOwnedCollection`
@@ -381,8 +466,10 @@ confirmed from `model_calls` telemetry during interactions A and B.
   **`פאנק` is not mapped** (ambiguous punk/funk).
 - No LLM genre translation / inference.
 - No Vision change (PR 3).
-- No BiDi work beyond what PR 1 already shipped (genre chips are already
-  isolated).
+- No BiDi / `dir="auto"` work — PR 1 already shipped every mounted genre chip,
+  recommendation reason/title/artist, `PersonalGenresEditor` display, and
+  free-text input direction. PR 2 touches `PersonalGenresEditor` for canonical
+  dedupe **semantics only**.
 - No general-docs change; no spec/plan status change (closeout PR).
 - No schema / migration / dependency / env / Netlify / Supabase change.
 - No notes added to model context.
@@ -433,10 +520,11 @@ Modified (runtime):
   schema change, no query-builder change, no model change.**
 - `src/catalog/ScanPanel.tsx` — complete the multilingual rendering started in
   PR 1 (candidate list, clues, low-confidence / no-match / provider-error copy
-  that interpolates a Hebrew query or record name); `dir="auto"` on any manual
-  fallback fields not already covered.
-- `src/catalog/DiscoverPanel.tsx` / `src/catalog/CatalogSearchForm.tsx` — final
-  BiDi sweep of candidate rendering and the search input (`dir="auto"`).
+  that interpolates a Hebrew query or record name); `dir="auto"` on any
+  Scan-only manual fallback field genuinely part of the Scan polish path.
+- `src/catalog/DiscoverPanel.tsx` — final BiDi sweep of the candidate-rendering
+  path. (`CatalogSearchForm`'s query-input `dir="auto"` already landed in PR 1 —
+  not re-touched here.)
 - Any remaining mounted component with an un-isolated dynamic `aria-label` /
   `title` attribute found in the final sweep (use `isolate()`).
 
@@ -465,8 +553,9 @@ final SHAs and acceptance evidence are the **closeout PR** below.
 1. `RECOGNITION_SYSTEM_PROMPT` line + mocked vision tests (Hebrew recognition
    survives `normalizeRecognition`; `buildCatalogQueryFromRecognition` output
    correct; Latin `visibleText` dedupe still works).
-2. Complete `ScanPanel` / `DiscoverPanel` / `CatalogSearchForm` BiDi rendering
-   + `dir="auto"` on inputs.
+2. Complete `ScanPanel` / `DiscoverPanel` BiDi candidate rendering. (The primary
+   catalog search input `dir="auto"` and the curator textareas already landed in
+   PR 1; do not re-touch.)
 3. Final repo-wide sweep for un-isolated dynamic `aria-label` / `title`
    attributes in mounted components; fix with `isolate()`.
 4. Human visual check at phone + desktop widths to decide the typography
@@ -500,6 +589,10 @@ across the seven mounted routes) is visual, no provider call.
 - No recognition schema change; no query-builder change; no model change.
 - No new bundled webfont / font file / `@font-face` (only additive fallback
   family names, and only if human evidence justifies).
+- No re-doing PR 1's input-direction work — the collection search box,
+  `CollectionForm` fields, `PersonalGenresEditor` draft, `NotesEditor`, Quick
+  VIN, the primary `CatalogSearchForm` input, and the curator textareas are
+  already `dir="auto"` from PR 1.
 - No genre / VIN behaviour change (PR 2 owns that).
 - No schema / migration / dependency / env / Netlify / Supabase change.
 - No changes to the deferred legacy subtree.
@@ -583,16 +676,16 @@ merge (normal merge commit); **no deploy**.
 
 | | PR 1 | PR 2 | PR 3 | Closeout PR |
 |---|---|---|---|---|
-| Theme | BiDi + search + sort | canonical genres + VIN | vision + a11y + Scan | docs / status / evidence |
+| Theme | BiDi + search + sort + all input directions | canonical genres + VIN | vision + a11y + Scan sweep | docs / status / evidence |
 | AI behaviour change | none | 3 trusted curator-prompt lines + server canonicalization | 1 trusted vision-prompt line | none |
 | Genre-semantics change | **none** | all of it | none | none |
 | Schema / migration | none | none | none | none |
 | Real provider in human gate | no | yes — ≈ 4 curator model calls (1 Hebrew request + 1 Hebrew refine) | yes — 1 Hebrew Vision call | no |
 | General-docs / status change | no | no | no | yes (all of it) |
-| Risk | LOW–MEDIUM | MEDIUM | LOW–MEDIUM | NONE |
+| Risk | LOW–MEDIUM | MEDIUM | LOW | NONE |
 | Starts from | `main` @ `dd3f948` | `main` after PR 1 | `main` after PR 2 | `main` after PR 3 |
 | New files | 5 + tests | 1 + tests | 0 | 0 |
-| Approx. modified runtime files | ~15 | ~10 (incl. 1 `.mts`) | ~4 | 0 |
+| Approx. modified runtime files | ~19 | ~10 (incl. 1 `.mts`) | ~3 | 0 |
 
 ## Open items requiring product input before the relevant PR
 

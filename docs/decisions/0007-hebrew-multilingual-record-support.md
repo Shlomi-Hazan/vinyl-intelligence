@@ -29,6 +29,14 @@ contract; sort labels stay English-only (`Artist alphabetical` /
 §19.2 deltas; `H(שלום חנוך) = 8` corrected (§6); the `AlbumArtwork` fallback
 isolates title and artist separately.
 
+Rev 4 (2026-09-09): final implementation-readiness corrections — the sort uses
+**two script-specific `Intl.Collator` singletons** (`'en'` and `'he'`), not a
+`['en','he']` fallback array (§7); PR 1 (the UI foundation) gives `dir="auto"`
+to **every** mounted free-text input/textarea including the primary catalog
+search box, and its BiDi scope covers the VIN recommendation `reason`, the full
+`PersonalGenresEditor` display, and the `AlbumDetailPage` remove-dialog title —
+so PR 2 remains an AI/genre-semantics change with no BiDi repair.
+
 ## Context
 
 Vinyl Intelligence already stores Unicode metadata and production has returned
@@ -175,18 +183,26 @@ just because a string contains a Hebrew character. For `aria-label` /
 plain-string contexts, Unicode isolate controls (`U+2068`/`U+2069`) wrap the
 dynamic run rather than `dir="auto"` on the whole English sentence.
 
-### 7. Deterministic sort with an explicit mixed-script bucket order
+### 7. Deterministic sort with explicit script buckets and script-specific collators
 
 Artist/title alphabetical sorting: **Latin bucket first, then Hebrew bucket,
-then neutral/other**, using a shared `Intl.Collator` with an explicit locale
-list (`['en','he']`) and options — not the host default locale. A–Z within
-Latin, א–ת within Hebrew, existing stable original-index tiebreak preserved.
+then other/neutral**. Because the buckets are explicit, each comparison uses a
+**script-specific `Intl.Collator`**, not a locale-array fallback (a locale array
+is a prioritized fallback request, not a per-string policy):
+
+- Latin-vs-Latin → `new Intl.Collator('en', options)`
+- Hebrew-vs-Hebrew → `new Intl.Collator('he', options)`
+- other/neutral → deterministic code-point order (no collator)
+
+`options` baseline `{ numeric: true, sensitivity: 'variant', caseFirst: 'false' }`.
+No collator is asked to compare across scripts. Existing stable original-index
+tiebreak preserved in every bucket. `numeric: true` applies within `en`/`he`.
 Example: `ABBA, David Bowie, Radiohead, אריק איינשטיין, רביד פלוטניק, שלום חנוך`.
 Because the result is a Latin-then-Hebrew list, the two `COLLECTION_SORTS`
 **labels** become **English-only** — `Artist alphabetical` / `Album
 alphabetical` (not `A–Z / א–ת`, which would put Hebrew glyphs in the English
 chrome). The sort **values** (`artist-asc` / `album-asc`) and the `?sort=` URL
-contract are unchanged.
+contract are unchanged. No dependency added.
 
 ### 8. Curator and vision security contracts are unchanged
 
@@ -295,6 +311,12 @@ so it lives in the closeout PR, exactly as in the M12 pattern (PR #21).
   interleaving of Hebrew and Latin). Defensible, but users expect "the English
   records, then the Hebrew records" like a physical shelf. Chose explicit
   bucketing.
+- **`new Intl.Collator(['en','he'], …)` — one collator with a locale array.** A
+  locale array is a *prioritized fallback* request (use `en`, fall back to `he`
+  if the runtime lacks `en` data); it does **not** mean "collate Latin as `en`
+  and Hebrew as `he` per string". With the buckets already explicit, the correct
+  design is two singletons — `Intl.Collator('en', …)` and `Intl.Collator('he', …)`
+  — each used only within its own bucket. Rejected the array form.
 - **Bundle a Hebrew webfont subset (Inter Hebrew / Noto Sans Hebrew).** Adds
   ~40–70 KB and a font file for a cosmetic seam; contradicts the no-CDN /
   minimal-subset posture and the "don't add a font for architectural purity"

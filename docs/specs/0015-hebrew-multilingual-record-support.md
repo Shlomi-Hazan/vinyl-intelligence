@@ -26,6 +26,15 @@ English-only (`Artist alphabetical` / `Album alphabetical`) (§9); Goal 10
 narrowed to allow the §19.2 deltas; `H(שלום חנוך) = 8` corrected (§8); the
 `AlbumArtwork` fallback isolates title and artist separately (§6.7).
 
+Rev 4 (2026-09-09): final implementation-readiness corrections — the sort uses
+**two script-specific `Intl.Collator` singletons** (`'en'` / `'he'`), never a
+`['en','he']` fallback array (§9); PR 1 gives `dir="auto"` to **every mounted
+free-text input/textarea**, including the primary catalog-search box moved out
+of PR 3 (§6.5); PR 1's BiDi scope explicitly covers the VIN recommendation
+`reason`, the full `PersonalGenresEditor` display, and the `AlbumDetailPage`
+remove-dialog title isolation, so PR 2 stays an AI/genre-semantics change with
+no BiDi repair (§6.8, §14).
+
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).
 
@@ -173,10 +182,26 @@ leading Hebrew value would flip the entire sentence (see §Risk R1).
 (`U+2068` … `U+2069`) around the dynamic run via an `isolate()` helper, because
 those contexts cannot contain elements.
 
-**6.5 Form fields** that accept dynamic content (manual artist/title,
-personal-genre input, VIN request textarea, refinement textarea) get
-`dir="auto"` so the caret and text align to the typed script. The surrounding
-form stays LTR.
+**6.5 Every mounted free-text input/textarea that can hold Hebrew/mixed user or
+record text gets `dir="auto"`** so the caret and editable text align to the
+typed script. Only the editable text direction changes — the surrounding form
+and chrome stay LTR, no stored value is rewritten, no validation/semantics
+change. The full PR 1 list:
+
+- collection search input (`CollectionBrowser`)
+- `CollectionForm` free-text metadata fields — at minimum `artist`, `title`,
+  `label`, `country`, `genre`; `releaseYear` stays numeric / LTR;
+  `catalogNumber` / `format` may also take it if the shared generic input makes
+  it simpler and neutral/Latin values do not regress
+- `PersonalGenresEditor` personal-genre draft input
+- `AlbumDetailPage` → `NotesEditor` `<textarea>`
+- Dashboard Quick VIN input
+- the primary catalog-search query input (`CatalogSearchForm`) — done in PR 1,
+  not deferred to PR 3
+- curator request textarea and refinement textarea
+
+Scan-only manual fallback fields that are genuinely part of the Scan
+final-polish path may stay in PR 3.
 
 **6.6 Native `<option>` elements are NOT wrapped.** A native `<option>` may not
 contain a `<bdi>` / `BidiText` element — its child must be a plain string. For a
@@ -201,10 +226,14 @@ Album Detail (header eyebrow + title, metadata values, genre chips, notes,
 remove dialog), History (row heading, edit/delete dialog titles),
 Scan (clue chips, catalogue candidate cards, low-confidence/no-match copy that
 interpolates a query), Discover / catalogue candidate cards, VIN
-(request echo, recommendation cards, reasons, transcript, constraint lists,
-refine panel), toasts that interpolate a record name (none do today — keep it
-that way; if one is added it must isolate the name), `AlbumArtwork` accessible
-name + decorative overlay (per §6.7).
+(request echo, recommendation cards, **`recommendation.reason`** — isolated in
+PR 1 as preparation for the request-language reason PR 2 introduces, so PR 2 is
+not a BiDi repair — title, artist, per-value genres, transcript, constraint
+lists, refine panel), `PersonalGenresEditor` (catalog + personal genre chips,
+and `isolate(genre)` inside the `Remove {genre}` `aria-label`), toasts that
+interpolate a record name (none do today — keep it that way; if one is added it
+must isolate the name), `AlbumArtwork` accessible name + decorative overlay
+(per §6.7).
 
 **6.9 `PageHeader` keeps its string API and focus contract.** `PageHeader`'s
 props stay `title: string` and `eyebrow?: string` — they are **not** widened to
@@ -341,15 +370,24 @@ Extends spec 0007. Applies to the Collection `artist-asc` and `album-asc` sorts.
 
 **Ordering:**
 
-1. Bucket every value by leading meaningful script: `latin`, then `hebrew`,
-   then `other/neutral` (numbers, symbols).
-2. Within `latin`: A–Z via a shared `Intl.Collator` with an **explicit** locale
-   list and options — not the host default. Baseline:
-   `new Intl.Collator(['en', 'he'], { numeric: true, sensitivity: 'variant', caseFirst: 'false' })`
-   (the implementer may refine the options and records the choice in the PR).
-3. Within `hebrew`: א–ת via the same collator.
-4. `other/neutral` last.
-5. Existing stable tiebreak preserved: original array index
+1. Bucket every value by its leading meaningful script: `latin`, then `hebrew`,
+   then `other/neutral` (numbers, symbols, empty).
+2. **Script-specific collators — a locale *array* is a prioritized fallback
+   request, not a per-string policy, so it is NOT used.** Two module-level
+   singletons:
+   - Latin bucket: `new Intl.Collator('en', APPROVED_OPTIONS)`
+   - Hebrew bucket: `new Intl.Collator('he', APPROVED_OPTIONS)`
+
+   `APPROVED_OPTIONS` baseline: `{ numeric: true, sensitivity: 'variant', caseFirst: 'false' }`
+   (the implementer may refine and records the choice + rationale in the PR).
+3. Compare **Latin-vs-Latin** with the `en` collator, **Hebrew-vs-Hebrew** with
+   the `he` collator. Cross-bucket order is fixed by step 1 (Latin < Hebrew <
+   other/neutral), so no collator is asked to compare across scripts.
+4. `other/neutral` bucket: deterministic documented fallback — code-point order
+   via a plain `<` comparison (no collator), then the step-5 tiebreak. (This
+   matches how numeric/symbol artist names sort today; it is not locale-
+   dependent.)
+5. Existing stable tiebreak preserved for every bucket: original array index
    (`a.index - b.index` in `applyCollectionQuery`).
 
 **Example** — artists `ABBA, Radiohead, David Bowie, אריק איינשטיין, רביד פלוטניק, שלום חנוך`,
@@ -363,6 +401,12 @@ Radiohead
 רביד פלוטניק
 שלום חנוך
 ```
+
+**Sort flow (locked):** `value → leading-script bucket → Latin bucket before
+Hebrew bucket before other/neutral → Latin-vs-Latin compared with the `en`
+collator, Hebrew-vs-Hebrew with the `he` collator, other/neutral by code point →
+stable original-index tiebreak`. `numeric: true` applies within the `en` and
+`he` collators.
 
 **Determinism:** deterministic given the shipped runtime (full-ICU Node ≥ 24,
 evergreen browsers). The script-bucketing step is fully deterministic
@@ -558,7 +602,10 @@ the language of the USER REQUEST; copy artist and album names verbatim from the
 candidate facts — never translate or transliterate them. The `reason`
 `maxLength` (300) already accommodates Hebrew; **no schema change**. Card facts
 (artist, title, year, genres, rating, favorite, play data) continue to come from
-the server candidate data, never from model text.
+the server candidate data, never from model text. The `CuratorRecommendationCard`
+already renders a Hebrew `reason` / title / artist / genre correctly — those are
+BiDi-isolated in PR 1 — so this prompt change is a behaviour change, not a UI
+repair.
 
 **`no_match` / constraint display** (`describeConstraints`, `CuratorTranscript`)
 then shows canonical English genres, plus the Hebrew `mood` text — all
@@ -636,9 +683,10 @@ Unchanged and re-affirmed:
 **19.1 What must NOT change for English data:**
 
 - **English free-text search and sort** behave exactly as today for English
-  input (search is still a case-insensitive substring match; sort order for an
-  all-English list is unchanged except that it is now locale-pinned rather than
-  host-locale-dependent — asserted with a fixed English fixture).
+  input (search is still a case-insensitive substring match; an all-English
+  artist/title list sorts in the same order, now via a pinned `en`
+  `Intl.Collator` rather than the host default locale — asserted with a fixed
+  English fixture).
 - **Canonical English catalog-genre semantics** are unchanged: `rock` is still
   `rock`, an already-canonical English catalog genre is untouched by the alias
   map.
@@ -704,12 +752,16 @@ works; Turkish-locale dotted/dotless `i` does not break the key (locale-
 independent lower); a Hebrew query does **not** match Latin-script stored text
 and vice versa (no cross-script aliasing).
 
-**Sort:** Hebrew-only list in א–ת order; English-only in A–Z; mixed list = Latin
-bucket then Hebrew bucket; determinism across two runs; `numeric:true` orders
-`Vol. 2` before `Vol. 10`; stable tiebreak preserved. The two renamed
-`COLLECTION_SORTS` labels are `Artist alphabetical` / `Album alphabetical`
-(English-only, no Hebrew glyphs in chrome) and the sort **values** / `?sort=`
-contract are unchanged.
+**Sort:** Hebrew-only list in א–ת order (via the `he` collator); English-only in
+A–Z (via the `en` collator); mixed list = Latin bucket then Hebrew bucket then
+other/neutral; a value that would sort differently under `['en','he']` vs a
+dedicated `he` collator confirms the script-specific collators are wired
+(not a fallback array); `other/neutral` (a numeric / symbol name) sorts by code
+point deterministically; determinism across two runs; `numeric:true` orders
+`Vol. 2` before `Vol. 10` within a bucket; stable original-index tiebreak
+preserved in every bucket. The two renamed `COLLECTION_SORTS` labels are
+`Artist alphabetical` / `Album alphabetical` (English-only, no Hebrew glyphs in
+chrome) and the sort **values** / `?sort=` contract are unchanged.
 
 **Canonical genre:** every alias row in §10.2 (all variants → canonical, 15
 canonical outputs); `includeGenreMatches('rock','progressive rock')` still true;
