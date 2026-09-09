@@ -10,8 +10,9 @@
  *      `Intl.Collator('en', …)` and `Intl.Collator('he', …)`. A locale ARRAY
  *      (`['en','he']`) is a prioritized fallback request, not a per-string
  *      policy, so it is deliberately not used.
- *   3. The other / neutral bucket sorts by code point (a plain `<`), which is
- *      locale-independent and matches how numeric / symbol names sort today.
+ *   3. The other / neutral bucket sorts by true Unicode scalar code point
+ *      (code-point iteration, NOT a plain UTF-16 `<`), which is
+ *      locale-independent and non-BMP-safe.
  *   4. The caller keeps its stable original-index tiebreak
  *      (`applyCollectionQuery`).
  */

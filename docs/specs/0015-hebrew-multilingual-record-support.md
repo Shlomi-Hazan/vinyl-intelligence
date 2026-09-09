@@ -302,17 +302,21 @@ order:
   applying it to persisted metadata would violate the original-metadata
   preservation contract. (Personal genres have their own dedicated
   canonicalization/write policy — §11 — which is unrelated to `buildSearchKey`.)
-- Data flow: raw `?q=` → raw `filters.search` → **stays visible verbatim in the
-  URL and the search input** → `matchesSearch` derives `needle =
-  buildSearchKey(query)` and compares it against the **artist and the title as
-  SEPARATE fields** — the historical Collection contract (spec 0007) is a
-  substring of `artist` OR `title`, never a cross-field join:
+- Data flow: `?q=` → `filters.search` → the search input, then `matchesSearch`
+  derives `needle = buildSearchKey(query)` and compares it against the **artist
+  and the title as SEPARATE fields** — the historical Collection contract
+  (spec 0007) is a substring of `artist` OR `title`, never a cross-field join:
   `buildSearchKey(artist).includes(needle) || buildSearchKey(title).includes(needle)`.
-  `CollectionBrowser` does **not** replace or rewrite `q` with the normalized
-  key. No parameter is renamed. (Rev-note: an earlier draft compared a joined
-  `` `${artist}\n${title}` `` string; that is corrected here to preserve the
-  approved artist-OR-title semantics — `buildSearchKey` collapses the newline,
-  which would otherwise have introduced a new cross-field match.)
+  The query text is unchanged **apart from the pre-existing leading/trailing
+  whitespace trim** performed when `CollectionBrowser` serializes `?q`
+  (`if (f.search.trim()) p.set('q', f.search.trim())` — unchanged runtime
+  behaviour). `CollectionBrowser` **never** writes `buildSearchKey(q)` or any
+  multilingual-normalized form (niqqud removal, punctuation folding, lowercasing)
+  into the URL or the input. No parameter is renamed. (Rev-note: an earlier
+  draft compared a joined `` `${artist}\n${title}` `` string; that is corrected
+  here to preserve the approved artist-OR-title semantics — `buildSearchKey`
+  collapses the newline, which would otherwise have introduced a new cross-field
+  match.)
 - What `buildSearchKey` resolves to the same key: **orthographic variants** of
   the same text — niqqud presence/absence, geresh/gershayim vs ASCII quote,
   maqaf vs hyphen/dash, Unicode compatibility/presentation forms, whitespace
@@ -732,12 +736,14 @@ tests one of the §19.2 deltas, not the no-change guarantee.
 - **Existing persisted Hebrew personal genres:** canonicalize correctly at
   read/use time; no backfill, no migration (§11.3).
 - **Bookmarked / shared filter URLs:** `?q=` and `?sort=` keep their exact
-  current contract — the raw `?q=` string is preserved verbatim. Two `?q=`
-  links whose values are **orthographic variants of the same text** (niqqud,
-  punctuation form, whitespace, case) now resolve to the same records because
-  `buildSearchKey` folds them at comparison time; a Hebrew query and an English
-  query are still distinct (no cross-script aliasing — §4). `?genre=` is
-  unchanged in PR 1; PR 2 canonicalizes its value on read. No parameter renamed
+  current contract — the query text is written to `?q=` unchanged apart from the
+  pre-existing leading/trailing whitespace trim; no multilingual-normalized form
+  is ever written into the URL or input. Two `?q=` links whose values are
+  **orthographic variants of the same text** (niqqud, punctuation form,
+  whitespace, case) now resolve to the same records because `buildSearchKey`
+  folds them at comparison time; a Hebrew query and an English query are still
+  distinct (no cross-script aliasing — §4). `?genre=` is unchanged in PR 1;
+  PR 2 canonicalizes its value on read. No parameter renamed
   or removed.
 - **`sessionStorage` collection-view key and catalog-search draft:** unaffected
   (they store view mode / query text, not genre tokens).

@@ -136,10 +136,12 @@ Modified (runtime):
   and list-row cells; the genre `<option>` gets `dir`/`lang` **on the `<option>`
   element itself** with a plain-string child (never `<bdi>` inside `<option>` —
   spec §6.6), value/semantics unchanged; filter-status record-name context
-  isolated. **`?q=` stays raw**: the raw string remains in the URL and the search
-  input; `buildSearchKey` is derived only inside `matchesSearch` for the
-  comparison — `CollectionBrowser` does not replace or rewrite `q`. The
-  `?genre=` param is unchanged in PR 1.
+  isolated. **`?q=` is not multilingual-normalized**: the query text is written
+  to `?q=` / the input unchanged apart from the pre-existing leading/trailing
+  whitespace trim; `buildSearchKey` is derived only inside `matchesSearch` for
+  the comparison — `CollectionBrowser` never writes `buildSearchKey(q)` or any
+  normalized form into the URL or input. The `?genre=` param is unchanged in
+  PR 1.
 - `src/pages/AlbumDetailPage.tsx` — `BidiText` on the metadata values and genre
   chips (display only in PR 1 — no canonicalization yet); the **remove dialog**
   copy isolates the interpolated `release.title` as a dynamic run
@@ -291,10 +293,11 @@ one phone width (390–430 px). VoiceOver spot check on one Hebrew card.
   chips render raw values as today wrapped in `BidiText`; the genre `<option>`
   renders the raw value as a plain-string child with `dir`/`lang` on the
   `<option>` (no `<bdi>` inside `<option>`). The option **value** is unchanged.
-- **No `?q=` rewrite.** The raw `?q=` string stays in the URL and the search
-  input; `buildSearchKey` is comparison-only and never persisted / never on a
-  write path. No cross-script aliasing (a Hebrew query does not match English
-  stored text).
+- **No `?q=` multilingual normalization.** The query text is written to `?q=` /
+  the input unchanged apart from the pre-existing leading/trailing whitespace
+  trim; `buildSearchKey` is comparison-only, never persisted, never on a write
+  path, and never written into the URL or input. No cross-script aliasing (a
+  Hebrew query does not match Latin-script stored text).
 - **No `PageHeader` prop-type change** (`title`/`eyebrow` stay `string`); no
   regression to the route-change focus effect.
 - **`dir="auto"` on inputs only changes the editable text direction** — no
