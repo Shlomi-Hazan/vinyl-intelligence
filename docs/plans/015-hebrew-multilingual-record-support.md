@@ -17,6 +17,15 @@ from the map; (5) the script-dominance rule is fully specified (spec §8); (6)
 the real-provider human-test budget is bounded (≈ 4 model calls in PR 2, one
 Vision call in PR 3).
 
+Rev 3 (2026-09-09): implementation-readiness micro-corrections — `buildSearchKey`
+is comparison-only, never persisted, never on a write path; `CollectionBrowser`
+keeps `?q=` raw (only orthographic variants fold; no cross-script aliasing);
+native `<option>` labels are NOT wrapped in `<bdi>` (`dir`/`lang` on the
+`<option>`); `PageHeader` keeps `title: string` / `eyebrow?: string` and the
+stable-`title` focus dependency; the two sort labels become English-only
+(`Artist alphabetical` / `Album alphabetical`); `H(שלום חנוך) = 8`; the
+`AlbumArtwork` fallback isolates title and artist separately.
+
 **Three sequential implementation PRs, then one documentation-only closeout
 PR** (the M12 final-closeout pattern). **Do not create one giant branch.** Each
 implementation PR starts from **then-current `main`** after the previous PR is
@@ -81,21 +90,32 @@ New:
 - Test files for each of the above.
 
 Modified (runtime):
-- `src/collection/collectionQuery.ts` — **only** `matchesSearch` (uses
-  `buildSearchKey`) and `compareBySort` (uses `compareNames`); `COLLECTION_SORTS`
-  labels → `Artist A–Z / א–ת`, `Album A–Z / א–ת`. **`availableGenres`,
-  `matchesGenre`, and any `?genre=` handling are NOT touched in PR 1** — they
-  move to PR 2 with the canonical-genre module.
-- `src/collection/CollectionBrowser.tsx` — `BidiText` on card title/artist/meta,
-  list-row cells, genre `<option>` label **rendering only** (no value/semantics
-  change), filter-status record-name context; normalize the `?q=` param value on
-  read for comparison (raw string stays in the URL and the input). The `?genre=`
-  param is unchanged in PR 1.
-- `src/pages/AlbumDetailPage.tsx` — `BidiText` on title, metadata values, genre
+- `src/collection/collectionQuery.ts` — **only** `matchesSearch` (compares
+  `buildSearchKey(storedField).includes(buildSearchKey(query))` — comparison
+  only, nothing persisted) and `compareBySort` (uses `compareNames`); rename the
+  two `COLLECTION_SORTS` **label strings** to `Artist alphabetical` /
+  `Album alphabetical` (English-only — chrome stays English; a Latin-then-Hebrew
+  list is not "A–Z"). Sort **values** (`artist-asc` / `album-asc`) and the
+  `?sort=` contract are unchanged. **`availableGenres`, `matchesGenre`, and any
+  `?genre=` handling are NOT touched in PR 1** — they move to PR 2 with the
+  canonical-genre module.
+- `src/collection/CollectionBrowser.tsx` — `BidiText` on card title/artist/meta
+  and list-row cells; the genre `<option>` gets `dir`/`lang` **on the `<option>`
+  element itself** with a plain-string child (never `<bdi>` inside `<option>` —
+  spec §6.6), value/semantics unchanged; filter-status record-name context
+  isolated. **`?q=` stays raw**: the raw string remains in the URL and the search
+  input; `buildSearchKey` is derived only inside `matchesSearch` for the
+  comparison — `CollectionBrowser` does not replace or rewrite `q`. The
+  `?genre=` param is unchanged in PR 1.
+- `src/pages/AlbumDetailPage.tsx` — `BidiText` on the metadata values, genre
   chips (display only in PR 1 — no canonicalization yet), notes render, remove
-  dialog title; pass artist/title through `BidiText` via `PageHeader`.
-- `src/app/PageHeader.tsx` — accept an isolated/`BidiText` title + eyebrow (allow
-  a node or add `dir` handling; keep `focusOnMount` behaviour).
+  dialog title. The header title/eyebrow are isolated **inside `PageHeader`**
+  (below), so the page still passes plain strings.
+- `src/app/PageHeader.tsx` — keep the props `title: string` and
+  `eyebrow?: string` (do **not** widen to `ReactNode`); `PageHeader` renders
+  each string through the BiDi primitive internally; the `useEffect` focus
+  dependency stays `[focusOnMount, title]` (the stable string), so the
+  focus-on-route-change behaviour does not regress.
 - `src/pages/HistoryPage.tsx` — `BidiText` on the row heading and dialog titles.
 - `src/pages/DashboardPage.tsx` — `BidiText` on `AlbumMini` title/artist and the
   Quick-VIN nothing-genre-related bits (genre chips stay untouched in PR 1).
@@ -111,8 +131,10 @@ Modified (runtime):
   isolate the interpolated query in low-confidence/no-match copy.
 - `src/catalog/CatalogCandidateCard.tsx` / `src/catalog/DiscoverPanel.tsx` —
   `BidiText` on artist/title where rendered.
-- `src/media/AlbumArtwork.tsx` — `isolate()` in the computed `aria-label`;
-  `dir="auto"` on the decorative overlay (`aria-hidden`, visual only).
+- `src/media/AlbumArtwork.tsx` — `isolate()` in the computed `aria-label`; the
+  decorative fallback overlay wraps **`title` and `artist` in separate `<bdi>`**
+  (or `BidiText`) elements so `Hebrew title + English artist` and the reverse
+  both read correctly (overlay stays `aria-hidden`; box layout unchanged).
 
 Modified (CSS):
 - `src/styles.css` (or a new `src/styles/i18n.css` imported there) —
@@ -131,8 +153,10 @@ test whose rendered output now contains `<bdi>` wrappers
 ### 1.2 Ordered steps
 
 1. `script.ts` + tests. Implement the **exact locked rule from spec §8** (count
-   Hebrew vs Latin letters only; `H>=2L → hebrew`, `L>=2H → latin`, else
-   `mixed`; zero letters → `neutral`). Assert all six §8 example rows.
+   Hebrew vs Latin **letters** only, ignoring digits / punctuation / whitespace /
+   combining marks; `H>=2L → hebrew`, `L>=2H → latin`, else `mixed`; zero letters
+   → `neutral`). Assert all six §8 example rows, including `H(שלום חנוך) == 8`
+   and `אביב גפן - III` → `hebrew` (H 7, L 3).
 2. `searchKey.ts` + tests. **Decide and document the Unicode normalization form**
    (NFKC unless narrower is safer) and the exact combining-mark code points
    removed; assert maqaf `U+05BE` is preserved. Use a meaningful combining-mark /
@@ -141,11 +165,14 @@ test whose rendered output now contains `<bdi>` wrappers
    example ordering, determinism, `numeric:true`).
 4. `isolate.ts` + `BidiText.tsx` + tests (attributes only; `lang` policy per §8:
    `lang="he"` only for `hebrew`, none for `latin`/`mixed`/`neutral`).
-5. Wire `collectionQuery.ts` — `matchesSearch` → `buildSearchKey`,
-   `compareBySort` → `compareNames`, sort labels. Run `collectionQuery.test.ts`
-   — add Hebrew cases and **English regression cases** asserting an identical
-   filtered result and identical sort order for English-only fixtures. Do
-   **not** touch the genre facet.
+5. Wire `collectionQuery.ts` — `matchesSearch` compares derived
+   `buildSearchKey` values only (nothing persisted), `compareBySort` →
+   `compareNames`, rename the two sort **labels** to `Artist alphabetical` /
+   `Album alphabetical` (values unchanged). Run `collectionQuery.test.ts` — add
+   Hebrew cases and **English regression cases** asserting an identical filtered
+   result and identical sort order for English-only fixtures, plus a case that a
+   Hebrew query does not match Latin-script stored text. Do **not** touch the
+   genre facet.
 6. Integrate `BidiText` / `isolate` across the mounted components (§1.1), one
    component per commit where practical.
 7. CSS safety net + eyebrow fix + clamped-element `dir` audit.
@@ -155,10 +182,15 @@ test whose rendered output now contains `<bdi>` wrappers
 
 ### 1.3 Tests to add / update
 
-Per spec §20: script classification, search key (incl. maqaf-preserved and a
-meaningful combining-mark case), sort (Hebrew / English / mixed / determinism /
-numeric / stable tiebreak), `BidiText` attributes, English search+sort
-regression. Update component snapshots/queries for the new `<bdi>` wrappers.
+Per spec §20: script classification (incl. `H(שלום חנוך) == 8`), search key
+(comparison-only; maqaf-preserved; a meaningful combining-mark case; a
+Hebrew-query-vs-Latin-stored non-match), sort (Hebrew / English / mixed /
+determinism / numeric / stable tiebreak; renamed English labels), `BidiText`
+attributes (renders as `<bdi>`, never inside `<option>`), the genre `<option>`
+carrying `dir`/`lang` with a plain-string child, the `AlbumArtwork` fallback
+isolating title and artist separately, `PageHeader` keeping `title: string` and
+the stable-`title` focus dependency, English search+sort regression. Update
+component snapshots/queries for the new `<bdi>` wrappers.
 
 ### 1.4 Automated gates
 
@@ -175,8 +207,15 @@ one phone width (390–430 px). VoiceOver spot check on one Hebrew card.
 
 - **No genre-semantics change of any kind.** `availableGenres`, `matchesGenre`,
   the `?genre=` param, and the `canonicalizeGenre` module are all PR 2. Genre
-  chips / `<option>` labels render raw values as today (only wrapped in
-  `BidiText` for direction).
+  chips render raw values as today wrapped in `BidiText`; the genre `<option>`
+  renders the raw value as a plain-string child with `dir`/`lang` on the
+  `<option>` (no `<bdi>` inside `<option>`). The option **value** is unchanged.
+- **No `?q=` rewrite.** The raw `?q=` string stays in the URL and the search
+  input; `buildSearchKey` is comparison-only and never persisted / never on a
+  write path. No cross-script aliasing (a Hebrew query does not match English
+  stored text).
+- **No `PageHeader` prop-type change** (`title`/`eyebrow` stay `string`); no
+  regression to the route-change focus effect.
 - No Dashboard `topGenres` source change.
 - No curator server change; no `personal_genres` in the curator select.
 - No prompt change of any kind (intent, refinement, selection, vision).
@@ -193,6 +232,11 @@ one phone width (390–430 px). VoiceOver spot check on one Hebrew card.
   report (do not add an ICU dependency).
 - A `BidiText` integration forces a structural change to a shared component that
   ripples beyond the dynamic-field render → STOP, report.
+- Isolating the `PageHeader` title/eyebrow cannot be done without widening the
+  prop type or changing the focus-effect dependency → STOP, report (the string
+  API and focus contract are fixed).
+- A native `<option>` needs `<bdi>` inside it to render correctly → STOP, report
+  (put the attributes on the `<option>`; do not nest `<bdi>`).
 
 ### 1.8 Merge / deploy sequence
 

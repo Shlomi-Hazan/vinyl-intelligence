@@ -19,6 +19,16 @@ genre-semantics change); the ambiguous Hebrew alias `פאנק` is removed; the
 script-dominance rule is fully specified (§6); the real-provider human-test
 budget is bounded.
 
+Rev 3 (2026-09-09): implementation-readiness micro-corrections — `buildSearchKey`
+is comparison-only and never on a write path (§2); `CollectionBrowser` keeps
+`?q=` raw (only orthographic variants fold, no cross-script aliasing) (§2);
+native `<option>` labels are not wrapped in `<bdi>` (attributes on the
+`<option>`); `PageHeader` keeps its `string` prop API and stable-`title` focus
+contract; sort labels stay English-only (`Artist alphabetical` /
+`Album alphabetical`) (§7); Goal-level English-regression wording allows the
+§19.2 deltas; `H(שלום חנוך) = 8` corrected (§6); the `AlbumArtwork` fallback
+isolates title and artist separately.
+
 ## Context
 
 Vinyl Intelligence already stores Unicode metadata and production has returned
@@ -71,14 +81,27 @@ artist/title transliteration in either direction, cross-script aliasing
 
 ### 2. Search normalization derives a key; it never rewrites metadata
 
-A pure `buildSearchKey()` produces a comparison-only key: Unicode compatibility
-normalization (NFKC unless narrower is proven safer), removal of **only** actual
-Hebrew combining/cantillation/niqqud marks (**not** Hebrew punctuation — maqaf
-`U+05BE` in particular is preserved; the audit's broad `[֑-ׇ]` strip is
-rejected), folding of geresh/gershayim/quote and maqaf/hyphen/dash variants,
-whitespace/NBSP collapse, locale-independent lowercase. Comparison is on derived
-keys only. **`releases.artist` / `releases.title` / stored genre values are
-never rewritten for search.**
+A pure `buildSearchKey()` produces a **comparison-only** key: Unicode
+compatibility normalization (NFKC unless narrower is proven safer), removal of
+**only** actual Hebrew combining/cantillation/niqqud marks (**not** Hebrew
+punctuation — maqaf `U+05BE` in particular is preserved; the audit's broad
+`[֑-ׇ]` strip is rejected), folding of geresh/gershayim/quote and
+maqaf/hyphen/dash variants, whitespace/NBSP collapse, locale-independent
+lowercase. Comparison is on derived keys only.
+
+**`buildSearchKey` never runs on a write path** — it is never persisted, never
+used to rewrite `artist` / `title` / `label` / `notes`, and never part of a DB
+INSERT/UPDATE normalization. It strips niqqud and folds punctuation, so using it
+on persisted metadata would break the original-metadata preservation contract.
+`CollectionBrowser` keeps the raw `?q=` string in the URL and the input; the key
+is derived only inside `matchesSearch`. Only **orthographic variants** of the
+same text (niqqud, punctuation form, whitespace, compatibility forms, case) fold
+to one key — there is **no** cross-script aliasing (a Hebrew query matches
+Hebrew-script text, an English query matches Latin-script text). If invisible
+bidi-control / NBSP sanitization of persisted text is ever needed, that is a
+separate narrowly-scoped sanitizer, evidence-justified, not `buildSearchKey`.
+**`releases.artist` / `releases.title` / stored catalog genre values are never
+rewritten.** (Personal genres have their own write-normalization policy — §3.)
 
 ### 3. Catalog genres canonicalize at read time; personal genres at write time
 
@@ -141,9 +164,9 @@ cantillation are ignored. Then:
 - `L > 0 && H == 0` → `latin`
 - both present: `H >= 2*L` → `hebrew`; `L >= 2*H` → `latin`; otherwise → `mixed`
 
-Examples: `שלום חנוך` → `hebrew`; `Radiohead` → `latin`;
-`שלום Hanoch` → `mixed`; `אביב גפן - III` → `hebrew` (7 ≥ 2·3);
-`1979` → `neutral`.
+Examples: `שלום חנוך` (H = 8, L = 0) → `hebrew`; `Radiohead` → `latin`;
+`שלום Hanoch` (H = 4, L = 6) → `mixed`; `אביב גפן - III` (H = 7, L = 3) →
+`hebrew` (7 ≥ 2·3); `1979` → `neutral`.
 
 `BidiText` always emits `<bdi dir="auto">`; it sets `lang="he"` **only** when
 `classifyScript` returns `hebrew`. `latin` inherits the document `en`; `mixed`
@@ -154,11 +177,16 @@ dynamic run rather than `dir="auto"` on the whole English sentence.
 
 ### 7. Deterministic sort with an explicit mixed-script bucket order
 
-Artist/title A–Z sorting: **Latin bucket first, then Hebrew bucket, then
-neutral/other**, using a shared `Intl.Collator` with an explicit locale list
-(`['en','he']`) and options — not the host default locale. A–Z within Latin,
-א–ת within Hebrew, existing stable original-index tiebreak preserved. Example:
-`ABBA, David Bowie, Radiohead, אריק איינשטיין, רביד פלוטניק, שלום חנוך`.
+Artist/title alphabetical sorting: **Latin bucket first, then Hebrew bucket,
+then neutral/other**, using a shared `Intl.Collator` with an explicit locale
+list (`['en','he']`) and options — not the host default locale. A–Z within
+Latin, א–ת within Hebrew, existing stable original-index tiebreak preserved.
+Example: `ABBA, David Bowie, Radiohead, אריק איינשטיין, רביד פלוטניק, שלום חנוך`.
+Because the result is a Latin-then-Hebrew list, the two `COLLECTION_SORTS`
+**labels** become **English-only** — `Artist alphabetical` / `Album
+alphabetical` (not `A–Z / א–ת`, which would put Hebrew glyphs in the English
+chrome). The sort **values** (`artist-asc` / `album-asc`) and the `?sort=` URL
+contract are unchanged.
 
 ### 8. Curator and vision security contracts are unchanged
 

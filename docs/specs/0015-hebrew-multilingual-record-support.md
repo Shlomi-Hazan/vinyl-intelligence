@@ -16,6 +16,16 @@ no genre-semantics change; the ambiguous Hebrew alias `פאנק` is removed from
 map; the script-dominance rule is fully specified; the real-provider human-test
 budget is bounded.
 
+Rev 3 (2026-09-09): implementation-readiness micro-corrections —
+`buildSearchKey` is comparison-only and never runs on a write path (§7, §12);
+`CollectionBrowser` keeps `?q=` raw (only orthographic variants fold, no
+cross-script aliasing) (§7, §19.4); native `<option>` labels are not wrapped in
+`<bdi>` — `dir`/`lang` go on the `<option>` (§6.6); `PageHeader` keeps its
+`string` API and stable-`title` focus contract (§6.9); sort labels stay
+English-only (`Artist alphabetical` / `Album alphabetical`) (§9); Goal 10
+narrowed to allow the §19.2 deltas; `H(שלום חנוך) = 8` corrected (§8); the
+`AlbumArtwork` fallback isolates title and artist separately (§6.7).
+
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).
 
@@ -99,8 +109,10 @@ migration is required.**
 8. Cover recognition preserves the original visible script.
 9. Accessibility: correct `lang` / `dir` / isolation for dynamic Hebrew content
    while `<html lang="en">` stays.
-10. No regression to any existing English behaviour, security invariant, or
-    curator/vision contract.
+10. No regression to existing English behaviour, security invariants, or the
+    curator/vision contracts — **except** the explicitly approved compatibility
+    deltas in §19.2 (personal genres begin participating in Dashboard insights
+    and VIN candidate genres; approved aliases dedupe to one canonical genre).
 
 ## 4. Non-goals
 
@@ -166,9 +178,25 @@ personal-genre input, VIN request textarea, refinement textarea) get
 `dir="auto"` so the caret and text align to the typed script. The surrounding
 form stays LTR.
 
-**6.6 Mounted surfaces covered** (dynamic-content render sites, from the audit):
+**6.6 Native `<option>` elements are NOT wrapped.** A native `<option>` may not
+contain a `<bdi>` / `BidiText` element — its child must be a plain string. For a
+dynamic option label (the genre facet `<option>`), keep the child a plain
+string and put the direction/language on the `<option>` itself where the browser
+honours it, e.g. `<option value="רוק" dir="auto" lang="he">רוק</option>` (`lang`
+from `classifyScript`, `hebrew` only). The `<select>` stays LTR. In PR 1 the
+option **value** and genre semantics are unchanged — only the rendered
+direction/lang may change.
+
+**6.7 `AlbumArtwork` decorative fallback isolates each field separately.** The
+fallback overlay carries a separate title and artist. Each is wrapped in its own
+`BidiText` (or `<bdi dir="auto">`) so `Hebrew title + English artist` and
+`English title + Hebrew artist` both read correctly. The overlay is
+`aria-hidden` (the accessible name comes from the `role="img"` `aria-label`,
+which uses `isolate()` per §6.4). The parent artwork box layout is unchanged.
+
+**6.8 Mounted surfaces covered** (dynamic-content render sites, from the audit):
 Dashboard (recently added / played / rediscover minis, top-genre chips),
-Collection grid + list + genre `<option>` list + filter status,
+Collection grid + list + genre `<option>` labels (per §6.6) + filter status,
 Album Detail (header eyebrow + title, metadata values, genre chips, notes,
 remove dialog), History (row heading, edit/delete dialog titles),
 Scan (clue chips, catalogue candidate cards, low-confidence/no-match copy that
@@ -176,9 +204,17 @@ interpolates a query), Discover / catalogue candidate cards, VIN
 (request echo, recommendation cards, reasons, transcript, constraint lists,
 refine panel), toasts that interpolate a record name (none do today — keep it
 that way; if one is added it must isolate the name), `AlbumArtwork` accessible
-name + decorative overlay.
+name + decorative overlay (per §6.7).
 
-**6.7 CSS.** `bdi { unicode-bidi: isolate }` as a safety net. Audit the existing
+**6.9 `PageHeader` keeps its string API and focus contract.** `PageHeader`'s
+props stay `title: string` and `eyebrow?: string` — they are **not** widened to
+`ReactNode`. `PageHeader` itself renders each dynamic string through the
+BiDi primitive internally. The existing focus-on-route-change effect stays keyed
+on the stable `title` **string** (`useEffect(..., [focusOnMount, title])`), so
+it does not observe a new JSX object every render and the current accessibility
+focus behaviour does not regress.
+
+**6.10 CSS.** `bdi { unicode-bidi: isolate }` as a safety net. Audit the existing
 `text-overflow: ellipsis; white-space: nowrap` and `-webkit-line-clamp` blocks
 so a clamped element carries `dir` (otherwise the ellipsis sits on the wrong
 side). Fix P12 (eyebrow letter-spacing / text-transform for Hebrew content).
@@ -222,13 +258,26 @@ order:
 
 **Rules:**
 
-- Comparison is: `buildSearchKey(storedField).includes(buildSearchKey(needle))`,
-  where the stored field is `` `${artist}\n${title}` `` (unchanged join).
-- The raw `?q=` string stays in the URL and in the search input verbatim
-  (displayed user text is never rewritten); `buildSearchKey` is derived only for
-  the comparison. The `?q=` value is also passed through `buildSearchKey` when
-  read so a Hebrew-typed and an English-typed link that mean the same thing
-  match the same records. No parameter is renamed.
+- `buildSearchKey` is **comparison-only**: it is never persisted, never used to
+  rewrite `artist` / `title` / `label` / `notes`, and never runs in a DB
+  INSERT/UPDATE normalization path. It strips niqqud and folds punctuation, so
+  applying it to persisted metadata would violate the original-metadata
+  preservation contract. (Personal genres have their own dedicated
+  canonicalization/write policy — §11 — which is unrelated to `buildSearchKey`.)
+- Data flow: raw `?q=` → raw `filters.search` → **stays visible verbatim in the
+  URL and the search input** → `matchesSearch` derives
+  `buildSearchKey(query)` and `buildSearchKey(storedField)` and compares:
+  `buildSearchKey(storedField).includes(buildSearchKey(query))`, where the
+  stored field is `` `${artist}\n${title}` `` (unchanged join). `CollectionBrowser`
+  does **not** replace or rewrite `q` with the normalized key. No parameter is
+  renamed.
+- What `buildSearchKey` resolves to the same key: **orthographic variants** of
+  the same text — niqqud presence/absence, geresh/gershayim vs ASCII quote,
+  maqaf vs hyphen/dash, Unicode compatibility/presentation forms, whitespace
+  runs / NBSP, and case. It does **not** bridge scripts:
+  cross-script aliasing / transliteration (`Shalom Hanoch` ↔ `שלום חנוך`) is a
+  non-goal (§4) — a Hebrew query matches Hebrew-script stored text, an English
+  query matches Latin-script stored text.
 - The `?genre=` parameter is **not** touched in the free-text search work; its
   canonicalization is specified in §10 / §13 and lands with plan PR 2 (fixes
   P14 there).
@@ -267,7 +316,7 @@ Required examples (all must hold):
 
 | Input | H | L | Class |
 |---|---|---|---|
-| `שלום חנוך` | 7 | 0 | `hebrew` |
+| `שלום חנוך` | 8 | 0 | `hebrew` (ש·ל·ו·ם + ח·נ·ו·ך) |
 | `Radiohead` | 0 | 9 | `latin` |
 | `שלום Hanoch` | 4 | 6 | `mixed` (6 < 2·4 and 4 < 2·6) |
 | `אביב גפן - III` | 7 | 3 | `hebrew` (7 ≥ 2·3) |
@@ -304,7 +353,7 @@ Extends spec 0007. Applies to the Collection `artist-asc` and `album-asc` sorts.
    (`a.index - b.index` in `applyCollectionQuery`).
 
 **Example** — artists `ABBA, Radiohead, David Bowie, אריק איינשטיין, רביד פלוטניק, שלום חנוך`,
-sort *Artist A–Z / א–ת*:
+sort *Artist alphabetical*:
 
 ```
 ABBA
@@ -320,8 +369,11 @@ evergreen browsers). The script-bucketing step is fully deterministic
 regardless of ICU. Tests assert **relative** order, never raw `compare()`
 return values.
 
-**UI:** the sort labels may become `Artist A–Z / א–ת` and `Album A–Z / א–ת`
-(`COLLECTION_SORTS` label strings). Dashboard/insights ASCII sorts
+**UI:** the sort labels stay **English-only** — chrome is English (§6.1). Rename
+the two `COLLECTION_SORTS` label strings from `Artist A-Z` / `Album A-Z` to
+**`Artist alphabetical`** / **`Album alphabetical`** (a Latin-then-Hebrew list is
+not "A–Z"). The sort **values** (`artist-asc`, `album-asc`) and the `?sort=` URL
+contract are **unchanged**. Dashboard/insights ASCII sorts
 (`added_at` / `id` / `decade` / `ms`) are unchanged; their `localeCompare`
 tiebreaks on ASCII genre/decade strings (`insights.ts:222,250`) are unchanged.
 
@@ -428,7 +480,17 @@ expected.
 | Text columns | `releases.artist/title/label/catalog_number/country/format` and `collection_items.notes` are `text`; `char_length()` limits count code points, not bytes; Hebrew strings are well within limits. (`supabase/migrations/20260819000100`) |
 | Genre arrays | `releases.genres` / `collection_items.personal_genres` are `text[]` validated by `public.release_genres_valid`: `g = btrim(g) and g = lower(g) and char_length(g) between 1 and 40`. Hebrew is caseless, so `g = lower(g)` holds; `btrim` is a no-op on Hebrew letters and points. (`20260830120000`, `20260904121000`) |
 | Encoding / collation | Supabase Postgres is UTF-8; `text` stores any Unicode; all filtering/sorting for this enhancement is client-side (spec 0007 deliberately added no GIN index). |
-| Invisible formatting controls | App-layer normalization (`buildSearchKey` on the write path where appropriate, and the personal-genre normalizer) should strip undesirable bidi control characters / NBSP where they would otherwise be stored. This is an application choice; it is **not** evidence for a migration. `btrim(x) = x` does not necessarily fail on an unrecognized leading control character — it may simply leave it and the equality still passes. |
+| Invisible formatting controls | `btrim(x) = x` does not necessarily fail on an unrecognized leading bidi control / NBSP — it may leave the character and the equality still passes. This is **not** evidence for a migration. |
+
+**`buildSearchKey` must never run on a write path.** It is comparison-only
+(§7): it strips niqqud and folds punctuation, so using it to normalize persisted
+`artist` / `title` / `label` / `notes` would violate the original-metadata
+preservation contract. If undesirable invisible-control sanitization of
+persisted text is ever genuinely needed, it must be a **separate,
+narrowly-scoped sanitizer** (strip only bidi controls / NBSP, nothing else),
+justified by concrete evidence — **not** introduced in this planning PR and
+**not** `buildSearchKey`. Personal genres keep their own dedicated
+canonicalization/write policy (§11.2), which is unrelated.
 
 If implementation nonetheless surfaces a concrete case where correct Hebrew
 storage or retrieval is impossible without a schema change, implementation
@@ -530,6 +592,10 @@ change.**
   only for Hebrew-dominant strings (§8).
 - `aria-label` / plain-string contexts: `isolate()` around the dynamic run
   (`U+2068`/`U+2069`), not `dir="auto"` on the whole English sentence.
+- Native `<option>`: attributes on the `<option>` itself, plain-string child
+  (§6.6).
+- `AlbumArtwork` decorative fallback: title and artist each isolated separately
+  (§6.7).
 - Clamped / ellipsized elements carry `dir` so the truncation marker is placed
   correctly.
 - Fix P12: neutralize `letter-spacing` and `text-transform` on the
@@ -602,10 +668,14 @@ tests one of the §19.2 deltas, not the no-change guarantee.
 
 - **Existing persisted Hebrew personal genres:** canonicalize correctly at
   read/use time; no backfill, no migration (§11.3).
-- **Bookmarked / shared filter URLs:** `?q=` resolves the same whether typed in
-  Hebrew or English after normalization (PR 1); `?genre=` gains the same
-  property with the canonical-genre work (PR 2). No parameter renamed or
-  removed.
+- **Bookmarked / shared filter URLs:** `?q=` and `?sort=` keep their exact
+  current contract — the raw `?q=` string is preserved verbatim. Two `?q=`
+  links whose values are **orthographic variants of the same text** (niqqud,
+  punctuation form, whitespace, case) now resolve to the same records because
+  `buildSearchKey` folds them at comparison time; a Hebrew query and an English
+  query are still distinct (no cross-script aliasing — §4). `?genre=` is
+  unchanged in PR 1; PR 2 canonicalizes its value on read. No parameter renamed
+  or removed.
 - **`sessionStorage` collection-view key and catalog-search draft:** unaffected
   (they store view mode / query text, not genre tokens).
 - **Curator refinement `context.previousIntent`:** already round-trips through
@@ -621,18 +691,25 @@ tests one of the §19.2 deltas, not the no-change guarantee.
 Automated (Vitest unit/integration + existing Netlify function tests in
 `netlify/tests/`; pgTAP unchanged). **No real provider call in any test.**
 
-**Script classification:** the six §8 example rows.
+**Script classification:** the six §8 example rows exactly, including
+`H(שלום חנוך) == 8`, `H(אביב גפן - III) == 7 / L == 3 → hebrew`,
+`שלום Hanoch → mixed`.
 
-**Search key:** geresh/apostrophe equality; gershayim/quote equality;
+**Search key:** `buildSearchKey` is comparison-only (no test persists it or
+feeds it to a write path); geresh/apostrophe equality; gershayim/quote equality;
 maqaf/hyphen/dash equality; NBSP + whitespace-run collapse; a **meaningful**
 combining-mark or compatibility-form case (§7 — not plain `עברית`); maqaf is
 **preserved** (not stripped as a "mark"); English case-insensitive match still
 works; Turkish-locale dotted/dotless `i` does not break the key (locale-
-independent lower).
+independent lower); a Hebrew query does **not** match Latin-script stored text
+and vice versa (no cross-script aliasing).
 
-**Sort:** Hebrew-only list in א–ת order; English-only in A–Z; mixed list in
-`latin` bucket then `hebrew` bucket; determinism across two runs; `numeric:true`
-orders `Vol. 2` before `Vol. 10`; stable tiebreak preserved.
+**Sort:** Hebrew-only list in א–ת order; English-only in A–Z; mixed list = Latin
+bucket then Hebrew bucket; determinism across two runs; `numeric:true` orders
+`Vol. 2` before `Vol. 10`; stable tiebreak preserved. The two renamed
+`COLLECTION_SORTS` labels are `Artist alphabetical` / `Album alphabetical`
+(English-only, no Hebrew glyphs in chrome) and the sort **values** / `?sort=`
+contract are unchanged.
 
 **Canonical genre:** every alias row in §10.2 (all variants → canonical, 15
 canonical outputs); `includeGenreMatches('rock','progressive rock')` still true;
@@ -678,10 +755,15 @@ one.
 still works.
 
 **UI (attributes only):** `BidiText` sets `dir="auto"` always, `lang="he"` for
-`hebrew`, no `lang` for `latin` / `mixed` / `neutral`; a Hebrew VIN
-recommendation card wraps title/artist in `<bdi>` and its `aria-label` contains
-the isolate characters; History row heading isolated; Scan candidate cards
-isolated.
+`hebrew`, no `lang` for `latin` / `mixed` / `neutral`; `BidiText` renders as a
+`<bdi>` (never nested inside an `<option>`); a Hebrew VIN recommendation card
+wraps title/artist in `<bdi>` and its `aria-label` contains the isolate
+characters; History row heading isolated; Scan candidate cards isolated; the
+genre-facet `<option>` carries `dir`/`lang` on the `<option>` itself with a
+plain-string child; the `AlbumArtwork` fallback wraps title and artist in
+separate `<bdi>` elements; `PageHeader` keeps `title: string` / `eyebrow?:
+string` and the focus effect still depends on the `title` string (no new object
+identity per render).
 
 **Every automated gate must pass from a clean checkout** before each PR opens:
 `npm run typecheck`, `npm run lint` (0 warnings), `npm run test:run`,
@@ -701,8 +783,9 @@ claimed. Signup / email-confirmation flows are **not** re-exercised.
    cells; English unchanged; no horizontal overflow at 390–430 px or on desktop.
 3. Search `שלום`, `חנוך`, `ג'אז` (ASCII apostrophe) find Hebrew records;
    `bowie` still works.
-4. Sort *Artist A–Z / א–ת*: English block, then Hebrew block in א–ת order; same
-   result on reload.
+4. Sort *Artist alphabetical* (English label): the Latin-script artists appear
+   first in A–Z order, then the Hebrew-script artists in א–ת order; same result
+   on reload.
 5. Album Detail of a Hebrew record: header/eyebrow render correctly, no
    letter-spacing artefacts.
 6. History with Hebrew plays: rows read correctly; mobile layout still correct.
