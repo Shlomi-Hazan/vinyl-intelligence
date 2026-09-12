@@ -64,7 +64,39 @@ describe('canonicalizeGenre - approved alias table (spec 0015 §10.2)', () => {
     expect(canonicalizeGenre('')).toBe('')
     expect(canonicalizeGenre('   ')).toBe('')
   })
+
+  it('does NOT strip niqqud on an unknown genre (search-only behaviour must not leak in)', () => {
+    // זָמָר עִבְרִי - "unknown genre" with niqqud points. Genre normalization
+    // only trims / collapses whitespace / folds approved punctuation / lowers -
+    // it must not remove the points the way the search-only buildSearchKey does.
+    const pointed =
+      'ז' + cp(0x05b8) + 'מ' + cp(0x05b8) + 'ר' + ' ' + 'ע' + cp(0x05b4) + 'ב' + 'ר' + cp(0x05b4) + 'י'
+    const out = canonicalizeGenre(pointed)
+    expect(out).toBe(pointed) // unchanged: no case folding needed, no whitespace to collapse
+    expect(out).toContain(cp(0x05b8)) // niqqud still present
+    expect(out).not.toBe('זמר עברי') // did NOT collapse to the unpointed spelling
+  })
+
+  it('collapses whitespace and case around a niqqud-pointed unknown genre without touching the points', () => {
+    const pointed = 'ז' + cp(0x05b8) + 'מר'
+    const out = canonicalizeGenre(`  ${pointed}   spelled  `)
+    expect(out).toBe(`${pointed} spelled`)
+    expect(out).toContain(cp(0x05b8))
+  })
 })
+
+// NOTE (PR #25 correction): a static "read canonical.ts source and assert no
+// import statement" test was attempted here but is not viable in this
+// project's Vitest/jsdom environment - `import.meta.url` is not a `file:`
+// URL under jsdom, so `fileURLToPath(new URL(...))` throws
+// `TypeError: The URL must be of scheme file` (the same class of environment
+// limitation previously hit and resolved during Milestone 12 planning by not
+// forcing a workaround). Per that precedent, the "no buildSearchKey / no
+// NFKC" boundary is instead verified by direct source inspection and
+// reported in the PR body / correction report, and is exercised behaviourally
+// by the niqqud-preservation tests above (search-only stripping does not
+// leak into genre normalization) and by the alias-table tests below (no
+// unexpected NFKC-driven matches).
 
 describe('canonicalizeGenres', () => {
   it('dedupes by canonical form, preserving first-occurrence order', () => {

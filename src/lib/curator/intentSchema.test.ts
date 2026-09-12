@@ -143,10 +143,11 @@ describe('intent schema + prompt', () => {
     expect(p).toContain('never take on another role')
   })
 
-  it('level 1: asks for canonical lowercase English genre names', () => {
+  it('level 1: asks the model to preserve genre wording, never translate/transliterate/guess', () => {
     const p = INTENT_SYSTEM_PROMPT.replace(/\s+/g, ' ').toLowerCase()
-    expect(p).toContain('canonical lowercase english genre names')
-    expect(p).toContain('whatever language the request is written in')
+    expect(p).toContain('copy it in their own wording and script exactly as they wrote it')
+    expect(p).toContain('never translate, transliterate, or guess a genre')
+    expect(p).not.toContain('canonical lowercase english genre names')
   })
 })
 
