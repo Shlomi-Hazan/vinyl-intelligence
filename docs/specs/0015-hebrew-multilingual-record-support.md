@@ -630,8 +630,10 @@ change to nonce / untrusted-data framing. No notes sent to the model.**
 2. **Authoritative deterministic normalization (level 2).** After the existing
    `normalizeCuratorIntent` validation, each `includeGenres` / `excludeGenres`
    entry is passed through `canonicalizeGenre` **server-side**, before hard
-   filtering. This is the ONLY place genre canonicalization happens, and it
-   runs whether or not the model preserved the user's wording. It is a
+   filtering. This is the only authoritative canonicalization step for
+   validated `includeGenres` / `excludeGenres` values before curator hard
+   filtering, and it runs whether or not the model preserved the user's
+   wording. It is a
    normalization step of the same kind as the existing trim / lowercase / dedupe
    and the "exclusion dominates" rule; it does not relax any schema check and
    does not expand curator authority. `canonicalizeGenre` is implemented
