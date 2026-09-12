@@ -16,6 +16,7 @@ import {
   selectRecommendations as selectRecommendationsImpl,
 } from '../../../src/lib/curator/openrouterCurator.ts'
 import { normalizeCuratorIntent } from '../../../src/lib/curator/intentSchema.ts'
+import { canonicalizeGenres } from '../../../src/lib/genre/canonical.ts'
 import {
   CURATOR_INTENT_FEATURE,
   CURATOR_SELECTION_FEATURE,
@@ -298,6 +299,7 @@ type CuratorCollectionRow = {
   added_at: string
   rating: number | null
   is_favorite: boolean
+  personal_genres: string[] | null
   release:
     | { artist: string; title: string; release_year: number | null; genres: string[] | null }
     | { artist: string; title: string; release_year: number | null; genres: string[] | null }[]
@@ -309,6 +311,8 @@ function normalizeCollectionRow(row: CuratorCollectionRow): CuratorCollectionIte
   if (!release) {
     throw new CuratorError('collection_unavailable', 'A record is missing its metadata.')
   }
+  const catalogGenres = Array.isArray(release.genres) ? release.genres : []
+  const personalGenres = Array.isArray(row.personal_genres) ? row.personal_genres : []
   return {
     id: row.id,
     added_at: row.added_at,
@@ -317,7 +321,10 @@ function normalizeCollectionRow(row: CuratorCollectionRow): CuratorCollectionIte
     artist: release.artist,
     title: release.title,
     release_year: typeof release.release_year === 'number' ? release.release_year : null,
-    genres: Array.isArray(release.genres) ? release.genres : [],
+    // Additive canonical effective-genre merge (spec 0015 §12): catalog genres
+    // + the owner's personal genres, canonicalized + deduped. `notes` is still
+    // never selected or sent to a model.
+    genres: canonicalizeGenres([...catalogGenres, ...personalGenres]),
   }
 }
 
@@ -342,7 +349,7 @@ async function loadOwnedCollection(
   const itemsResult = await userClient
     .from('collection_items')
     .select(
-      'id, added_at, rating, is_favorite, release:releases!inner(artist, title, release_year, genres)',
+      'id, added_at, rating, is_favorite, personal_genres, release:releases!inner(artist, title, release_year, genres)',
     )
     .order('added_at', { ascending: false })
     .limit(1000)

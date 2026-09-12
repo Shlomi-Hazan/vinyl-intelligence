@@ -183,4 +183,44 @@ describe('topGenres', () => {
     const items = [item('01', { genres: ['rock'] }), item('02', { genres: [] })]
     expect(topGenres(items)).toEqual([])
   })
+
+  it('uses canonical effective genres - catalog rock + personal רוק count as one rock (spec 0015 §7)', () => {
+    const items = [
+      item('01', { genres: ['rock'] }),
+      item('02', { personal_genres: ['רוק'] }), // legacy Hebrew personal alias
+      item('03', { genres: ['jazz'] }),
+      item('04', { genres: ['blues'], personal_genres: ['רוק'] }),
+    ]
+    expect(topGenres(items, 2)).toEqual([
+      { genre: 'rock', count: 3 }, // 01 + 02 + 04
+      { genre: 'blues', count: 1 },
+    ])
+  })
+
+  it('a record whose only genre is a personal one now participates', () => {
+    const items = [
+      item('01', { personal_genres: ['רוק'] }),
+      item('02', { personal_genres: ['jazz'] }),
+      item('03', { personal_genres: ['jazz'] }),
+      item('04', { personal_genres: ['jazz'] }),
+    ]
+    // 4 items carry an effective genre -> MIN_INSIGHT_ITEMS met
+    expect(topGenres(items, 3)).toEqual([
+      { genre: 'jazz', count: 3 },
+      { genre: 'rock', count: 1 },
+    ])
+  })
+
+  it('English fixture (personal_genres = [], canonical catalog) is unchanged (regression guard)', () => {
+    const items = [
+      item('01', { genres: ['rock', 'pop'] }),
+      item('02', { genres: ['rock'] }),
+      item('03', { genres: ['jazz'] }),
+      item('04', { genres: ['rock', 'jazz'] }),
+    ]
+    expect(topGenres(items, 2)).toEqual([
+      { genre: 'rock', count: 3 },
+      { genre: 'jazz', count: 2 },
+    ])
+  })
 })
