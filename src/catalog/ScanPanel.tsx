@@ -20,6 +20,7 @@ import {
   addManualCollectionItem,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
+import type { LoadPhase } from '../app/collection-data-context.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
@@ -58,6 +59,15 @@ type ScanPanelProps = {
   client: BrowserSupabaseClient
   userId: string
   ownedItems: CollectionItemWithRelease[]
+  /**
+   * The collection-load phase `ownedItems` came from. Ownership is only
+   * authoritative when this is `'ready'` - on `'loading'` (including a
+   * post-add reload, where `ownedItems` is deliberately retained as STALE
+   * data) or `'error'`, a candidate must never be classified as owned OR
+   * not-owned, and no catalog-add write may be triggered (spec 0016
+   * Finding B review correction).
+   */
+  collectionStatus: LoadPhase
   onCollectionChanged: () => void
   /** "search by text instead" -> hand the derived query to Discover. */
   onSearchByText: (query: string) => void
@@ -126,6 +136,7 @@ export function ScanPanel({
   client,
   userId,
   ownedItems,
+  collectionStatus,
   onCollectionChanged,
   onSearchByText,
 }: ScanPanelProps) {
@@ -257,6 +268,13 @@ export function ScanPanel({
   }
 
   async function confirm(candidate: CatalogCandidate) {
+    // Ownership data is only authoritative when the collection load is
+    // 'ready' - never allow a write while it is loading (including a
+    // post-add reload's stale window) or errored (spec 0016 Finding B
+    // review correction).
+    if (collectionStatus !== 'ready') {
+      return
+    }
     setSavingId(candidate.providerReleaseId)
     setAddError(null)
     try {
@@ -281,7 +299,7 @@ export function ScanPanel({
    * confirm button twice) and reuses the existing `confirm` path - exactly
    * one add request per intentional confirmation. */
   function confirmAddAnotherCopy() {
-    if (!confirmingCandidate || savingId) {
+    if (!confirmingCandidate || savingId || collectionStatus !== 'ready') {
       return
     }
     const candidate = confirmingCandidate
@@ -482,7 +500,10 @@ export function ScanPanel({
             </p>
             <ul className="vi-candidate__list" aria-label="Catalogue candidates">
               {state.candidates.map((c) => {
-                const owned = isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
+                const collectionReady = collectionStatus === 'ready'
+                const owned =
+                  collectionReady &&
+                  isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
                 return (
                   <li key={c.providerReleaseId}>
                     <article className="vi-candidate" data-owned={owned}>
@@ -509,7 +530,13 @@ export function ScanPanel({
                           </p>
                         ) : null}
                         <div className="vi-candidate__actions">
-                          {owned ? (
+                          {!collectionReady ? (
+                            <Button variant="secondary" size="sm" disabled>
+                              {collectionStatus === 'loading'
+                                ? 'Checking collection…'
+                                : 'Collection unavailable'}
+                            </Button>
+                          ) : owned ? (
                             <>
                               <span className="vi-candidate__owned">
                                 <Icon name="check" size={15} /> In your collection
@@ -517,9 +544,12 @@ export function ScanPanel({
                               <Button
                                 variant="secondary"
                                 size="sm"
+                                disabled={savingId === c.providerReleaseId}
                                 onClick={() => setConfirmingCandidate(c)}
                               >
-                                Add another copy
+                                {savingId === c.providerReleaseId
+                                  ? 'Adding…'
+                                  : 'Add another copy'}
                               </Button>
                             </>
                           ) : (

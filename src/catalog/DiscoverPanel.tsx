@@ -20,6 +20,7 @@ import {
   addManualCollectionItem,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
+import type { LoadPhase } from '../app/collection-data-context.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
@@ -45,6 +46,15 @@ type DiscoverPanelProps = {
   client: BrowserSupabaseClient
   userId: string
   ownedItems: CollectionItemWithRelease[]
+  /**
+   * The collection-load phase `ownedItems` came from. Ownership is only
+   * authoritative when this is `'ready'` - on `'loading'` (including a
+   * post-add reload, where `ownedItems` is deliberately retained as STALE
+   * data) or `'error'`, a candidate must never be classified as owned OR
+   * not-owned, and no catalog-add write may be triggered (spec 0016
+   * Finding B review correction).
+   */
+  collectionStatus: LoadPhase
   onCollectionChanged: () => void
 }
 
@@ -54,6 +64,7 @@ export function DiscoverPanel({
   client,
   userId,
   ownedItems,
+  collectionStatus,
   onCollectionChanged,
 }: DiscoverPanelProps) {
   const restored = useRef(loadCatalogSearchDraft(userId)).current
@@ -132,6 +143,13 @@ export function DiscoverPanel({
   )
 
   async function add(candidate: CatalogCandidate) {
+    // Ownership data is only authoritative when the collection load is
+    // 'ready' - never allow a write while it is loading (including a
+    // post-add reload's stale window) or errored, even if a stale/disabled
+    // control were somehow triggered (spec 0016 Finding B review correction).
+    if (collectionStatus !== 'ready') {
+      return
+    }
     setAddingId(candidate.providerReleaseId)
     setAddErrors((cur) => {
       const n = { ...cur }
@@ -162,7 +180,7 @@ export function DiscoverPanel({
    * confirm button twice) and reuses the existing `add` path - exactly one
    * add request per intentional confirmation. */
   function confirmAddAnotherCopy() {
-    if (!confirmingCandidate || addingId) {
+    if (!confirmingCandidate || addingId || collectionStatus !== 'ready') {
       return
     }
     const candidate = confirmingCandidate
@@ -258,7 +276,9 @@ export function DiscoverPanel({
       {phase === 'results' ? (
         <ul className="vi-candidate__list" aria-label="Catalog results">
           {candidates.map((c) => {
-            const owned = isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
+            const collectionReady = collectionStatus === 'ready'
+            const owned =
+              collectionReady && isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
             const metaParts = candidateMetaParts(c)
             return (
               <li key={c.providerReleaseId}>
@@ -286,7 +306,13 @@ export function DiscoverPanel({
                       </p>
                     ) : null}
                     <div className="vi-candidate__actions">
-                      {owned ? (
+                      {!collectionReady ? (
+                        <Button variant="secondary" size="sm" disabled>
+                          {collectionStatus === 'loading'
+                            ? 'Checking collection…'
+                            : 'Collection unavailable'}
+                        </Button>
+                      ) : owned ? (
                         <>
                           <span className="vi-candidate__owned">
                             <Icon name="check" size={15} /> In your collection
@@ -294,9 +320,12 @@ export function DiscoverPanel({
                           <Button
                             variant="secondary"
                             size="sm"
+                            disabled={addingId === c.providerReleaseId}
                             onClick={() => setConfirmingCandidate(c)}
                           >
-                            Add another copy
+                            {addingId === c.providerReleaseId
+                              ? 'Adding…'
+                              : 'Add another copy'}
                           </Button>
                         </>
                       ) : (

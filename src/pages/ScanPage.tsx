@@ -12,11 +12,14 @@ import { useCollectionData } from '../app/useCollectionData.ts'
  * user chooses "search by text instead", the derived query is handed to
  * Discover via the existing search draft. An already-owned candidate shows an
  * honest "In your collection" indicator plus an explicit "Add another copy"
- * confirmation, mirroring Discover (spec 0016 Finding B).
+ * confirmation, mirroring Discover (spec 0016 Finding B). `status` is passed
+ * through as `collectionStatus` so ScanPanel never treats a loading/errored
+ * (including a post-add reload's stale) `ownedItems` as authoritative
+ * ownership data.
  */
 export function ScanPage() {
   const { client, userId } = useClient()
-  const { items, invalidate } = useCollectionData()
+  const { items, status, invalidate } = useCollectionData()
   const navigate = useNavigate()
 
   return (
@@ -26,6 +29,7 @@ export function ScanPage() {
         client={client}
         userId={userId}
         ownedItems={items}
+        collectionStatus={status}
         onCollectionChanged={invalidate}
         onSearchByText={(query) => {
           saveCatalogSearchDraft(userId, { draftQuery: query, result: null })

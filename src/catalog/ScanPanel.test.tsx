@@ -5,6 +5,7 @@ import { ScanPanel } from './ScanPanel.tsx'
 import { validateImageFile } from '../lib/vision/image.ts'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import { RecognitionError, type CoverRecognition } from '../lib/vision/types.ts'
+import type { LoadPhase } from '../app/collection-data-context.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
@@ -93,19 +94,23 @@ function ownedItem(
   } as CollectionItemWithRelease
 }
 
-function setup(ownedItems: CollectionItemWithRelease[] = []) {
+function setup(
+  ownedItems: CollectionItemWithRelease[] = [],
+  collectionStatus: LoadPhase = 'ready',
+) {
   const onCollectionChanged = vi.fn()
   const onSearchByText = vi.fn()
-  render(
+  const view = render(
     <ScanPanel
       client={{} as BrowserSupabaseClient}
       userId="uid"
       ownedItems={ownedItems}
+      collectionStatus={collectionStatus}
       onCollectionChanged={onCollectionChanged}
       onSearchByText={onSearchByText}
     />,
   )
-  return { onCollectionChanged, onSearchByText }
+  return { onCollectionChanged, onSearchByText, ...view }
 }
 
 async function selectFileAndAnalyse() {
@@ -430,7 +435,7 @@ describe('ScanPanel - duplicate-copy confirmation (spec 0016 Finding B)', () => 
     expect(await screen.findByText('Added to your collection.')).toBeInTheDocument()
   })
 
-  it('a rapid/repeated confirmation cannot create a second add request', async () => {
+  it('a rapid/repeated confirmation cannot create a second add request - the outer action disables while pending', async () => {
     recognizeCover.mockResolvedValue(recognition())
     searchCatalog.mockResolvedValue([candidate()])
     let resolveAdd: (v: unknown) => void = () => {}
@@ -439,20 +444,19 @@ describe('ScanPanel - duplicate-copy confirmation (spec 0016 Finding B)', () => 
     const user = userEvent.setup()
     await selectFileAndAnalyse()
 
-    const openDialog = () =>
-      user.click(screen.getByRole('button', { name: 'Add another copy' }))
-
-    await openDialog()
-    let dialog = await screen.findByRole('dialog')
+    // first confirm starts exactly one request and closes the dialog
+    await user.click(screen.getByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
     expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(addCatalog).toHaveBeenCalledTimes(1))
 
-    // re-opening and confirming again while the first add is still pending
-    // must not create a second request - `confirmAddAnotherCopy` guards on
-    // `savingId` and no-ops
-    await openDialog()
-    dialog = await screen.findByRole('dialog')
-    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+    // while pending, the outer duplicate action is disabled / non-actionable
+    const pendingButton = screen.getByRole('button', { name: 'Adding…' })
+    expect(pendingButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add another copy' })).toBeNull()
+    await user.click(pendingButton)
+    expect(screen.queryByRole('dialog')).toBeNull()
 
     resolveAdd({})
     await waitFor(() => expect(addCatalog).toHaveBeenCalledTimes(1))
@@ -498,6 +502,80 @@ describe('ScanPanel - duplicate-copy confirmation (spec 0016 Finding B)', () => 
     expect(title.tagName).toBe('BDI')
     expect(title.getAttribute('lang')).toBe('he')
     expect(screen.getByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+  })
+})
+
+describe('ScanPanel - ownership gated on authoritative collection-load status (spec 0016 Finding B review correction)', () => {
+  it('never exposes an enabled catalog-add path while collection data is loading', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    setup([], 'loading')
+    await selectFileAndAnalyse()
+
+    const placeholder = await screen.findByRole('button', { name: 'Checking collection…' })
+    expect(placeholder).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'This is it — add' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add another copy' })).toBeNull()
+    expect(screen.queryByText('In your collection')).toBeNull()
+    expect(addCatalog).not.toHaveBeenCalled()
+  })
+
+  it('never exposes an enabled catalog-add path while collection data errored', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    setup([], 'error')
+    await selectFileAndAnalyse()
+
+    const placeholder = await screen.findByRole('button', { name: 'Collection unavailable' })
+    expect(placeholder).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'This is it — add' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add another copy' })).toBeNull()
+    expect(screen.queryByText('In your collection')).toBeNull()
+    expect(addCatalog).not.toHaveBeenCalled()
+  })
+
+  it('loading -> ready, NOT owned - resolves to the normal enabled add action', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    const { rerender } = setup([], 'loading')
+    await selectFileAndAnalyse()
+    await screen.findByRole('button', { name: 'Checking collection…' })
+
+    rerender(
+      <ScanPanel
+        client={{} as BrowserSupabaseClient}
+        userId="uid"
+        ownedItems={[]}
+        collectionStatus="ready"
+        onCollectionChanged={vi.fn()}
+        onSearchByText={vi.fn()}
+      />,
+    )
+    expect(
+      await screen.findByRole('button', { name: 'This is it — add' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Checking collection…' })).toBeNull()
+  })
+
+  it('loading -> ready, OWNED - resolves to the honest indicator and "Add another copy"', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    const { rerender } = setup([], 'loading')
+    await selectFileAndAnalyse()
+    await screen.findByRole('button', { name: 'Checking collection…' })
+
+    rerender(
+      <ScanPanel
+        client={{} as BrowserSupabaseClient}
+        userId="uid"
+        ownedItems={[ownedItem()]}
+        collectionStatus="ready"
+        onCollectionChanged={vi.fn()}
+        onSearchByText={vi.fn()}
+      />,
+    )
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
   })
 })
