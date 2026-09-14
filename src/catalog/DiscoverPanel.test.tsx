@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DiscoverPanel } from './DiscoverPanel.tsx'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
+import type { LoadPhase } from '../app/collection-data-context.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
@@ -51,7 +52,41 @@ function candidate(over: Partial<CatalogCandidate> = {}): CatalogCandidate {
   }
 }
 
-function renderPanel(owned: CollectionItemWithRelease[] = []) {
+function ownedItem(
+  over: Partial<CollectionItemWithRelease['release']> = {},
+): CollectionItemWithRelease {
+  return {
+    id: 'c1',
+    added_at: '',
+    created_at: '',
+    rating: null,
+    is_favorite: false,
+    notes: null,
+    release: {
+      id: 'r1',
+      artist: 'Portishead',
+      title: 'Dummy',
+      release_year: 1994,
+      label: null,
+      catalog_number: null,
+      country: null,
+      format: null,
+      genres: [],
+      updated_at: '',
+      provider_release_id: '11111111-1111-4111-8111-111111111111',
+      ...over,
+    },
+  } as CollectionItemWithRelease
+}
+
+function ownedPortishead(): CollectionItemWithRelease[] {
+  return [ownedItem()]
+}
+
+function renderPanel(
+  owned: CollectionItemWithRelease[] = [],
+  collectionStatus: LoadPhase = 'ready',
+) {
   const onCollectionChanged = vi.fn()
   const view = render(
     <MemoryRouter>
@@ -59,6 +94,7 @@ function renderPanel(owned: CollectionItemWithRelease[] = []) {
         client={{} as BrowserSupabaseClient}
         userId="uid"
         ownedItems={owned}
+        collectionStatus={collectionStatus}
         onCollectionChanged={onCollectionChanged}
       />
     </MemoryRouter>,
@@ -163,6 +199,7 @@ describe('DiscoverPanel', () => {
           client={{} as BrowserSupabaseClient}
           userId="uid"
           ownedItems={[]}
+          collectionStatus="ready"
           onCollectionChanged={vi.fn()}
         />
       </MemoryRouter>,
@@ -200,34 +237,12 @@ describe('DiscoverPanel', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 
-  it('an already-owned release shows "In your collection" instead of Add', async () => {
+  it('an already-owned release shows "In your collection" AND "Add another copy" instead of plain Add', async () => {
     searchCatalog.mockResolvedValue([candidate()])
-    const owned = [
-      {
-        id: 'c1',
-        added_at: '',
-        created_at: '',
-        rating: null,
-        is_favorite: false,
-        notes: null,
-        release: {
-          id: 'r1',
-          artist: 'Portishead',
-          title: 'Dummy',
-          release_year: 1994,
-          label: null,
-          catalog_number: null,
-          country: null,
-          format: null,
-          genres: [],
-          updated_at: '',
-          provider_release_id: '11111111-1111-4111-8111-111111111111',
-        },
-      },
-    ] as CollectionItemWithRelease[]
-    renderPanel(owned)
+    renderPanel(ownedPortishead())
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
     expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add to collection' })).toBeNull()
   })
 
@@ -293,6 +308,7 @@ describe('DiscoverPanel', () => {
           client={{} as BrowserSupabaseClient}
           userId="uid"
           ownedItems={[]}
+          collectionStatus="ready"
           onCollectionChanged={vi.fn()}
         />
       </MemoryRouter>,
@@ -303,5 +319,279 @@ describe('DiscoverPanel', () => {
     // re-running the same restored query still works
     await user.type(screen.getByRole('searchbox'), '{enter}')
     await waitFor(() => expect(searchCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead'))
+  })
+})
+
+describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', () => {
+  const DIALOG_MESSAGE =
+    'You already own this release. Add another physical copy to your collection?'
+
+  it('a not-owned candidate keeps the ordinary single-click Add behavior, with no duplicate dialog', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalogReleaseToCollection.mockResolvedValue({})
+    const { onCollectionChanged } = renderPanel([])
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    expect(screen.queryByText(DIALOG_MESSAGE)).toBeNull()
+    await user.click(await screen.findByRole('button', { name: 'Add to collection' }))
+    await waitFor(() => expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1))
+    expect(onCollectionChanged).toHaveBeenCalled()
+    expect(screen.queryByText(DIALOG_MESSAGE)).toBeNull()
+  })
+
+  it('an owned candidate shows both the honest indicator and "Add another copy"', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    renderPanel(ownedPortishead())
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+  })
+
+  it('clicking "Add another copy" then Cancel makes zero add calls and zero collection-changed calls', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    const { onCollectionChanged } = renderPanel(ownedPortishead())
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(DIALOG_MESSAGE)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(addCatalogReleaseToCollection).not.toHaveBeenCalled()
+    expect(onCollectionChanged).not.toHaveBeenCalled()
+    // still recoverable: the owned presentation and its action remain
+    expect(screen.getByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+  })
+
+  it('confirming "Add another copy" makes exactly one add call for the correct candidate and notifies the collection changed', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalogReleaseToCollection.mockResolvedValue({})
+    const { onCollectionChanged } = renderPanel(ownedPortishead())
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+
+    await waitFor(() => expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1))
+    expect(addCatalogReleaseToCollection).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ providerReleaseId: candidate().providerReleaseId }),
+    )
+    expect(onCollectionChanged).toHaveBeenCalled()
+    // the dialog closed on confirm, before the request resolves
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a rapid/repeated confirmation cannot create a second add request - the outer action disables while pending', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    let resolveAdd: (v: unknown) => void = () => {}
+    addCatalogReleaseToCollection.mockImplementation(
+      () => new Promise((r) => (resolveAdd = r)),
+    )
+    renderPanel(ownedPortishead())
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    // first confirm starts exactly one request and closes the dialog
+    await user.click(screen.getByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1))
+
+    // while pending, the outer duplicate action is disabled / non-actionable
+    // - "In your collection" remains visible, but the trigger reads "Adding…"
+    // and cannot be clicked to reopen the dialog
+    const pendingButton = screen.getByRole('button', { name: 'Adding…' })
+    expect(pendingButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add another copy' })).toBeNull()
+    await user.click(pendingButton)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    resolveAdd({})
+    // once the request settles, the trigger becomes actionable again
+    await screen.findByRole('button', { name: 'Add another copy' })
+    expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed duplicate add uses the existing addErrors presentation and remains recoverable', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalogReleaseToCollection.mockRejectedValue(new Error('Could not add that copy.'))
+    renderPanel(ownedPortishead())
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+
+    expect(await screen.findByText('Could not add that copy.')).toBeInTheDocument()
+    // recoverable: the owned presentation + action remain, no second error UI invented
+    expect(screen.getByText('In your collection')).toBeInTheDocument()
+    const retryButton = screen.getByRole('button', { name: 'Add another copy' })
+    expect(retryButton).toBeInTheDocument()
+
+    // retry works by reopening the dialog and confirming again
+    addCatalogReleaseToCollection.mockResolvedValue({})
+    await user.click(retryButton)
+    const dialog2 = await screen.findByRole('dialog')
+    await user.click(within(dialog2).getByRole('button', { name: 'Add another copy' }))
+    await waitFor(() => expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(2))
+  })
+
+  it('an owned Hebrew candidate still renders through the existing BidiText isolation with the duplicate UI present', async () => {
+    searchCatalog.mockResolvedValue([
+      candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+    ])
+    const owned = ownedPortishead()
+    owned[0].release.artist = 'שלום חנוך'
+    owned[0].release.title = 'מחכים למשיח'
+    renderPanel(owned)
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'שלום חנוך{enter}')
+
+    const title = await screen.findByText('מחכים למשיח')
+    expect(title.tagName).toBe('BDI')
+    expect(title.getAttribute('lang')).toBe('he')
+    expect(screen.getByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+  })
+})
+
+describe('DiscoverPanel - ownership gated on authoritative collection-load status (spec 0016 Finding B review correction)', () => {
+  it('A: while loading, no candidate exposes an enabled add action, and shows a truthful placeholder', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    renderPanel([], 'loading')
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    const placeholder = await screen.findByRole('button', { name: 'Checking collection…' })
+    expect(placeholder).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add to collection' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add another copy' })).toBeNull()
+    expect(screen.queryByText('In your collection')).toBeNull()
+    expect(addCatalogReleaseToCollection).not.toHaveBeenCalled()
+  })
+
+  it('B: while errored, no candidate exposes an enabled add action, and shows a distinct truthful placeholder', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    renderPanel([], 'error')
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+
+    const placeholder = await screen.findByRole('button', { name: 'Collection unavailable' })
+    expect(placeholder).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add to collection' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add another copy' })).toBeNull()
+    expect(screen.queryByText('In your collection')).toBeNull()
+    expect(addCatalogReleaseToCollection).not.toHaveBeenCalled()
+  })
+
+  it('C: loading -> ready, NOT owned - the normal enabled Add action becomes available', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    const { rerender } = renderPanel([], 'loading')
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('button', { name: 'Checking collection…' })
+
+    rerender(
+      <MemoryRouter>
+        <DiscoverPanel
+          client={{} as BrowserSupabaseClient}
+          userId="uid"
+          ownedItems={[]}
+          collectionStatus="ready"
+          onCollectionChanged={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(
+      await screen.findByRole('button', { name: 'Add to collection' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Checking collection…' })).toBeNull()
+  })
+
+  it('D: loading -> ready, OWNED - the honest indicator and "Add another copy" appear', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    const { rerender } = renderPanel([], 'loading')
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('button', { name: 'Checking collection…' })
+
+    rerender(
+      <MemoryRouter>
+        <DiscoverPanel
+          client={{} as BrowserSupabaseClient}
+          userId="uid"
+          ownedItems={ownedPortishead()}
+          collectionStatus="ready"
+          onCollectionChanged={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+  })
+
+  it('E: a successful ordinary add cannot be followed by a second ordinary add during the post-add stale-reload window; the duplicate path appears once the reload returns the new item', async () => {
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalogReleaseToCollection.mockResolvedValue({})
+    const onCollectionChanged = vi.fn()
+    const { rerender } = render(
+      <MemoryRouter>
+        <DiscoverPanel
+          client={{} as BrowserSupabaseClient}
+          userId="uid"
+          ownedItems={[]}
+          collectionStatus="ready"
+          onCollectionChanged={onCollectionChanged}
+        />
+      </MemoryRouter>,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await user.click(await screen.findByRole('button', { name: 'Add to collection' }))
+    await waitFor(() => expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1))
+    expect(onCollectionChanged).toHaveBeenCalled()
+
+    // the parent starts its authoritative reload: status flips to 'loading',
+    // but ownedItems is deliberately retained as STALE - still empty, since
+    // the newly-added release has not round-tripped back yet
+    rerender(
+      <MemoryRouter>
+        <DiscoverPanel
+          client={{} as BrowserSupabaseClient}
+          userId="uid"
+          ownedItems={[]}
+          collectionStatus="loading"
+          onCollectionChanged={onCollectionChanged}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('button', { name: 'Checking collection…' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Add to collection' })).toBeNull()
+
+    // the reload returns: the release is now owned
+    rerender(
+      <MemoryRouter>
+        <DiscoverPanel
+          client={{} as BrowserSupabaseClient}
+          userId="uid"
+          ownedItems={ownedPortishead()}
+          collectionStatus="ready"
+          onCollectionChanged={onCollectionChanged}
+        />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add to collection' })).toBeNull()
+    // exactly one add call across this entire sequence - no second ordinary
+    // add was ever possible during the stale window
+    expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1)
   })
 })
