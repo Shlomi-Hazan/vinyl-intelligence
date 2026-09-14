@@ -118,6 +118,11 @@ describe('SettingsPage', () => {
     expect(auth.refreshProfile).not.toHaveBeenCalled()
   })
 
+  it('gives the display-name input dir="auto" (PR 3)', () => {
+    renderSettings()
+    expect(screen.getByLabelText('Display name')).toHaveAttribute('dir', 'auto')
+  })
+
   it('keeps the display-name save and sign-out actions', async () => {
     const auth = renderSettings()
     const u = userEvent.setup()

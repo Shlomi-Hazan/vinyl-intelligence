@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../app/PageHeader.tsx'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { Vinny } from '../brand/Vinny.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { Button, Input } from '../ui/primitives.tsx'
@@ -145,7 +146,12 @@ export function DashboardPage() {
     <div className="vi-page vi-page--wide">
       <PageHeader
         eyebrow="Home"
-        title={name ? `Welcome back, ${name}` : 'Welcome back, listener'}
+        // A composite string, not a single field: the Hebrew-capable display
+        // name is isolated on its own so it can never reorder the literal
+        // "Welcome back," chrome, even though `PageHeader` also wraps the
+        // whole resulting title in one `BidiText` (spec 0015 §6/§16 composite
+        // rule - literal separators/text stay outside the isolated run).
+        title={name ? `Welcome back, ${isolate(name)}` : 'Welcome back, listener'}
       />
 
       {status === 'error' ? (

@@ -113,6 +113,38 @@ describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
       'שלום חנוך',
     )
   })
+
+  it('isolates a Hebrew artist separately from a Latin title on the same candidate (no leakage)', async () => {
+    const user = userEvent.setup()
+    searchCatalog.mockResolvedValue([
+      candidate({ artist: 'שלום חנוך', title: 'Greatest Hits' }),
+    ])
+    renderPanel()
+    await user.type(screen.getByLabelText('Search the catalog'), 'test')
+    await user.keyboard('{Enter}')
+
+    const candArtist = await screen.findByText('שלום חנוך')
+    expect(candArtist.tagName).toBe('BDI')
+    expect(candArtist.getAttribute('lang')).toBe('he')
+    const candTitle = await screen.findByText('Greatest Hits')
+    expect(candTitle.tagName).toBe('BDI')
+    expect(candTitle.getAttribute('lang')).toBeNull()
+    expect(candTitle).not.toBe(candArtist)
+  })
+
+  it('an all-Latin/English candidate is unaffected by the Hebrew isolation path', async () => {
+    const user = userEvent.setup()
+    searchCatalog.mockResolvedValue([candidate()])
+    renderPanel()
+    await user.type(screen.getByLabelText('Search the catalog'), 'dummy')
+    await user.keyboard('{Enter}')
+
+    const candTitle = await screen.findByText('Dummy')
+    expect(candTitle.tagName).toBe('BDI')
+    expect(candTitle.getAttribute('lang')).toBeNull()
+    const candArtist = await screen.findByText('Portishead')
+    expect(candArtist.getAttribute('lang')).toBeNull()
+  })
 })
 
 describe('DiscoverPanel', () => {

@@ -46,6 +46,14 @@ describe('buildCatalogQueryFromRecognition', () => {
     ).toBe('MILES DAVIS KIND OF BLUE COLUMBIA')
   })
 
+  it('combines a Hebrew artist and album title without transliteration (spec 0015 §15)', () => {
+    expect(
+      buildCatalogQueryFromRecognition(
+        recognition({ artist: 'שלום חנוך', albumTitle: 'מחכים למשיח' }),
+      ),
+    ).toBe('שלום חנוך מחכים למשיח')
+  })
+
   it('returns null when there is nothing usable', () => {
     expect(buildCatalogQueryFromRecognition(recognition())).toBeNull()
   })

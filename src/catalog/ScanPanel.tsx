@@ -311,7 +311,7 @@ export function ScanPanel({
                 {dragging
                   ? 'Drop the cover here'
                   : fileName
-                    ? `Selected: ${fileName}`
+                    ? `Selected: ${isolate(fileName)}`
                     : 'Drag a cover photo here, or take / upload one'}
               </span>
               <input
