@@ -5235,12 +5235,12 @@ that behaviour is covered by automated/mocked tests (spec 0015 §20).
   - Hebrew History
   - dialog BiDi
   - VoiceOver Hebrew pronunciation spot-check
-  - **Typography** (Fraunces display titles rendering Hebrew through a system
-    serif fallback) was visually observed as somewhat smaller/more seamed
-    than the Latin titles at this stage, but judged **acceptable, not a
-    defect**, at the time. That conclusion did **not** hold — see PR #27
-    below, which supersedes it with stronger post-PR3 visual evidence and
-    fixes it. It is not carried forward here as a final limitation.
+  - **Typography** — Hebrew display titles on the existing display stack
+    were visually observed as somewhat smaller/more seamed than the Latin
+    titles at this stage, but judged **acceptable, not a defect**, at the
+    time. That conclusion did **not** hold — see PR #27 below, which
+    supersedes it with stronger post-PR3 visual evidence and fixes it. It is
+    not carried forward here as a final limitation.
 
 ### PR #25 — PR 2: canonical genres + Hebrew VIN
 
@@ -5273,12 +5273,14 @@ test db` 10 files / 507 assertions PASS; `npx supabase db lint` clean;
   only matching 1970s record was rock; the previous recommendation remained
   visible only as previous context, not re-offered as a new recommendation.
 
-Two real human curator interactions occurred (one initial request, one
-refinement); the pipeline's documented contract is exactly two provider calls
-per successful interaction (`docs/ai-design.md`), but no exact aggregate
-model-call count was independently re-verified from stored `model_calls`
-telemetry for this closeout, so none is claimed beyond that per-interaction
-contract.
+The curator first performs intent/refinement extraction; a
+recommendation-producing flow then performs selection, while a no-match can
+stop after that first model call (unchanged Milestone 9 call shape,
+`docs/ai-design.md`). Two real Hebrew interactions were performed during this
+acceptance — interaction **C** produced a recommendation, interaction **D**
+produced `no_match` — but the closeout does not claim an independently
+verified aggregate provider-call count, because stored `model_calls`
+telemetry was not inspected for this closeout.
 
 ### PR #26 — PR 3: Vision, accessibility, final runtime polish
 
@@ -5365,9 +5367,15 @@ No provider calls were required for this correction.
 ### Final result
 
 **Hebrew & Multilingual Record Support — COMPLETE.** Five PRs (#23, #24, #25,
-#26, #27), each independently reviewed, human-approved, merged with a normal
-merge commit, deployed from merged `main`, and human-accepted before the next
-began. Final accepted runtime `main`:
+#26, #27), each independently reviewed and merged through the normal
+merge-commit workflow, then deployed from merged `main`. Production
+human-acceptance findings from the primary implementation PRs were resolved
+in the dedicated correction PRs #24 and #27 before the enhancement advanced
+to the next planned phase / final documentation closeout — #23's own
+production acceptance surfaced the desktop List alignment defect #24 fixed
+before PR 2 began; #26's own post-deployment acceptance surfaced the Hebrew
+typography readability defect #27 fixed before this closeout began. Final
+accepted runtime `main`:
 **`59fe823646091b6189fc1a015c7209fbe1f8105b`**. Final accepted production
 deploy: **`6aa7f8579b5591de792714f4`** at
 `https://vinyl-intelligence.netlify.app`. Known, intentional non-goals (not

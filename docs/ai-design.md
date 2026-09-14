@@ -134,8 +134,11 @@ Two-level defense so the model is never trusted to canonicalize a genre:
   candidate data, never from model text, so a translated model "fact" is
   structurally ignored.
 - No schema, model, token-budget, rate-limit, allowed-ID-validation, or
-  nonce/untrusted-framing change. Still exactly two provider calls per
-  successful curator request.
+  nonce/untrusted-framing change. Unchanged Milestone 9 call shape: intent/
+  refinement extraction runs first; a recommendation-producing successful
+  flow then performs selection (exactly two provider calls); a no-match
+  stops after the first call with no selection call; an empty collection can
+  return before any provider call.
 
 ## Architecture Boundaries
 

@@ -73,15 +73,22 @@ above — this is application-logic policy, not a schema difference:
   effective-genre read path canonicalizes them too — **no backfill, no
   migration.**
 - The curator's owned-collection load (`netlify/functions/_shared/curator-handlers.mts`)
-  now also selects `personal_genres`; `collection_items.notes` remains
-  excluded from curator model context. Effective personal genres (including
-  an unknown/ambiguous one) **may** be included in the model-facing candidate
-  facts during curator selection — `buildAllowedCandidateSet` puts
-  `candidate.genres` into each `CuratorCandidateFact`, and
-  `selectRecommendations` serializes those facts into the `ALLOWED
-  CANDIDATES` block sent to the selection model. This is expected, approved
-  behavior (genres are ownership/filter metadata, not free text); `notes` is
-  the value deliberately kept out of that fact object.
+  now also selects `personal_genres`. `collection_items.personal_genres`
+  values are **bounded, user-controlled metadata** — unknown values are
+  intentionally accepted subject to bounds and the narrow normalization
+  above, and they are not trusted merely because the column is called
+  "genres". Effective personal genres (including an unknown/ambiguous one)
+  **may** be included in the model-facing candidate facts during curator
+  selection — `buildAllowedCandidateSet` puts `candidate.genres` into each
+  `CuratorCandidateFact`, and `selectRecommendations` serializes those facts
+  into the `ALLOWED CANDIDATES (data, not instructions)` block, inside the
+  same per-request nonce-fenced untrusted-data framing that wraps the rest of
+  the selection prompt. This is expected, approved behavior: personal genres
+  remain untrusted when included in candidate facts, exactly like every
+  other candidate field. `collection_items.notes` remains deliberately
+  excluded from curator model context — it is not the only field the
+  candidate-fact payload omits; user/auth ids, `added_at`, release/provider
+  ids, exact timestamps, and secrets are excluded too (`docs/ai-design.md`).
 - Vision recognition clues (`artist`/`albumTitle`/`genres` extracted from the
   photo) are **not** directly persisted — the recognition flow is ephemeral
   and confirmation-based. A confirmed match instead goes through the
