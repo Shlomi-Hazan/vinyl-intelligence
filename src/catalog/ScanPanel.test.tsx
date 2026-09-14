@@ -111,6 +111,39 @@ describe('ScanPanel - Hebrew & multilingual (spec 0015)', () => {
     expect(clue?.textContent).toContain('שלום חנוך')
     expect(clue?.textContent).toContain(String.fromCodePoint(0x2068))
   })
+
+  it('isolates a Hebrew candidate artist separately from its Latin title (no composite leakage)', async () => {
+    recognizeCover.mockResolvedValue(recognition({ artist: 'שלום חנוך' }))
+    searchCatalog.mockResolvedValue([
+      candidate({ artist: 'שלום חנוך', title: 'Greatest Hits' }),
+    ])
+    setup()
+    await selectFileAndAnalyse()
+
+    const candArtist = await screen.findByText('שלום חנוך')
+    expect(candArtist.tagName).toBe('BDI')
+    expect(candArtist.getAttribute('lang')).toBe('he')
+
+    const candTitle = await screen.findByText('Greatest Hits')
+    expect(candTitle.tagName).toBe('BDI')
+    // Latin-only title never gets lang="he", and it is a SEPARATE <bdi> from
+    // the Hebrew artist - one field's script never determines the other's.
+    expect(candTitle.getAttribute('lang')).toBeNull()
+    expect(candTitle).not.toBe(candArtist)
+  })
+
+  it('a Latin/English candidate is unaffected by the Hebrew isolation path', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    setup()
+    await selectFileAndAnalyse()
+
+    const candTitle = await screen.findByText('Selected Ambient Works 85-92')
+    expect(candTitle.tagName).toBe('BDI')
+    expect(candTitle.getAttribute('lang')).toBeNull()
+    const candArtist = await screen.findByText('Aphex Twin')
+    expect(candArtist.getAttribute('lang')).toBeNull()
+  })
 })
 
 describe('ScanPanel', () => {
