@@ -19,8 +19,12 @@ import {
   yearFilterIsInvalid,
   type CollectionFilters,
   type CollectionSort,
+  type ListeningFilter,
 } from './collectionQuery.ts'
-import { summarizeListeningForItem } from './listeningSummary.ts'
+import {
+  buildListeningSummaryMap,
+  summarizeListeningForItem,
+} from './listeningSummary.ts'
 import {
   addListeningEvent,
   type ListeningEventRecord,
@@ -36,6 +40,10 @@ type CollectionView = 'grid' | 'list'
 
 const VIEW_STORAGE_KEY = 'vi:collection:view'
 const SORT_VALUES = new Set<string>(COLLECTION_SORTS.map((s) => s.value))
+// Approved UI (spec 0016 §21.1): "Any rating" / "3+" / "4+" / "5+" only - no
+// exact-rating-only mode. Any other `?minRating=` value falls back to 0 (no
+// filter).
+const MIN_RATING_VALUES = new Set([3, 4, 5])
 
 function readStoredView(): CollectionView {
   try {
@@ -60,6 +68,45 @@ function playsLabel(
     return 'Plays unavailable'
   }
   return count > 0 ? `${count} play${count === 1 ? '' : 's'}` : 'Never played'
+}
+
+/**
+ * Truthful explanation for a disabled listening control - distinct copy for
+ * "still loading" vs. "failed to load", never the same string for both.
+ * `undefined` (no title) once ready.
+ */
+function listeningUnavailableTitle(
+  status: 'loading' | 'ready' | 'error',
+): string | undefined {
+  if (status === 'loading') {
+    return 'Listening history is loading'
+  }
+  if (status === 'error') {
+    return 'Listening history is unavailable'
+  }
+  return undefined
+}
+
+/**
+ * "Least recently played" is the one sort option that depends on listening
+ * history, exactly like the never/stale filters - its own label must say so
+ * while disabled, so a still-selected-but-inactive option never LOOKS like
+ * the active ordering. Every other sort option's label is unchanged.
+ */
+function sortOptionLabel(
+  sort: { value: CollectionSort; label: string },
+  eventsStatus: 'loading' | 'ready' | 'error',
+): string {
+  if (sort.value !== 'least-recently-played') {
+    return sort.label
+  }
+  if (eventsStatus === 'loading') {
+    return `${sort.label} (loading history…)`
+  }
+  if (eventsStatus === 'error') {
+    return `${sort.label} (history unavailable)`
+  }
+  return sort.label
 }
 
 /**
@@ -115,10 +162,24 @@ export function CollectionBrowser({
   const sort: CollectionSort = SORT_VALUES.has(sortParam)
     ? (sortParam as CollectionSort)
     : DEFAULT_SORT
+  // An out-of-set value (e.g. a hand-crafted `?minRating=2`) falls back
+  // safely to 0 - no filter (spec 0016 §21.5/§F).
+  const minRatingRaw = Number(params.get('minRating'))
+  const minRating = MIN_RATING_VALUES.has(minRatingRaw) ? minRatingRaw : 0
+  const listeningRaw = params.get('listening')
+  const listening: ListeningFilter =
+    listeningRaw === 'never' || listeningRaw === 'stale' ? listeningRaw : 'none'
 
   const filters: CollectionFilters = useMemo(
-    () => ({ search: q, genre: genreParam, decade: decadeParam, year: yearParam }),
-    [q, genreParam, decadeParam, yearParam],
+    () => ({
+      search: q,
+      genre: genreParam,
+      decade: decadeParam,
+      year: yearParam,
+      minRating,
+      listening,
+    }),
+    [q, genreParam, decadeParam, yearParam, minRating, listening],
   )
 
   const setFilterParams = useCallback(
@@ -135,12 +196,36 @@ export function CollectionBrowser({
       if (f.genre) p.set('genre', f.genre)
       if (f.decade) p.set('decade', f.decade)
       if (f.year.trim()) p.set('year', f.year.trim())
+      if (f.minRating > 0) p.set('minRating', String(f.minRating))
+      if (f.listening !== 'none') p.set('listening', f.listening)
       if (fav) p.set('fav', '1')
       if (s !== DEFAULT_SORT) p.set('sort', s)
       setParams(p, { replace: true })
     },
     [filters, sort, favoritesOnly, setParams],
   )
+
+  // Listening-events load phase gates BOTH the listening filter chips
+  // (disabled while not ready) and the actual query (an unknown/errored
+  // state is never treated as never-played/stale - spec 0016 §D). Fixed at
+  // mount so "least recently played" stays stable within a session and
+  // render stays pure (mirrors DashboardPage's `now`).
+  const eventsReady = eventsStatus === 'ready'
+  const [now] = useState(() => Date.now())
+  const listeningByItem = useMemo(
+    () => (eventsReady ? buildListeningSummaryMap(events) : new Map()),
+    [events, eventsReady],
+  )
+  const effectiveListening: ListeningFilter = eventsReady ? listening : 'none'
+  // "Least recently played" depends on listening history exactly like the
+  // never/stale filters do - it must not render an ordering while that
+  // history is unknown. The requested `sort` (and the URL) are left alone
+  // so the request becomes effective again the moment events become ready
+  // in this same mounted session; only what is actually queried/rendered
+  // falls back to the default. Rating sorts are unaffected - they never
+  // depend on listening history.
+  const effectiveSort: CollectionSort =
+    !eventsReady && sort === 'least-recently-played' ? DEFAULT_SORT : sort
 
   const chooseView = useCallback((next: CollectionView) => {
     setView(next)
@@ -154,12 +239,26 @@ export function CollectionBrowser({
   const decades = useMemo(() => availableDecades(items), [items])
   const genres = useMemo(() => availableGenres(items), [items])
 
-  const visible = useMemo(() => {
-    const queried = applyCollectionQuery(items, filters, sort)
-    return favoritesOnly ? queried.filter((i) => i.is_favorite) : queried
-  }, [items, filters, sort, favoritesOnly])
+  // What is actually queried/rendered - always the EFFECTIVE listening
+  // filter and sort, never the raw requested values, so an unready
+  // listening state can never be presented as applied (spec 0016 §D).
+  const effectiveFilters: CollectionFilters = useMemo(
+    () => ({ ...filters, listening: effectiveListening }),
+    [filters, effectiveListening],
+  )
 
-  const anyFilter = hasActiveFilters(filters) || favoritesOnly
+  const visible = useMemo(() => {
+    const queried = applyCollectionQuery(
+      items,
+      effectiveFilters,
+      effectiveSort,
+      listeningByItem,
+      now,
+    )
+    return favoritesOnly ? queried.filter((i) => i.is_favorite) : queried
+  }, [items, effectiveFilters, effectiveSort, listeningByItem, now, favoritesOnly])
+
+  const anyFilter = hasActiveFilters(effectiveFilters) || favoritesOnly
   const yearInvalid = yearFilterIsInvalid(filters.year)
 
   async function toggleFavorite(item: CollectionItemWithRelease) {
@@ -268,6 +367,21 @@ export function CollectionBrowser({
         ) : null}
 
         <Select
+          aria-label="Minimum rating"
+          value={String(filters.minRating)}
+          onChange={(e) =>
+            setFilterParams({
+              filters: { ...filters, minRating: Number(e.target.value) },
+            })
+          }
+        >
+          <option value="0">Any rating</option>
+          <option value="3">3★+</option>
+          <option value="4">4★+</option>
+          <option value="5">5★+</option>
+        </Select>
+
+        <Select
           aria-label="Sort"
           value={sort}
           onChange={(e) =>
@@ -275,8 +389,17 @@ export function CollectionBrowser({
           }
         >
           {COLLECTION_SORTS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
+            <option
+              key={s.value}
+              value={s.value}
+              // Depends on listening history exactly like the never/stale
+              // filters - unavailable (but not silently cleared from the
+              // URL/selection) while that history is not ready. The label
+              // itself says so while disabled, so a still-selected option
+              // never looks like the active ordering (spec 0016 review).
+              disabled={s.value === 'least-recently-played' && !eventsReady}
+            >
+              {sortOptionLabel(s, eventsStatus)}
             </option>
           ))}
         </Select>
@@ -288,6 +411,46 @@ export function CollectionBrowser({
           onClick={() => setFilterParams({ favoritesOnly: !favoritesOnly })}
         >
           <Icon name="heart" size={13} /> Favourites
+        </button>
+
+        {/* Mutually exclusive (spec 0016 §21.3): selecting one clears the
+            other, since `listening` is a single field. Disabled while
+            listening-event data is not ready - an unknown state must never
+            be shown as satisfying either filter, so `aria-pressed` reflects
+            the EFFECTIVE (gated) value, never the merely-requested one. */}
+        <button
+          type="button"
+          className="vi-chip"
+          aria-pressed={effectiveListening === 'never'}
+          disabled={!eventsReady}
+          title={listeningUnavailableTitle(eventsStatus)}
+          onClick={() =>
+            setFilterParams({
+              filters: {
+                ...filters,
+                listening: listening === 'never' ? 'none' : 'never',
+              },
+            })
+          }
+        >
+          Never played
+        </button>
+        <button
+          type="button"
+          className="vi-chip"
+          aria-pressed={effectiveListening === 'stale'}
+          disabled={!eventsReady}
+          title={listeningUnavailableTitle(eventsStatus)}
+          onClick={() =>
+            setFilterParams({
+              filters: {
+                ...filters,
+                listening: listening === 'stale' ? 'none' : 'stale',
+              },
+            })
+          }
+        >
+          Not played in 30 days
         </button>
 
         <div className="vi-filterbar__end">

@@ -9,7 +9,9 @@ import {
   yearFilterIsInvalid,
   type CollectionFilters,
 } from './collectionQuery.ts'
+import { buildListeningSummaryMap } from './listeningSummary.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
+import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
 
 let counter = 0
 
@@ -357,6 +359,375 @@ describe('collectionQuery', () => {
         { ...item({ genres: [] }), personal_genres: ['זמר עברי'] },
       ]
       expect(availableGenres(collection)).toEqual(['rock', 'זמר עברי'])
+    })
+  })
+
+  describe('rating and listening controls (spec 0016 Finding A)', () => {
+    const NOW = new Date('2026-09-14T12:00:00.000Z').getTime()
+    const CUTOFF_DAYS = 30
+    const cutoffMs = NOW - CUTOFF_DAYS * 24 * 60 * 60 * 1000
+
+    let eventCounter = 0
+    function playEvent(
+      collectionItemId: string,
+      listenedAt: string,
+    ): ListeningEventRecord {
+      eventCounter += 1
+      return {
+        id: `event-${eventCounter}`,
+        collection_item_id: collectionItemId,
+        listened_at: listenedAt,
+        created_at: listenedAt,
+      }
+    }
+
+    describe('rating filter', () => {
+      it('3+ includes 3, 4, and 5; excludes lower and unrated', () => {
+        const r3 = { ...item(), rating: 3 }
+        const r4 = { ...item(), rating: 4 }
+        const r5 = { ...item(), rating: 5 }
+        const r2 = { ...item(), rating: 2 }
+        const unrated = { ...item(), rating: null }
+        const collection = [r3, r4, r5, r2, unrated]
+
+        expect(
+          ids(applyCollectionQuery(collection, filters({ minRating: 3 }), 'recently-added')),
+        ).toEqual([r3.id, r4.id, r5.id])
+      })
+
+      it('4+ includes only 4 and 5', () => {
+        const r4 = { ...item(), rating: 4 }
+        const r5 = { ...item(), rating: 5 }
+        const r3 = { ...item(), rating: 3 }
+        const collection = [r4, r5, r3]
+
+        expect(
+          ids(applyCollectionQuery(collection, filters({ minRating: 4 }), 'recently-added')),
+        ).toEqual([r4.id, r5.id])
+      })
+
+      it('5+ includes only 5', () => {
+        const r5 = { ...item(), rating: 5 }
+        const r4 = { ...item(), rating: 4 }
+        const collection = [r5, r4]
+
+        expect(
+          ids(applyCollectionQuery(collection, filters({ minRating: 5 }), 'recently-added')),
+        ).toEqual([r5.id])
+      })
+
+      it('unrated is excluded by any positive minRating; 0 means no filter', () => {
+        const rated = { ...item(), rating: 5 }
+        const unrated = { ...item(), rating: null }
+        const collection = [rated, unrated]
+
+        expect(
+          ids(applyCollectionQuery(collection, filters({ minRating: 3 }), 'recently-added')),
+        ).toEqual([rated.id])
+        expect(
+          ids(applyCollectionQuery(collection, filters({ minRating: 0 }), 'recently-added')),
+        ).toEqual([rated.id, unrated.id])
+      })
+    })
+
+    describe('rating sort', () => {
+      it('"highest" orders 5 to 1, unrated last', () => {
+        const r2 = { ...item(), rating: 2 }
+        const r5 = { ...item(), rating: 5 }
+        const unrated = { ...item(), rating: null }
+        const r4 = { ...item(), rating: 4 }
+        const collection = [r2, r5, unrated, r4]
+
+        expect(
+          ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'rating-desc')),
+        ).toEqual([r5.id, r4.id, r2.id, unrated.id])
+      })
+
+      it('"lowest" orders 1 to 5, unrated STILL last (not first)', () => {
+        const r2 = { ...item(), rating: 2 }
+        const r5 = { ...item(), rating: 5 }
+        const unrated = { ...item(), rating: null }
+        const r4 = { ...item(), rating: 4 }
+        const collection = [r2, r5, unrated, r4]
+
+        expect(
+          ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'rating-asc')),
+        ).toEqual([r2.id, r4.id, r5.id, unrated.id])
+      })
+
+      it('deterministic tie handling: equal ratings keep incoming order', () => {
+        const a = { ...item(), rating: 4 }
+        const b = { ...item(), rating: 4 }
+        const collection = [a, b]
+
+        expect(ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'rating-desc'))).toEqual([
+          a.id,
+          b.id,
+        ])
+        expect(ids(applyCollectionQuery(collection, EMPTY_FILTERS, 'rating-asc'))).toEqual([
+          a.id,
+          b.id,
+        ])
+      })
+    })
+
+    describe('never-played filter', () => {
+      it('an item with no events qualifies', () => {
+        const neverPlayed = item()
+        const played = item()
+        const events = [playEvent(played.id, '2026-09-01T00:00:00.000Z')]
+        const listeningByItem = buildListeningSummaryMap(events)
+        const collection = [neverPlayed, played]
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              collection,
+              filters({ listening: 'never' }),
+              'recently-added',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([neverPlayed.id])
+      })
+
+      it('an item with one or more events does not qualify', () => {
+        const played = item()
+        const events = [
+          playEvent(played.id, '2026-09-01T00:00:00.000Z'),
+          playEvent(played.id, '2026-09-05T00:00:00.000Z'),
+        ]
+        const listeningByItem = buildListeningSummaryMap(events)
+
+        expect(
+          applyCollectionQuery(
+            [played],
+            filters({ listening: 'never' }),
+            'recently-added',
+            listeningByItem,
+            NOW,
+          ),
+        ).toHaveLength(0)
+      })
+    })
+
+    describe('stale filter (approved 30-day boundary, spec 0016 §21.3)', () => {
+      it('never played qualifies', () => {
+        const neverPlayed = item()
+        const listeningByItem = buildListeningSummaryMap([])
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              [neverPlayed],
+              filters({ listening: 'stale' }),
+              'recently-added',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([neverPlayed.id])
+      })
+
+      it('played strictly before the cutoff qualifies', () => {
+        const stale = item()
+        const events = [playEvent(stale.id, new Date(cutoffMs - 1).toISOString())]
+        const listeningByItem = buildListeningSummaryMap(events)
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              [stale],
+              filters({ listening: 'stale' }),
+              'recently-added',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([stale.id])
+      })
+
+      it('played exactly at the cutoff does NOT qualify (recent)', () => {
+        const recent = item()
+        const events = [playEvent(recent.id, new Date(cutoffMs).toISOString())]
+        const listeningByItem = buildListeningSummaryMap(events)
+
+        expect(
+          applyCollectionQuery(
+            [recent],
+            filters({ listening: 'stale' }),
+            'recently-added',
+            listeningByItem,
+            NOW,
+          ),
+        ).toHaveLength(0)
+      })
+
+      it('played after the cutoff does NOT qualify', () => {
+        const recent = item()
+        const events = [playEvent(recent.id, new Date(cutoffMs + 1).toISOString())]
+        const listeningByItem = buildListeningSummaryMap(events)
+
+        expect(
+          applyCollectionQuery(
+            [recent],
+            filters({ listening: 'stale' }),
+            'recently-added',
+            listeningByItem,
+            NOW,
+          ),
+        ).toHaveLength(0)
+      })
+    })
+
+    describe('never/stale are mutually exclusive states', () => {
+      it('CollectionFilters.listening only ever holds one of none/never/stale', () => {
+        const f: CollectionFilters = filters({ listening: 'never' })
+        expect(f.listening).toBe('never')
+        // there is no shape that represents both at once - a single field,
+        // not two independent booleans (spec 0016 §21.3/§21.5)
+        expect(Object.keys(f)).not.toContain('neverPlayed')
+        expect(Object.keys(f)).not.toContain('stale')
+      })
+    })
+
+    describe('least recently played sort', () => {
+      it('never-played first, then oldest to newest lastListenedAt', () => {
+        const neverPlayed = item()
+        const oldest = item()
+        const newest = item()
+        const events = [
+          playEvent(oldest.id, '2026-08-01T00:00:00.000Z'),
+          playEvent(newest.id, '2026-09-10T00:00:00.000Z'),
+        ]
+        const listeningByItem = buildListeningSummaryMap(events)
+        // deliberately NOT already in "least recently played" order
+        const collection = [newest, oldest, neverPlayed]
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              collection,
+              EMPTY_FILTERS,
+              'least-recently-played',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([neverPlayed.id, oldest.id, newest.id])
+      })
+
+      it('deterministic ties: equal listening state keeps incoming order', () => {
+        const a = item()
+        const b = item()
+        const collection = [a, b] // both never-played
+        const listeningByItem = buildListeningSummaryMap([])
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              collection,
+              EMPTY_FILTERS,
+              'least-recently-played',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([a.id, b.id])
+      })
+
+      it('an empty/not-ready listening map never fabricates an order (stable no-op)', () => {
+        const a = item()
+        const b = item()
+        const c = item()
+        const collection = [a, b, c]
+
+        expect(
+          ids(
+            applyCollectionQuery(collection, EMPTY_FILTERS, 'least-recently-played'),
+          ),
+        ).toEqual([a.id, b.id, c.id])
+      })
+    })
+
+    describe('combinations with existing filters', () => {
+      it('min rating + genre', () => {
+        const match = { ...item({ genres: ['jazz'] }), rating: 5 }
+        const wrongGenre = { ...item({ genres: ['rock'] }), rating: 5 }
+        const wrongRating = { ...item({ genres: ['jazz'] }), rating: 2 }
+        const collection = [match, wrongGenre, wrongRating]
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              collection,
+              filters({ minRating: 4, genre: 'jazz' }),
+              'recently-added',
+            ),
+          ),
+        ).toEqual([match.id])
+      })
+
+      it('stale + favourite (favourite is applied by CollectionBrowser, not this module - verify stale still composes with an existing predicate-shaped filter)', () => {
+        const staleFav = { ...item(), is_favorite: true }
+        const recentFav = { ...item(), is_favorite: true }
+        const events = [playEvent(recentFav.id, new Date(cutoffMs + 1).toISOString())]
+        const listeningByItem = buildListeningSummaryMap(events)
+        const collection = [staleFav, recentFav]
+
+        const staleResults = applyCollectionQuery(
+          collection,
+          filters({ listening: 'stale' }),
+          'recently-added',
+          listeningByItem,
+          NOW,
+        )
+        // favourite filtering happens after applyCollectionQuery in
+        // CollectionBrowser; confirm stale correctly narrows first.
+        expect(ids(staleResults)).toEqual([staleFav.id])
+        expect(staleResults.every((entry) => entry.is_favorite)).toBe(true)
+      })
+
+      it('never + decade', () => {
+        const neverInDecade = item({ release_year: 1975 })
+        const neverOutOfDecade = item({ release_year: 1999 })
+        const playedInDecade = item({ release_year: 1975 })
+        const events = [playEvent(playedInDecade.id, '2026-09-01T00:00:00.000Z')]
+        const listeningByItem = buildListeningSummaryMap(events)
+        const collection = [neverInDecade, neverOutOfDecade, playedInDecade]
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              collection,
+              filters({ listening: 'never', decade: '1970s' }),
+              'recently-added',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([neverInDecade.id])
+      })
+
+      it('never + search', () => {
+        const neverMatching = item({ artist: 'Miles Davis' })
+        const neverNotMatching = item({ artist: 'John Coltrane' })
+        const collection = [neverMatching, neverNotMatching]
+        const listeningByItem = buildListeningSummaryMap([])
+
+        expect(
+          ids(
+            applyCollectionQuery(
+              collection,
+              filters({ listening: 'never', search: 'miles' }),
+              'recently-added',
+              listeningByItem,
+              NOW,
+            ),
+          ),
+        ).toEqual([neverMatching.id])
+      })
     })
   })
 })

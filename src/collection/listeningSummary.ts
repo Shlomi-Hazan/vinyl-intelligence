@@ -48,6 +48,52 @@ export function summarizeListeningForItem(
 }
 
 /**
+ * Single-pass listening summary for every collection item, keyed by
+ * `collection_item_id`. An item with no events is simply absent from the map
+ * - callers treat a missing entry the same as `{ count: 0, lastListenedAt:
+ * null }` (never played). Added for spec 0016 Finding A: the Collection
+ * rating/listening browse controls filter/sort over every item's listening
+ * facts at once, so building one map in a single pass is clearer (and
+ * cheaper) than calling `summarizeListeningForItem` once per item. Existing
+ * per-item call sites (e.g. the List view's play-count label) are
+ * unaffected and unchanged.
+ */
+export function buildListeningSummaryMap(
+  events: readonly ListeningEventRecord[],
+): Map<string, ListeningSummary> {
+  const map = new Map<string, ListeningSummary>()
+
+  for (const event of events) {
+    const time = new Date(event.listened_at).getTime()
+    const parsed = Number.isFinite(time)
+
+    const existing = map.get(event.collection_item_id)
+
+    if (!existing) {
+      map.set(event.collection_item_id, {
+        count: 1,
+        lastListenedAt: parsed ? event.listened_at : null,
+      })
+      continue
+    }
+
+    existing.count += 1
+
+    if (parsed) {
+      const existingTime = existing.lastListenedAt
+        ? new Date(existing.lastListenedAt).getTime()
+        : Number.NEGATIVE_INFINITY
+
+      if (time > existingTime) {
+        existing.lastListenedAt = event.listened_at
+      }
+    }
+  }
+
+  return map
+}
+
+/**
  * Human-readable local rendering of a stored UTC `listened_at` timestamp. The
  * browser's own locale and time zone are used - the raw ISO string is kept
  * separately (e.g. on a `<time dateTime>` attribute) as the machine-readable
