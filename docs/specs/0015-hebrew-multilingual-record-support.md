@@ -1,11 +1,15 @@
 # 0015 Hebrew & Multilingual Record Support (Specification)
 
-Status (2026-09-09): **PLANNING ONLY — not started.** Post-M12 enhancement.
-Product contract approved by the human 2026-09-09 (this document records it).
-Implementation is planned as **three sequential implementation PRs, then one
-documentation-only closeout PR** (the M12 final-closeout pattern); see
-`docs/plans/015-hebrew-multilingual-record-support.md`. Decision record:
-`docs/decisions/0007-hebrew-multilingual-record-support.md`.
+Status: **COMPLETE.** Post-M12 enhancement, human-accepted in production.
+Final accepted runtime `main`: `59fe823646091b6189fc1a015c7209fbe1f8105b`.
+Final accepted production deploy: `6aa7f8579b5591de792714f4`
+(`https://vinyl-intelligence.netlify.app`). Implementation ran as three
+sequential implementation PRs plus two narrowly-scoped human-acceptance
+follow-up corrections, then this documentation-only closeout PR — see §23 for
+the full chronology and `docs/plans/015-hebrew-multilingual-record-support.md`
+for the reconciled plan. Decision record:
+`docs/decisions/0007-hebrew-multilingual-record-support.md` (status stays
+`accepted`, with an implemented-and-verified note).
 
 Rev 2 (2026-09-09): independent review corrections — final closeout moved to a
 separate docs-only PR (no implementation PR may claim post-merge evidence); the
@@ -63,6 +67,19 @@ whitespace / fold approved punctuation / lowercase only — no niqqud
 stripping, no NFKC), so free-text-search normalization can never leak into
 what is persisted as a personal genre. No status change; general docs
 untouched.
+
+Rev 7 (2026-09-14, final documentation closeout): status → **COMPLETE**. §12's
+"only place genre canonicalization happens" wording (PR #25 correction)
+already reads as "the only authoritative canonicalization step for validated
+`includeGenres`/`excludeGenres` values before curator hard filtering" — no
+further change needed. §2's P10 "acceptable but visually seamed" typography
+conclusion is **superseded**: post-PR3 human production evidence found
+small Hebrew Collection/Grid titles materially less readable, not merely
+seamed, and PR #27 fixed it with narrowly-scoped `bdi[lang='he']` CSS
+overrides routing those surfaces to the existing `--font-sans` fallback chain
+(system-ui / -apple-system / Segoe UI / Roboto) — no bundled webfont, no
+`@font-face`, no new dependency. See §23 for the full five-PR chronology
+(three implementation PRs, two human-acceptance corrections) and final SHAs.
 
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).
@@ -980,3 +997,54 @@ acceptance):
 - Historical roadmap `docs/roadmaps/2026-08-18-complete-project-roadmap.md`
   byte-unchanged
   (`cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
+
+**All of the above is met.** This checklist is preserved as it was written
+during planning; the actual implementation additionally required two
+narrowly-scoped human-acceptance follow-up corrections beyond the three
+planned implementation PRs (each triggered by production evidence discovered
+only after its predecessor deployed, so it could not have been predicted at
+planning time). See §23 for the exact chronology, final SHAs, and how each
+follow-up is accounted for against this checklist.
+
+## 23. Final closeout — implementation chronology and accepted state
+
+Independently verified against GitHub (`gh pr view`) and `git log` merge-commit
+parentage; every SHA below was cross-checked, not assumed.
+
+| # | PR | Role | Head SHA | Merge SHA (= `main` after) | Production deploy |
+|---|---|---|---|---|---|
+| 1 | [#23](https://github.com/Shlomi-Hazan/vinyl-intelligence/pull/23) | PR 1 — Multilingual UI foundation (primary) | `cddc90bac3de1784060ee4ea01716912ed4253b3` | `82de14a1e87fede716cd36052b3468ee132387b6` | `6aa1caef98bd2434eb875a51` |
+| 2 | [#24](https://github.com/Shlomi-Hazan/vinyl-intelligence/pull/24) | PR 1 — human-acceptance correction (desktop List column alignment) | `bc02dff73f0207c4c8267d2718a7b8ab9eba48d2` | `08e77fc69d5f2548f3f8bdca6c9ef724b89ca283` | `6aa1d58781c66bf90e822098` |
+| 3 | [#25](https://github.com/Shlomi-Hazan/vinyl-intelligence/pull/25) | PR 2 — Canonical genres + Hebrew VIN | `483d3d4eaa3c17b3c59ba745af71a73f7384de83` | `7da7467736008cbb1ce5f44b1bc76751c7342ead` | `6aa7d192e973fe448bcf9a5c` |
+| 4 | [#26](https://github.com/Shlomi-Hazan/vinyl-intelligence/pull/26) | PR 3 — Vision, accessibility, final runtime polish | `354e9164e1fccba6caed30c1c19ec7f4697b3a55` | `12b503ae88639013ead719ad0f896124fc572877` | `6aa7e091d9ad4f326443ea30` |
+| 5 | [#27](https://github.com/Shlomi-Hazan/vinyl-intelligence/pull/27) | PR 1's typography seam (P10) revisited — human-acceptance correction (Hebrew Collection/Grid readability) | `dc87da15635a1c56f299cd72c8218fef57a512b5` | `59fe823646091b6189fc1a015c7209fbe1f8105b` | `6aa7f8579b5591de792714f4` |
+
+Each merge commit's non-PR parent is the previous row's merge SHA (verified by
+`git log -1 --format='%H %P'` on every SHA above), confirming a single linear
+chain from the M12 baseline (`dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b`) to the
+**final accepted runtime `main`: `59fe823646091b6189fc1a015c7209fbe1f8105b`**,
+deployed to production as **`6aa7f8579b5591de792714f4`**
+(`https://vinyl-intelligence.netlify.app`).
+
+**PR #24** was not part of the original three-PR plan. It was a real defect
+(desktop Collection List column misalignment) found during PR 1's own human
+production acceptance, fixed as its own narrowly-scoped PR before PR 2 began.
+
+**PR #27** was likewise not part of the original three-PR plan. PR 1's
+typography conclusion (§2 P10) — "acceptable but visually seamed" — held
+through PR 1, 2, and 3's own acceptance rounds. Only during **post-PR3**
+production inspection did stronger visual evidence (small Hebrew Collection
+Grid titles read as *materially* smaller/thinner, not merely seamed) supersede
+that conclusion; PR #27 fixed it. Both follow-ups are exactly the kind of
+"discovered only after deployment, fixed as its own reviewed PR before moving
+on" correction this project's workflow is designed to make legible, not a
+planning failure.
+
+Per-PR automated-gate test counts (each independently verified from that PR's
+own recorded gate table, not re-derived): PR #23/#24 — 69 files / 727 tests
+(final, at the PR #24 correction); PR #25 — 70 files / 794 tests; PR #26 — 70
+files / 805 tests (final, after its pre-merge correction); PR #27 — 70 files /
+806 tests (final). Full per-PR human acceptance evidence, including the exact
+Hebrew VIN and Vision interactions, is consolidated in
+`docs/verification.md` under "Hebrew & Multilingual Record Support" — not
+duplicated here.

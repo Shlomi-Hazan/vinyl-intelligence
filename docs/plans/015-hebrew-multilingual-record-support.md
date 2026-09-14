@@ -1,6 +1,9 @@
 # 015 Hebrew & Multilingual Record Support (Implementation Plan)
 
-Status (2026-09-09): **PLANNING ONLY — not started.**
+Status: **COMPLETE.** Final accepted runtime `main`:
+`59fe823646091b6189fc1a015c7209fbe1f8105b`. Final accepted production deploy:
+`6aa7f8579b5591de792714f4`. See "Final closeout" at the end of this document
+for the full chronology.
 Spec: `docs/specs/0015-hebrew-multilingual-record-support.md`.
 Decision: `docs/decisions/0007-hebrew-multilingual-record-support.md`.
 Baseline `main`: `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21).
@@ -65,6 +68,20 @@ translate/transliterate/guess; level 2 (`normalizeCuratorIntent` →
 focused handler test proving a record whose only matching genre lives in
 `personal_genres` (not the catalog `release.genres`) survives the curator hard
 filter. No status change; general docs untouched.
+
+Rev 7 (2026-09-14, final documentation closeout): status → **COMPLETE**. The
+plan below still describes three sequential implementation PRs because that is
+what was planned and what actually ran as the primary implementation track
+(PR #23, PR #25, PR #26). Two additional narrowly-scoped PRs were required
+beyond the plan, each triggered by production evidence found only after its
+predecessor's own deployment and human-acceptance round — not a planning
+failure, and not predictable at planning time: **PR #24** (a real desktop
+Collection List column-alignment defect found during PR 1's own acceptance)
+and **PR #27** (small Hebrew Collection/Grid titles found materially less
+readable than accepted during post-PR3 acceptance, superseding the original
+"acceptable but visually seamed" typography conclusion). See "Final closeout"
+at the end of this document for the exact chronology, SHAs, and how each
+follow-up is scoped against the plan sections below.
 
 **Three sequential implementation PRs, then one documentation-only closeout
 PR** (the M12 final-closeout pattern). **Do not create one giant branch.** Each
@@ -734,3 +751,52 @@ merge (normal merge commit); **no deploy**.
   browser locale for weekday/date/number rendering. Whether to pin these to
   `en` for chrome consistency is **noted, not scheduled** — it is a separate
   small decision, not part of this enhancement unless the human adds it.
+
+## Final closeout
+
+**The three planned implementation phases were completed** (PR #23 = PR 1, PR
+#25 = PR 2, PR #26 = PR 3, in that order, each independently reviewed,
+human-approved, merged, deployed, and human-accepted per this plan and spec
+0015 §21). **Two additional narrowly-scoped human-acceptance follow-ups
+occurred**, neither part of the original three-phase plan and neither
+predictable at planning time, since each was triggered by production evidence
+that only existed after its predecessor's own deployment:
+
+- **PR #24, after PR 1.** PR 1's own human acceptance found a real desktop
+  Collection List column-alignment defect (not a multilingual/BiDi regression
+  — a pre-existing grid-track issue the BiDi pass's markup changes exposed).
+  Fixed as its own reviewed PR (`bc02dff7` → merge `08e77fc6`) before PR 2
+  began, per the "each PR independently reviewed, human-accepted before the
+  next starts" discipline this plan already required for the three planned
+  phases.
+- **PR #27, after PR 3.** The "Open items" typography decision above records
+  that PR 3 would decide, from human visual evidence, whether to accept the
+  system Hebrew fallback or add fallback family names — and PR 3 did decide,
+  accepting the system fallback as adequate at the time. Only during
+  **post-PR3** production inspection did stronger visual evidence (Hebrew
+  Collection Grid titles read as materially smaller/thinner, not merely
+  seamed) supersede that acceptance. Fixed as its own reviewed PR (`dc87da15`
+  → merge `59fe8236`) — narrowly-scoped `bdi[lang='he']` CSS overrides onto
+  the existing `--font-sans` fallback chain, still no bundled webfont.
+
+This is not a rewrite of the original plan — the three-phase structure above
+is preserved exactly as it was planned and as it shipped. Both follow-ups are
+recorded here as what they are: real defects found through the human
+production-acceptance process this plan mandated, resolved before this
+documentation closeout, in exactly the same reviewed-PR discipline as the
+three planned phases.
+
+| # | PR | Role | Head | Merge (`main` after) | Deploy |
+|---|---|---|---|---|---|
+| 1 | #23 | PR 1 (primary) | `cddc90ba` | `82de14a1` | `6aa1caef98bd2434eb875a51` |
+| 2 | #24 | PR 1 correction | `bc02dff7` | `08e77fc6` | `6aa1d58781c66bf90e822098` |
+| 3 | #25 | PR 2 | `483d3d4e` | `7da74677` | `6aa7d192e973fe448bcf9a5c` |
+| 4 | #26 | PR 3 | `354e9164` | `12b503ae` | `6aa7e091d9ad4f326443ea30` |
+| 5 | #27 | PR 3 typography correction | `dc87da15` | `59fe8236` | `6aa7f8579b5591de792714f4` |
+
+**Final accepted runtime `main`: `59fe823646091b6189fc1a015c7209fbe1f8105b`.
+Final accepted production deploy: `6aa7f8579b5591de792714f4`
+(`https://vinyl-intelligence.netlify.app`).** Full human-acceptance evidence
+for all five PRs is consolidated in `docs/verification.md` under "Hebrew &
+Multilingual Record Support" — not duplicated here. This documentation-only
+closeout PR is the sixth and final PR in this enhancement's history.

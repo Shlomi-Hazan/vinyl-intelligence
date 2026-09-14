@@ -33,6 +33,15 @@ Accepted decisions:
   avatar in a private bucket with signed URLs never persisted, initials always
   the default and fallback (accepted 2026-09-02, spec `0012`)
 
+- [0007 Hebrew & Multilingual Record Support](0007-hebrew-multilingual-record-support.md) -
+  local BiDi isolation for dynamic content, comparison-only Hebrew-aware
+  search, one authoritative canonical Hebrew/English genre-alias module shared
+  by Collection/Dashboard/VIN, VIN preserves explicit genre wording/script at
+  extraction with deterministic server-side canonicalization as the sole
+  authority, Vision original-script preservation, no migration, no app-wide
+  RTL, no bundled Hebrew webfont (accepted 2026-09-09, post-M12 enhancement,
+  spec `0015`; implemented and verified 2026-09-14)
+
 Proposed decisions (pending human approval):
 
 - [0003 OpenRouter Vision Provider](0003-openrouter-vision-provider.md) - vision

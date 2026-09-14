@@ -31,6 +31,7 @@ Existing specs/spikes:
 - [0011 Milestone 10 Conversational Refinement](0011-milestone-10-conversational-refinement.md) - implemented and verified (human runtime PASS 4/4); merged in PR #11
 - [0012 Visual Experience & Product Identity Pass](0012-visual-experience-product-identity.md) - inserted product-quality pass before Milestone 11. **Phases A-E complete + human-accepted; merged to `main` in PR #13** (Phase 0 was merged earlier in PR #12).
 - [0013 Milestone 11 Production Deployment](0013-milestone-11-production-deployment.md) - **PLANNING ONLY** (not started). Netlify + hosted Supabase deployment; two small pre-deploy AI-hardening items (curator out-of-scope, vision prompt-injection). Plan: `docs/plans/013-milestone-11-production-deployment.md`.
+- [0015 Hebrew & Multilingual Record Support](0015-hebrew-multilingual-record-support.md) - **COMPLETE**, human-accepted in production. Post-M12 enhancement: local BiDi handling, Hebrew-aware search/sort, canonical Hebrew/English genre taxonomy shared by Collection/Dashboard/VIN, Vision original-script preservation, Hebrew-readable small-card typography. Implemented across PR #23, #24, #25, #26, #27; final accepted `main` `59fe823646091b6189fc1a015c7209fbe1f8105b`. Plan: `docs/plans/015-hebrew-multilingual-record-support.md`. Decision: `docs/decisions/0007-hebrew-multilingual-record-support.md`.
 
 Likely milestone specs:
 

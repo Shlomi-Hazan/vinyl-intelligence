@@ -1,8 +1,9 @@
 # Data Model
 
-As-built section last updated: 2026-09-07 (Milestone 12). The original
-2026-08-17 proposal follows "As-Built Schema"; where they differ the as-built
-section is authoritative.
+As-built section last updated: 2026-09-14 (Hebrew & Multilingual Record
+Support, spec 0015, COMPLETE — no migration). The original 2026-08-17 proposal
+follows "As-Built Schema"; where they differ the as-built section is
+authoritative.
 
 ---
 
@@ -47,6 +48,31 @@ update grant on `rating`, `is_favorite`, `notes`, `personal_genres`,
 `custom_cover_path`, `custom_cover_updated_at`. `service_role`: SELECT/INSERT
 (no UPDATE/DELETE) - used only to insert the owning row for a verified user in
 the catalog-add flow.
+
+### Genre canonicalization (spec 0015, no schema change)
+
+`releases.genres` (catalog) and `collection_items.personal_genres` (personal)
+have different canonicalization timing, both unchanged from the columns
+above — this is application-logic policy, not a schema difference:
+
+- **Catalog genres are never rewritten.** Raw MusicBrainz values persist
+  as-is (no per-user write to a shared `releases` row); canonicalization to
+  the closed alias table (`src/lib/genre/canonical.ts`) happens only at
+  effective/read/use time.
+- **Personal genres canonicalize known aliases at the write boundary** — a
+  user who adds `רוק` sees it saved as `rock`. Unknown/ambiguous values
+  (including the deliberately-unmapped Hebrew `פאנק`) are preserved exactly
+  as entered, never translated, never guessed, never sent to a model.
+  Legacy-written Hebrew personal aliases from before this canonicalization
+  existed still resolve correctly, because the effective-genre read path
+  canonicalizes them too — **no backfill, no migration.**
+- The curator's owned-collection load (`netlify/functions/_shared/curator-handlers.mts`)
+  now also selects `personal_genres` so `collection_items.notes` remains the
+  only signal column excluded from curator model context.
+- Vision recognition confirmed via the existing add-to-collection path — no
+  new persistence path was added. All `text`/`text[]` columns above already
+  store Hebrew (or any Unicode) natively; a confirmed Hebrew record's
+  `artist`/`title`/`genres` persist unchanged, exactly like any other value.
 
 ### `listening_events` (listening-event source of truth)
 `id uuid pk`, `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`,

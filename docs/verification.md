@@ -5188,3 +5188,184 @@ acceptance: PR #19 (VIN session lifetime), PR #20 (mobile app shell + History
 rows). Historical `docs/roadmaps/2026-08-18-complete-project-roadmap.md` remains
 byte-unchanged (sha256
 `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
+
+## Hebrew & Multilingual Record Support — Post-M12 enhancement — COMPLETE
+
+Full contract: `docs/specs/0015-hebrew-multilingual-record-support.md`.
+Decision record: `docs/decisions/0007-hebrew-multilingual-record-support.md`.
+Ran as three sequential implementation PRs plus two narrowly-scoped
+human-acceptance follow-up corrections (each discovered only after its
+predecessor's own production deployment — not predictable at planning time),
+then this documentation-only closeout. **Final accepted runtime `main`:
+`59fe823646091b6189fc1a015c7209fbe1f8105b`. Final accepted production deploy:
+`6aa7f8579b5591de792714f4`** at `https://vinyl-intelligence.netlify.app`.
+
+Existing production account throughout (no signup / email-confirmation
+re-test). No provider-forced-failure human test was performed or is claimed —
+that behaviour is covered by automated/mocked tests (spec 0015 §20).
+
+### PR #23 + PR #24 — PR 1: multilingual UI foundation
+
+- **PR #23** (primary), head `cddc90bac3de1784060ee4ea01716912ed4253b3`, merge
+  `82de14a1e87fede716cd36052b3468ee132387b6`, production deploy
+  `6aa1caef98bd2434eb875a51`. Local BiDi isolation (`BidiText`/`BidiJoin`/
+  `isolate()`), comparison-only Hebrew-aware search key, two-script-collator
+  sort, `dir="auto"` on every mounted free-text input.
+- Human desktop List acceptance after that deployment found a real defect —
+  Collection List column misalignment (a pre-existing grid-track issue the
+  BiDi markup changes exposed, not a BiDi/multilingual regression itself).
+- **PR #24** (correction), head `bc02dff73f0207c4c8267d2718a7b8ab9eba48d2`,
+  merge `08e77fc69d5f2548f3f8bdca6c9ef724b89ca283`, production deploy
+  `6aa1d58781c66bf90e822098`. Fix: one `grid-template-columns` fixed-width
+  correction (`src/styles/components.css`) plus one new structural regression
+  test; no BiDi/markup semantic change.
+- **Final accepted PR 1 automated gate** (at the PR #24 correction):
+  **69 test files / 727 tests**; `npx supabase test db` 10 files / 507
+  assertions PASS.
+- **Human production acceptance, PASS**, after the PR #24 deployment:
+  - Hebrew records in Collection Grid
+  - desktop Collection List (corrected column alignment)
+  - mobile Collection List
+  - Hebrew artist/title search
+  - niqqud-insensitive search comparison
+  - mixed sorting (Latin A–Z, then Hebrew א–ת)
+  - Hebrew Album Detail
+  - Hebrew History
+  - dialog BiDi
+  - VoiceOver Hebrew pronunciation spot-check
+  - **Typography** (Fraunces display titles rendering Hebrew through a system
+    serif fallback) was visually observed as somewhat smaller/more seamed
+    than the Latin titles at this stage, but judged **acceptable, not a
+    defect**, at the time. That conclusion did **not** hold — see PR #27
+    below, which supersedes it with stronger post-PR3 visual evidence and
+    fixes it. It is not carried forward here as a final limitation.
+
+### PR #25 — PR 2: canonical genres + Hebrew VIN
+
+Head `483d3d4eaa3c17b3c59ba745af71a73f7384de83`, merge
+`7da7467736008cbb1ce5f44b1bc76751c7342ead`, production deploy
+`6aa7d192e973fe448bcf9a5c`.
+
+**Reviewed implementation gate:** 70 test files / 794 tests; `npx supabase
+test db` 10 files / 507 assertions PASS; `npx supabase db lint` clean;
+`npm audit --omit=dev` 0 vulnerabilities.
+
+**Human production acceptance, PASS:**
+
+- **A. Collection canonical genre behavior** — Hebrew `היפ הופ` appears as one
+  canonical `hip hop` facet; Hebrew `רוק` appears as one canonical `rock`
+  facet; aliases did not appear as duplicate facet values; Hebrew-alias
+  records were returned by the canonical English filters (the `hip hop`
+  filter returned the Ravid Plotnik record; the `rock` filter returned both
+  Hebrew rock records — שבלול / אריק איינשטיין and מחכים למשיח / שלום חנוך).
+- **B. Dashboard consistency** — canonical effective genres used
+  consistently: `rock 2`, `hip hop 4`; no duplicate Hebrew/English alias
+  rows.
+- **C. Hebrew initial VIN request** — exact request `"תן לי רוק רגוע משנות
+  ה-70"`. Observed: correct owned-candidate filtering; best match שבלול —
+  אריק איינשטיין (1970 / 1970s); genre canonicalized to `rock`; recommendation
+  reason written in Hebrew; artist/title preserved in original Hebrew script;
+  no incorrect `no_match`.
+- **D. Hebrew refinement** — exact refinement `"בלי רוק"`. Observed UI:
+  `Excluded genres: rock`, `Decades: 1970s`; correct `no_match` because the
+  only matching 1970s record was rock; the previous recommendation remained
+  visible only as previous context, not re-offered as a new recommendation.
+
+Two real human curator interactions occurred (one initial request, one
+refinement); the pipeline's documented contract is exactly two provider calls
+per successful interaction (`docs/ai-design.md`), but no exact aggregate
+model-call count was independently re-verified from stored `model_calls`
+telemetry for this closeout, so none is claimed beyond that per-interaction
+contract.
+
+### PR #26 — PR 3: Vision, accessibility, final runtime polish
+
+Head `354e9164e1fccba6caed30c1c19ec7f4697b3a55`, merge
+`12b503ae88639013ead719ad0f896124fc572877`, production deploy
+`6aa7e091d9ad4f326443ea30`.
+
+**Final gate** (after its own pre-merge selected-filename isolation
+correction): **70 test files / 805 tests**. `npx supabase test db` 10 files /
+507 assertions PASS, `npx supabase db lint` clean, `npm audit --omit=dev` 0
+vulnerabilities — all recorded at the PR's original submission and carried
+forward for the correction commit (CSS/test-only, no migration/schema touch).
+
+**Human production acceptance, PASS — one real Hebrew Vision recognition:**
+
+- Sleeve: טונה — מזרח פרוע.
+- Observed Vision clues: `Artist: טונה`, `Album: מזרח פרוע`.
+- Original Hebrew script preserved; no translation; no transliteration;
+  Hebrew catalog search/candidates worked; candidate text rendered correctly
+  with local BiDi; matching catalog candidate confirmed; successful
+  add-to-collection flow.
+- Collection persisted: מזרח פרוע — טונה. Album Detail persisted: artist
+  טונה, album מזרח פרוע. Artwork correct; metadata displayed correctly.
+- Only **one** real Hebrew Vision recognition was made. No second Hebrew
+  Vision call. No live English Vision acceptance call — English recognition
+  is covered by mocked regression only (spec 0015 §20), re-run live only if a
+  defect appears (none did).
+
+### PR #27 — Post-PR3 typography readability correction
+
+Head `dc87da15635a1c56f299cd72c8218fef57a512b5`, merge / **final accepted
+runtime main** `59fe823646091b6189fc1a015c7209fbe1f8105b`, production deploy
+`6aa7f8579b5591de792714f4`.
+
+During final post-PR3 production inspection, the human found a genuine
+readability defect superseding PR 1's earlier "acceptable but visually
+seamed" conclusion: small Hebrew Collection Grid titles were **materially**
+smaller/thinner and difficult to read next to neighboring Latin/Fraunces
+titles. Root cause: `--font-display` (Fraunces) has no Hebrew glyphs, so
+Hebrew falls through the whole stack to a generic OS serif substitute with
+incompatible metrics.
+
+**Fix:** three narrowly-scoped `bdi[lang='he']` CSS overrides
+(`src/styles/components.css`) route small Hebrew card/fallback-artwork titles
+to the *existing* `--font-sans` stack (which falls through to `system-ui` /
+`-apple-system` / `Segoe UI` / `Roboto` — a real native Hebrew face per
+platform) with a modest size/weight bump for visual parity. No font file, no
+`@font-face`, no remote font, no dependency, no English typography change.
+
+**Gate:** 70 test files / 806 tests. CSS/test-only diff (no migration/schema
+touch) — the PR #26 pgTAP / db-lint / audit results were carried forward, not
+re-run.
+
+**Human production visual acceptance, PASS:**
+
+- `מזרח פרוע` clearly readable
+- `ועכשיו לחלק האמנותי` clearly readable
+- `מחכים למשיח` clearly readable
+- `שבלול` clearly readable
+- fallback-artwork Hebrew title/artist text improved
+- no clipping, no layout break, no overflow regression
+- English Fraunces appearance remained unchanged
+
+No provider calls were required for this correction.
+
+### Explicitly not performed (intentionally out of scope, not missing evidence)
+
+- Provider-forced-failure human test — covered by automated/mocked tests
+  throughout (spec 0015 §20), not re-exercised live.
+- Signup / email-confirmation re-test — verified in Milestone 11; not
+  re-exercised for this enhancement.
+- A second live English Vision acceptance call — English recognition is
+  mocked-regression-covered; no defect appeared to justify a live re-test.
+- A second live Hebrew Vision call — one real recognition (PR #26) was
+  sufficient evidence per the bounded real-provider budget (spec 0015 §21).
+- A database migration — none was required at any stage (spec 0015 §12/§17).
+
+### Final result
+
+**Hebrew & Multilingual Record Support — COMPLETE.** Five PRs (#23, #24, #25,
+#26, #27), each independently reviewed, human-approved, merged with a normal
+merge commit, deployed from merged `main`, and human-accepted before the next
+began. Final accepted runtime `main`:
+**`59fe823646091b6189fc1a015c7209fbe1f8105b`**. Final accepted production
+deploy: **`6aa7f8579b5591de792714f4`** at
+`https://vinyl-intelligence.netlify.app`. Known, intentional non-goals (not
+defects): no transliteration; no cross-script artist/title aliasing; app
+chrome remains English/LTR; no full Hebrew UI localization; no bundled Hebrew
+display webfont — small Hebrew cards intentionally use the existing
+system-oriented `--font-sans` fallback, human-accepted in PR #27. Historical
+`docs/roadmaps/2026-08-18-complete-project-roadmap.md` remains byte-unchanged
+(sha256 `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
