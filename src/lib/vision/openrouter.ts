@@ -77,6 +77,12 @@ const RECOGNITION_SYSTEM_PROMPT = [
   'cover; otherwise use null. "visibleText" is a short list of distinct text',
   'lines you can read on the cover. "confidence" is your own 0..1 estimate and',
   'is advisory only.',
+  '',
+  'Report "artist", "albumTitle", "label", "catalogNumber", and each',
+  '"visibleText" entry in the original script actually printed on the cover.',
+  'Never translate and never transliterate them into another script. Only',
+  'output Latin text for a field when Latin text is what is actually printed',
+  'for it.',
 ].join('\n')
 
 const RECOGNITION_USER_TEXT =
