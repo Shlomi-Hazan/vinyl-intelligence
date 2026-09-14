@@ -360,12 +360,15 @@ Status stays **accepted** — this section records that the decision was
 carried out as designed, not a new decision.
 
 - **PR 1** (`#23`, merge `82de14a1`, plus its human-acceptance correction
-  `#24`, merge `08e77fc6`) shipped the local BiDi handling (`BidiText`,
-  `BidiJoin`, `isolate()`, `unicode-bidi: isolate` safety net), the
-  comparison-only Hebrew-aware search key (niqqud/punctuation folding, never on
-  a write path), the two-script-collator mixed Latin-then-Hebrew deterministic
-  sort, and `dir="auto"` on every mounted free-text input/textarea plus
-  isolation on every mounted dynamic field.
+  `#24`, merge `08e77fc6`) established the local BiDi handling primitives
+  (`BidiText`, `BidiJoin`, `isolate()`, `unicode-bidi: isolate` safety net)
+  and shipped the main Collection/Album Detail/History/Discover/Scan/VIN
+  multilingual coverage: the comparison-only Hebrew-aware search key
+  (niqqud/punctuation folding, never on a write path), the two-script-collator
+  mixed Latin-then-Hebrew deterministic sort, and broad `dir="auto"` coverage
+  on mounted free-text inputs/textareas. PR 1's coverage was not yet globally
+  complete at this point — PR 3 (below) later found and fixed the remaining
+  mounted gaps.
 - **PR 2** (`#25`, merge `7da74677`) shipped the single authoritative
   deterministic canonical-genre module (`src/lib/genre/canonical.ts`, 15
   canonical outputs, closed alias map, `פאנק` deliberately unmapped).
@@ -380,9 +383,14 @@ carried out as designed, not a new decision.
 - **PR 3** (`#26`, merge `12b503ae`) shipped Vision original-script
   preservation (no translation, no transliteration, Latin only when actually
   printed) with no recognition-schema, model, or query-builder change, and
-  completed the final mounted-runtime accessibility sweep (a handful of
-  remaining un-isolated `aria-label`/`title` attributes and one input missing
-  `dir="auto"`, all outside Scan/Discover which PR 1 had already finished).
+  completed the final mounted-runtime accessibility/BiDi sweep, fixing the
+  remaining mounted gaps PR 1 had left: a handful of un-isolated
+  `aria-label`/`title` attributes (`AppShell` account control, `DashboardPage`
+  composite greeting) and one input missing `dir="auto"` (`SettingsPage`
+  display name) — Scan/Discover candidate rendering itself was already
+  complete from PR 1. PR #26's own pre-merge review then found one more
+  composite-BiDi gap in Scan's selected-filename copy, isolated in the same
+  correction commit before merge.
 - **PR #27** (merge `59fe8236`) revisited the "bundle a Hebrew webfont" /
   "add fallback family names" alternatives above after post-PR3 production
   evidence showed small Hebrew Collection/Grid titles were materially less

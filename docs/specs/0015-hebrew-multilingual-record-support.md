@@ -73,13 +73,17 @@ Rev 7 (2026-09-14, final documentation closeout): status → **COMPLETE**. §12'
 already reads as "the only authoritative canonicalization step for validated
 `includeGenres`/`excludeGenres` values before curator hard filtering" — no
 further change needed. §2's P10 "acceptable but visually seamed" typography
-conclusion is **superseded**: post-PR3 human production evidence found
-small Hebrew Collection/Grid titles materially less readable, not merely
-seamed, and PR #27 fixed it with narrowly-scoped `bdi[lang='he']` CSS
-overrides routing those surfaces to the existing `--font-sans` fallback chain
-(system-ui / -apple-system / Segoe UI / Roboto) — no bundled webfont, no
-`@font-face`, no new dependency. See §23 for the full five-PR chronology
-(three implementation PRs, two human-acceptance corrections) and final SHAs.
+conclusion is **superseded**: post-PR3 human production evidence found small
+Hebrew Collection/Grid titles materially less readable, not merely seamed —
+the bundled Fraunces display faces do not provide the accepted Hebrew
+appearance on the tested production environment, and Hebrew rendered through
+a fallback with materially different metrics (the exact physical fallback
+font may vary by browser/platform). PR #27 fixed it with narrowly-scoped
+`bdi[lang='he']` CSS overrides routing those surfaces to the existing
+`--font-sans` stack (`'Inter Variable', 'Inter', system-ui, -apple-system,
+'Segoe UI', Roboto, sans-serif`) — no bundled webfont, no `@font-face`, no new
+dependency. See §23 for the full five-PR chronology (three implementation
+PRs, two human-acceptance corrections) and final SHAs.
 
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).

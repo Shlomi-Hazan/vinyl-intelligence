@@ -60,19 +60,36 @@ above — this is application-logic policy, not a schema difference:
   the closed alias table (`src/lib/genre/canonical.ts`) happens only at
   effective/read/use time.
 - **Personal genres canonicalize known aliases at the write boundary** — a
-  user who adds `רוק` sees it saved as `rock`. Unknown/ambiguous values
-  (including the deliberately-unmapped Hebrew `פאנק`) are preserved exactly
-  as entered, never translated, never guessed, never sent to a model.
-  Legacy-written Hebrew personal aliases from before this canonicalization
-  existed still resolve correctly, because the effective-genre read path
-  canonicalizes them too — **no backfill, no migration.**
+  user who adds `רוק` sees it saved as `rock`. Every written value, known
+  alias or not, passes through the dedicated narrow genre-text normalizer
+  (`canonicalizeGenre`, `src/lib/genre/canonical.ts`): trim, Unicode
+  whitespace collapse, approved-punctuation folding, lowercase — deliberately
+  **not** NFKC, **not** niqqud stripping, **not** translation, **not**
+  transliteration, **not** guessing. An unknown/ambiguous value (including
+  the deliberately-unmapped Hebrew `פאנק`) therefore preserves its original
+  script/term **subject to that narrow normalization**, not necessarily
+  byte-for-byte as typed. Legacy-written Hebrew personal aliases from before
+  this canonicalization existed still resolve correctly, because the
+  effective-genre read path canonicalizes them too — **no backfill, no
+  migration.**
 - The curator's owned-collection load (`netlify/functions/_shared/curator-handlers.mts`)
-  now also selects `personal_genres` so `collection_items.notes` remains the
-  only signal column excluded from curator model context.
-- Vision recognition confirmed via the existing add-to-collection path — no
-  new persistence path was added. All `text`/`text[]` columns above already
-  store Hebrew (or any Unicode) natively; a confirmed Hebrew record's
-  `artist`/`title`/`genres` persist unchanged, exactly like any other value.
+  now also selects `personal_genres`; `collection_items.notes` remains
+  excluded from curator model context. Effective personal genres (including
+  an unknown/ambiguous one) **may** be included in the model-facing candidate
+  facts during curator selection — `buildAllowedCandidateSet` puts
+  `candidate.genres` into each `CuratorCandidateFact`, and
+  `selectRecommendations` serializes those facts into the `ALLOWED
+  CANDIDATES` block sent to the selection model. This is expected, approved
+  behavior (genres are ownership/filter metadata, not free text); `notes` is
+  the value deliberately kept out of that fact object.
+- Vision recognition clues (`artist`/`albumTitle`/`genres` extracted from the
+  photo) are **not** directly persisted — the recognition flow is ephemeral
+  and confirmation-based. A confirmed match instead goes through the
+  existing catalog-search → catalog-add persistence path, writing the
+  **catalog/MusicBrainz** release data, not the raw Vision output. All
+  `text`/`text[]` columns above already store Hebrew (or any Unicode)
+  natively; a confirmed Hebrew record's catalog `artist`/`title`/`genres`
+  persist unchanged, exactly like any other value.
 
 ### `listening_events` (listening-event source of truth)
 `id uuid pk`, `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`,

@@ -106,8 +106,11 @@ Two-level defense so the model is never trusted to canonicalize a genre:
   `REFINEMENT_SYSTEM_PROMPT` instruct the model, when the user explicitly
   names a genre, to copy it verbatim in the user's own wording and script —
   never translate, never transliterate, never guess a genre in another
-  language or script. The model performs no canonicalization or language
-  decision of any kind.
+  language or script. The model performs no genre translation,
+  transliteration, or canonicalization; explicitly named genre terms are
+  preserved in the user's wording/script, while normal intent extraction
+  still determines whether the request explicitly asked for a hard genre
+  constraint at all (as it always has, for any hard constraint).
 - **Level 2 (authoritative, deterministic).** After schema validation,
   `normalizeCuratorIntent` runs every `includeGenres`/`excludeGenres` value
   through `canonicalizeGenre` (`src/lib/genre/canonical.ts`) — the same

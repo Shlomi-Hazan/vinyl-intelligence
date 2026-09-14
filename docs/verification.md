@@ -5208,9 +5208,11 @@ that behaviour is covered by automated/mocked tests (spec 0015 §20).
 
 - **PR #23** (primary), head `cddc90bac3de1784060ee4ea01716912ed4253b3`, merge
   `82de14a1e87fede716cd36052b3468ee132387b6`, production deploy
-  `6aa1caef98bd2434eb875a51`. Local BiDi isolation (`BidiText`/`BidiJoin`/
-  `isolate()`), comparison-only Hebrew-aware search key, two-script-collator
-  sort, `dir="auto"` on every mounted free-text input.
+  `6aa1caef98bd2434eb875a51`. Established `BidiText`/`BidiJoin`/`isolate()`;
+  shipped the main Collection/Album Detail/History/Discover/Scan/VIN
+  multilingual coverage; comparison-only Hebrew-aware search key;
+  two-script-collator sort; broad `dir="auto"` coverage on mounted free-text
+  inputs. (PR 3 later completed the final mounted-runtime sweep — see below.)
 - Human desktop List acceptance after that deployment found a real defect —
   Collection List column misalignment (a pre-existing grid-track issue the
   BiDi markup changes exposed, not a BiDi/multilingual regression itself).
@@ -5288,7 +5290,9 @@ Head `354e9164e1fccba6caed30c1c19ec7f4697b3a55`, merge
 correction): **70 test files / 805 tests**. `npx supabase test db` 10 files /
 507 assertions PASS, `npx supabase db lint` clean, `npm audit --omit=dev` 0
 vulnerabilities — all recorded at the PR's original submission and carried
-forward for the correction commit (CSS/test-only, no migration/schema touch).
+forward for the correction commit (`src/catalog/ScanPanel.tsx` +
+`ScanPanel.test.tsx` only — **TSX + unit-test-only**, no migration/schema
+touch).
 
 **Human production acceptance, PASS — one real Hebrew Vision recognition:**
 
@@ -5315,16 +5319,20 @@ During final post-PR3 production inspection, the human found a genuine
 readability defect superseding PR 1's earlier "acceptable but visually
 seamed" conclusion: small Hebrew Collection Grid titles were **materially**
 smaller/thinner and difficult to read next to neighboring Latin/Fraunces
-titles. Root cause: `--font-display` (Fraunces) has no Hebrew glyphs, so
-Hebrew falls through the whole stack to a generic OS serif substitute with
-incompatible metrics.
+titles. The bundled Fraunces display faces do not provide the accepted
+Hebrew appearance on the tested production environment; Hebrew therefore
+rendered through a fallback with materially different metrics. The exact
+physical fallback font may vary by browser/platform — this is CSS
+font-*stack* evidence (ordered family names), not an independently measured
+glyph-rendering claim.
 
 **Fix:** three narrowly-scoped `bdi[lang='he']` CSS overrides
-(`src/styles/components.css`) route small Hebrew card/fallback-artwork titles
-to the *existing* `--font-sans` stack (which falls through to `system-ui` /
-`-apple-system` / `Segoe UI` / `Roboto` — a real native Hebrew face per
-platform) with a modest size/weight bump for visual parity. No font file, no
-`@font-face`, no remote font, no dependency, no English typography change.
+(`src/styles/components.css`) route small Hebrew card/fallback-artwork text
+to the *existing* `--font-sans` stack (`'Inter Variable', 'Inter', system-ui,
+-apple-system, 'Segoe UI', Roboto, sans-serif`) with a modest size/weight
+bump for visual parity; the exact underlying Hebrew font remains
+platform/browser-dependent. No font file, no `@font-face`, no remote font, no
+dependency, no English typography change.
 
 **Gate:** 70 test files / 806 tests. CSS/test-only diff (no migration/schema
 touch) — the PR #26 pgTAP / db-lint / audit results were carried forward, not
