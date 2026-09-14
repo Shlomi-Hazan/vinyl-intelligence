@@ -90,6 +90,7 @@ function createDependencies(options: Options = {}) {
     return stub
   }
 
+  const capturedSelects: Record<string, string[]> = {}
   const supabase = {
     auth: {
       getUser: vi.fn(async () => ({
@@ -98,7 +99,10 @@ function createDependencies(options: Options = {}) {
       })),
     },
     from: vi.fn((table: string) => ({
-      select: vi.fn(() => chainable(table)),
+      select: vi.fn((columns: string) => {
+        ;(capturedSelects[table] ??= []).push(columns)
+        return chainable(table)
+      }),
     })),
   }
 
@@ -184,6 +188,7 @@ function createDependencies(options: Options = {}) {
     recordModelCall,
     countRecentIntentCalls,
     supabase,
+    capturedSelects,
   }
 }
 
@@ -360,6 +365,131 @@ describe('curator function - normal + no_match', () => {
     const { json, selectRecommendations } = await run({ request: 'surprise me' })
     expect(json.status).toBe('ok')
     expect(selectRecommendations).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('curator function - personal genres + canonical candidates (spec 0015 §12)', () => {
+  it('selects personal_genres and never selects notes', async () => {
+    const { capturedSelects } = await run({ request: 'x' })
+    const itemsSelect = capturedSelects.collection_items?.[0] ?? ''
+    expect(itemsSelect).toContain('personal_genres')
+    expect(itemsSelect).not.toContain('notes')
+  })
+
+  it('merges catalog + personal genres into a canonical candidate genre set', async () => {
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('a'),
+          personal_genres: ['רוק'], // legacy Hebrew alias
+          release: {
+            artist: 'Artist a',
+            title: 'Title a',
+            release_year: 1991,
+            genres: ['ג׳אז'], // Hebrew catalog genre
+          },
+        },
+      ],
+    })
+    await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const call = ctx.selectRecommendations.mock.calls[0][0]
+    const candidate = [...call.candidatesById.values()][0]
+    expect(candidate.genres).toEqual(['jazz', 'rock'])
+  })
+
+  it('a canonical intent includeGenres reaches a Hebrew-tagged owned record', async () => {
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('a'),
+          release: {
+            artist: 'Artist a',
+            title: 'Title a',
+            release_year: 1975,
+            genres: ['רוק'], // the owned record is Hebrew-tagged
+          },
+        },
+      ],
+    })
+    // `extractIntent` returns an already-canonicalized intent (its real
+    // implementation runs `parseCuratorIntent` -> `normalizeCuratorIntent`).
+    ctx.extractIntent.mockResolvedValueOnce({
+      inScope: true,
+      intent: validIntent({ includeGenres: ['rock'] }) as never,
+      usage: { promptTokens: 700, completionTokens: 120, estimatedCostUsd: 0.0004 },
+      model: 'google/gemini-3.1-flash-lite',
+    })
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+    // the candidate's Hebrew catalog genre canonicalizes server-side -> "rock"
+    expect(json.status).toBe('ok')
+    expect(ctx.selectRecommendations).toHaveBeenCalledTimes(1)
+    const candidate = [
+      ...ctx.selectRecommendations.mock.calls[0][0].candidatesById.values(),
+    ][0]
+    expect(candidate.genres).toEqual(['rock'])
+  })
+
+  it('a personal-genre-only match survives the hard filter (PR #25 correction, finding 3)', async () => {
+    // The catalog side has NO genre at all; the only match comes from the
+    // owner's own personal_genres. The curator hard filter must still see it.
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('owned-1'),
+          personal_genres: ['רוק'], // Hebrew alias for "rock"
+          release: {
+            artist: 'Artist owned-1',
+            title: 'Title owned-1',
+            release_year: 1975,
+            genres: [], // no catalog genre
+          },
+        },
+      ],
+    })
+    ctx.extractIntent.mockResolvedValueOnce({
+      inScope: true,
+      intent: validIntent({ includeGenres: ['rock'] }) as never,
+      usage: { promptTokens: 700, completionTokens: 120, estimatedCostUsd: 0.0004 },
+      model: 'google/gemini-3.1-flash-lite',
+    })
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+    expect(json.status).toBe('ok')
+    expect(ctx.selectRecommendations).toHaveBeenCalledTimes(1)
+    const candidatesById = ctx.selectRecommendations.mock.calls[0][0].candidatesById
+    expect(candidatesById.size).toBe(1)
+    const candidate = [...candidatesById.values()][0]
+    expect(candidate.genres).toEqual(['rock'])
+    expect(candidate.id).toBe('owned-1')
+  })
+
+  it('excludeGenres still filters out a record whose only match is a personal genre', async () => {
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('owned-1'),
+          personal_genres: ['רוק'], // Hebrew alias for "rock"
+          release: {
+            artist: 'Artist owned-1',
+            title: 'Title owned-1',
+            release_year: 1975,
+            genres: [],
+          },
+        },
+      ],
+    })
+    ctx.extractIntent.mockResolvedValueOnce({
+      inScope: true,
+      intent: validIntent({ excludeGenres: ['rock'] }) as never,
+      usage: { promptTokens: 700, completionTokens: 120, estimatedCostUsd: 0.0004 },
+      model: 'google/gemini-3.1-flash-lite',
+    })
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+    // no candidates survive the hard filter -> no_match, no selection call
+    expect(json.status).toBe('no_match')
+    expect(ctx.selectRecommendations).not.toHaveBeenCalled()
   })
 })
 

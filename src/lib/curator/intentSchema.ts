@@ -25,6 +25,7 @@ import {
   type CuratorIntent,
   type CuratorPreference,
 } from './types.ts'
+import { canonicalizeGenres } from '../genre/canonical.ts'
 
 export const CURATOR_INTENT_JSON_SCHEMA = {
   name: 'curator_intent',
@@ -103,6 +104,11 @@ export const INTENT_SYSTEM_PROMPT = [
   'subjective desires (calm, energetic, nostalgic, warm, "not sleepy", a party',
   'vibe) in mood / energy / preference - do NOT invent hard genre or decade',
   'filters for them.',
+  '',
+  'includeGenres / excludeGenres: when the user explicitly names a genre, copy',
+  'it in their own wording and script exactly as they wrote it. Never translate,',
+  'transliterate, or guess a genre in another language or script, and never',
+  'substitute a different genre name for the one the user used.',
   '',
   'decades are four-digit decade-start years: 1990 means the 1990s. Only emit a',
   `decade that is a multiple of 10 between ${DECADE_MIN} and ${DECADE_MAX}.`,
@@ -310,13 +316,21 @@ export function normalizeCuratorIntent(
   }
   const requestedCount = obj.requestedCount as number
 
-  // Conflict rule: exclusion dominates for the same normalized genre.
-  const excludeSet = new Set(excludeGenres)
-  const includeGenres = includeGenresRaw.filter((genre) => !excludeSet.has(genre))
+  // Level-2 authoritative canonicalization (spec 0015 §9): the server never
+  // trusts prompt compliance - a validated `includeGenres: ['רוק']` becomes
+  // `['rock']` here, deterministically, before any hard filtering. Unknown /
+  // ambiguous values pass through. This is a normalization step of the same
+  // kind as the trim/lowercase/dedupe above, not a trust-boundary change.
+  const includeGenresCanon = canonicalizeGenres(includeGenresRaw)
+  const excludeGenresCanon = canonicalizeGenres(excludeGenres)
+
+  // Conflict rule: exclusion dominates for the same canonical genre.
+  const excludeSet = new Set(excludeGenresCanon)
+  const includeGenres = includeGenresCanon.filter((genre) => !excludeSet.has(genre))
 
   return {
     includeGenres,
-    excludeGenres,
+    excludeGenres: excludeGenresCanon,
     decades,
     minRating,
     favoritesOnly,

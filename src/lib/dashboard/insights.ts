@@ -25,7 +25,10 @@
  *   items carry a release year / at least one genre, respectively.
  */
 
-import type { CollectionItemWithRelease } from '../supabase/collection.ts'
+import {
+  effectiveGenres,
+  type CollectionItemWithRelease,
+} from '../supabase/collection.ts'
 import type { ListeningEventRecord } from '../supabase/listeningEvents.ts'
 
 export const PLAYED_WINDOW_DAYS = 30
@@ -231,12 +234,15 @@ export function topGenres(
   const counts = new Map<string, number>()
   let itemsWithGenre = 0
   for (const item of items) {
-    const genres = Array.isArray(item.release.genres) ? item.release.genres : []
+    // Same canonical effective-genre interpretation as Collection and VIN
+    // (spec 0015 §7): catalog + personal, canonical, deduped. A catalog `rock`
+    // and a legacy personal `רוק` count as one `rock`; a record whose only
+    // genre is a personal one now participates.
+    const genres = effectiveGenres(item)
     if (genres.length > 0) {
       itemsWithGenre += 1
     }
-    for (const raw of genres) {
-      const genre = raw.trim().toLocaleLowerCase()
+    for (const genre of genres) {
       if (genre) {
         counts.set(genre, (counts.get(genre) ?? 0) + 1)
       }

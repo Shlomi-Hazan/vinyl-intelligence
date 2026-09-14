@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { classifyScript } from '../lib/i18n/script.ts'
+import { canonicalizeGenre } from '../lib/genre/canonical.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
 import { RatingControl, SegmentedControl, Select } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -102,7 +103,11 @@ export function CollectionBrowser({
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const q = params.get('q') ?? ''
-  const genreParam = params.get('genre') ?? ''
+  // The genre filter is a canonical semantic value: a Hebrew-alias link
+  // (`?genre=רוק`) resolves to the same `rock` option / results (spec 0015 §5).
+  // Free-text `?q` is unchanged (PR 1).
+  const genreRaw = params.get('genre') ?? ''
+  const genreParam = genreRaw ? canonicalizeGenre(genreRaw) : ''
   const decadeParam = params.get('decade') ?? ''
   const yearParam = params.get('year') ?? ''
   const favoritesOnly = params.get('fav') === '1'

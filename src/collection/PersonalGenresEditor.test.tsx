@@ -113,4 +113,47 @@ describe('PersonalGenresEditor', () => {
     )
     expect(updateCollectionItemPersonalGenres).not.toHaveBeenCalled()
   })
+
+  describe('canonical genre dedupe (spec 0015 §11.2 - PR 2)', () => {
+    it('rejects a Hebrew alias of a catalog genre (רוק vs rock)', async () => {
+      renderEditor([], ['rock'])
+      const u = userEvent.setup()
+      await u.type(screen.getByLabelText('Add a genre'), 'רוק')
+      await u.click(screen.getByRole('button', { name: 'Add' }))
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'already listed under the catalog genres',
+      )
+      expect(updateCollectionItemPersonalGenres).not.toHaveBeenCalled()
+    })
+
+    it('saves a known Hebrew alias as its canonical English value', async () => {
+      updateCollectionItemPersonalGenres.mockResolvedValue(['rock'])
+      renderEditor([], [])
+      const u = userEvent.setup()
+      await u.type(screen.getByLabelText('Add a genre'), 'רוק')
+      await u.click(screen.getByRole('button', { name: 'Add' }))
+      await waitFor(() =>
+        expect(updateCollectionItemPersonalGenres).toHaveBeenCalledWith(
+          expect.anything(),
+          'i1',
+          ['rock'],
+        ),
+      )
+    })
+
+    it('preserves an unknown / ambiguous Hebrew personal genre', async () => {
+      updateCollectionItemPersonalGenres.mockResolvedValue(['פאנק'])
+      renderEditor([], [])
+      const u = userEvent.setup()
+      await u.type(screen.getByLabelText('Add a genre'), 'פאנק')
+      await u.click(screen.getByRole('button', { name: 'Add' }))
+      await waitFor(() =>
+        expect(updateCollectionItemPersonalGenres).toHaveBeenCalledWith(
+          expect.anything(),
+          'i1',
+          ['פאנק'],
+        ),
+      )
+    })
+  })
 })

@@ -131,12 +131,14 @@ describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
   })
 
   it('puts direction/language on the native genre <option>, not a nested <bdi>', () => {
+    // an unknown Hebrew genre stays Hebrew in the facet (not canonicalized);
+    // a known alias would collapse to its canonical English option (PR 2).
     renderBrowser([
-      item('1', { release: { genres: ['רוק'] } }),
+      item('1', { personal_genres: ['מוזיקה ים תיכונית'] }),
       item('2', { release: { genres: ['jazz'] } }),
     ])
     const select = screen.getByLabelText('Filter by genre')
-    const hebOption = within(select).getByRole('option', { name: 'רוק' })
+    const hebOption = within(select).getByRole('option', { name: 'מוזיקה ים תיכונית' })
     expect(hebOption.querySelector('bdi')).toBeNull()
     expect(hebOption).toHaveAttribute('dir', 'auto')
     expect(hebOption).toHaveAttribute('lang', 'he')
@@ -171,7 +173,10 @@ describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
   it('renders composite card meta as SEPARATE <bdi> runs (year / Hebrew genre)', () => {
     const { container } = renderBrowser([
       item('1', {
-        release: { artist: 'David Bowie', title: 'Low', release_year: 1977, genres: ['רוק'] },
+        // an unknown Hebrew genre is preserved as-is (canonicalization only
+        // maps the closed approved alias set)
+        personal_genres: ['זמר עברי'],
+        release: { artist: 'David Bowie', title: 'Low', release_year: 1977, genres: [] },
       }),
     ])
     const meta = container.querySelector('.vi-albumcard__meta') as HTMLElement
@@ -183,10 +188,10 @@ describe('CollectionBrowser - Hebrew & multilingual (spec 0015)', () => {
     expect(runs).toEqual([
       { text: 'David Bowie', lang: null },
       { text: '1977', lang: null },
-      { text: 'רוק', lang: 'he' },
+      { text: 'זמר עברי', lang: 'he' },
     ])
     // the " · " separators are literal chrome, outside the isolates
-    expect(meta).toHaveTextContent('David Bowie · 1977 · רוק')
+    expect(meta).toHaveTextContent('David Bowie · 1977 · זמר עברי')
   })
 
   it('the actual grid-title ellipsis element is direction-aware (Fix 2)', () => {

@@ -50,6 +50,22 @@ fields (no cross-field join); (4) the other/neutral comparator is true Unicode
 scalar code-point order (code-point iteration, not UTF-16 `<`). No status
 change; general docs untouched.
 
+Rev 6 (2026-09-12, PR #25 pre-merge correction): 3 corrections to the PR 2
+canonical-genre / VIN work described below — (1) `src/lib/genre/canonical.ts`
+does not import or call `buildSearchKey`; it implements its own narrower
+write-path text normalizer (trim / collapse whitespace / fold approved
+punctuation / lowercase only — no niqqud stripping, no NFKC), so search-only
+normalization can never leak into what is persisted as a personal genre; (2)
+the level-1 prompt instruction in `INTENT_SYSTEM_PROMPT` /
+`REFINEMENT_SYSTEM_PROMPT` does not ask the model to translate a genre to a
+"canonical lowercase English" name — it asks the model to copy an explicitly
+named genre verbatim in the user's own wording/script and never
+translate/transliterate/guess; level 2 (`normalizeCuratorIntent` →
+`canonicalizeGenre`) remains the sole canonicalization authority; (3) added a
+focused handler test proving a record whose only matching genre lives in
+`personal_genres` (not the catalog `release.genres`) survives the curator hard
+filter. No status change; general docs untouched.
+
 **Three sequential implementation PRs, then one documentation-only closeout
 PR** (the M12 final-closeout pattern). **Do not create one giant branch.** Each
 implementation PR starts from **then-current `main`** after the previous PR is
@@ -382,11 +398,14 @@ Modified (runtime — client):
   canonical vocabulary; token semantics unchanged.
 - `src/lib/curator/intentSchema.ts` — after `normalizeCuratorIntent`, map
   `includeGenres` / `excludeGenres` through `canonicalizeGenre` (level-2
-  authoritative normalization); `INTENT_SYSTEM_PROMPT` gains the
-  canonical-English-genre instruction (level 1).
+  authoritative normalization, the sole canonicalization authority);
+  `INTENT_SYSTEM_PROMPT` gains a preserve-wording instruction (level 1): copy
+  an explicitly named genre verbatim in the user's own wording/script, never
+  translate/transliterate/guess. The model performs no canonicalization or
+  language decision — see Rev 6 correction below.
 - `src/lib/curator/refinementSchema.ts` — same canonicalization via the shared
   `normalizeCuratorIntent` path; `REFINEMENT_SYSTEM_PROMPT` gains the same
-  genre-vocabulary instruction.
+  preserve-wording instruction.
 - `src/lib/curator/selectionSchema.ts` — `SELECTION_SYSTEM_PROMPT` gains:
   reason in the request language; artist/title verbatim, never translated. The
   **UI already renders a Hebrew `reason` correctly** — `CuratorRecommendationCard`

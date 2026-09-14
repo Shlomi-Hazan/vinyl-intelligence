@@ -312,4 +312,51 @@ describe('collectionQuery', () => {
       expect(availableGenres(collection)).toEqual(['ambient', 'fusion', 'jazz'])
     })
   })
+
+  describe('canonical genre facet (spec 0015 §5 - PR 2)', () => {
+    it('catalog rock + a legacy personal רוק collapse to one `rock` option', () => {
+      const collection = [
+        item({ genres: ['rock'] }),
+        { ...item({ genres: [] }), personal_genres: ['רוק'] },
+        item({ genres: ['jazz'] }),
+      ]
+      expect(availableGenres(collection)).toEqual(['jazz', 'rock'])
+    })
+
+    it('selecting `rock` returns both the catalog-rock and the Hebrew-alias record', () => {
+      const catalogRock = item({ genres: ['rock'] })
+      const hebrewRock: CollectionItemWithRelease = {
+        ...item({ genres: [] }),
+        personal_genres: ['רוק'],
+      }
+      const jazz = item({ genres: ['jazz'] })
+      const collection = [catalogRock, hebrewRock, jazz]
+      const out = applyCollectionQuery(
+        collection,
+        filters({ genre: 'rock' }),
+        'recently-added',
+      )
+      expect(out).toEqual([catalogRock, hebrewRock])
+    })
+
+    it('a bookmarked `?genre=רוק` still filters canonical rock records', () => {
+      const catalogRock = item({ genres: ['rock'] })
+      const jazz = item({ genres: ['jazz'] })
+      // `filters.genre` carries the raw param; applyCollectionQuery canonicalizes it
+      const out = applyCollectionQuery(
+        [catalogRock, jazz],
+        filters({ genre: 'רוק' }),
+        'recently-added',
+      )
+      expect(out).toEqual([catalogRock])
+    })
+
+    it('an unknown Hebrew genre stays a distinct facet option', () => {
+      const collection = [
+        item({ genres: ['rock'] }),
+        { ...item({ genres: [] }), personal_genres: ['זמר עברי'] },
+      ]
+      expect(availableGenres(collection)).toEqual(['rock', 'זמר עברי'])
+    })
+  })
 })

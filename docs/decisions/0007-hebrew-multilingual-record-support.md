@@ -37,6 +37,19 @@ search box, and its BiDi scope covers the VIN recommendation `reason`, the full
 `PersonalGenresEditor` display, and the `AlbumDetailPage` remove-dialog title —
 so PR 2 remains an AI/genre-semantics change with no BiDi repair.
 
+Rev 5 (2026-09-12, PR #25 pre-merge correction): §8's level-1 prompt contract
+corrected — the trusted intent/refinement prompt line does NOT ask the model
+for a canonical lowercase English genre name; it asks the model to copy an
+explicitly named genre verbatim in the user's own wording/script and never
+translate/transliterate/guess. Translating a genre would make the LLM the
+effective canonicalization authority over an ambiguous term (the deliberately
+unmapped Hebrew `פאנק`), which is an AI-boundary violation. Level 2
+(`canonicalizeGenre`, server-side, after schema validation) remains the sole
+canonicalization authority and is unchanged. §2's write-path boundary is also
+reaffirmed: `src/lib/genre/canonical.ts` implements its own narrower text
+normalizer independent of `buildSearchKey` (trim / collapse whitespace / fold
+approved punctuation / lowercase — no niqqud stripping, no NFKC).
+
 ## Context
 
 Vinyl Intelligence already stores Unicode metadata and production has returned
@@ -210,9 +223,15 @@ No model change; no response-schema change; no change to nonce / untrusted-data
 framing; no allowed-candidate-ID relaxation; the two-call-per-request budget and
 `{ inScope, intent }` wrapper stand; notes are never sent to a model. The genre
 fix is a **two-level defense**: (1) a trusted intent/refinement prompt line
-asking for canonical lowercase English genre names, and (2) an authoritative
+asking the model, when a genre is explicitly named, to copy it verbatim in the
+user's own wording and script — never translate, transliterate, or guess a
+genre in another language or script (asking the model to translate to a
+canonical English name would make the LLM the effective authority over an
+ambiguous term such as the Hebrew `פאנק`, which is an AI-boundary violation —
+corrected in PR #25 pre-merge review, 2026-09-12); and (2) an authoritative
 deterministic `canonicalizeGenre` normalization of validated genre values
-server-side before hard filtering — a normalization step of the same kind as the
+server-side before hard filtering, independent of `buildSearchKey` (§2) — the
+sole canonicalization authority, a normalization step of the same kind as the
 existing trim/lowercase/dedupe, not a trust-boundary change. The selection
 prompt gains: reason in the request language; artist/title verbatim, never
 translated. The vision prompt gains: preserve the original visible script, no

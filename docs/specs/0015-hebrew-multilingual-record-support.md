@@ -44,6 +44,26 @@ cross-field match. §9 other/neutral order clarified as true Unicode
 scalar-code-point comparison (not UTF-16 `<`). No status change; general docs
 untouched.
 
+Rev 6 (2026-09-12, PR #25 pre-merge correction): §12/§598-611 "two-level genre
+defense" corrected — level 1 (`INTENT_SYSTEM_PROMPT` /
+`REFINEMENT_SYSTEM_PROMPT`) does NOT ask the model to translate a genre into a
+canonical lowercase English name; it asks the model, when a genre is
+explicitly named, to copy it verbatim in the user's own wording and script,
+and never translate, transliterate, or guess a genre. Asking the model to
+translate would have made the LLM the effective canonicalizer for any genre
+term it recognized (including the deliberately-unmapped ambiguous `פאנק`),
+which is an AI-boundary violation (`AGENTS.md` "AI Boundaries" /
+"Recommendation Safety" — no LLM-driven inference of genre/ownership facts).
+Level 2 (`normalizeCuratorIntent` → `canonicalizeGenre`/`canonicalizeGenres`,
+server-side, after schema validation) is unchanged and remains the sole
+canonicalization authority. §7/§12 genre-normalization boundary also
+clarified: `src/lib/genre/canonical.ts` does not import `buildSearchKey` and
+implements its own narrower write-path text normalizer (trim / collapse
+whitespace / fold approved punctuation / lowercase only — no niqqud
+stripping, no NFKC), so free-text-search normalization can never leak into
+what is persisted as a personal genre. No status change; general docs
+untouched.
+
 Baseline `main` when this spec was written:
 `dd3f9485c44d84fdc8a285c2889bdbe1cf779e1b` (PR #21 — M12 final closeout).
 
@@ -598,17 +618,29 @@ change to nonce / untrusted-data framing. No notes sent to the model.**
 **Two-level genre defense:**
 
 1. **Trusted prompt (level 1).** `INTENT_SYSTEM_PROMPT` and
-   `REFINEMENT_SYSTEM_PROMPT` gain one instruction: emit `includeGenres` /
-   `excludeGenres` values as lowercase English genre names (e.g. `rock`, `jazz`,
-   `hip hop`), regardless of the request language.
+   `REFINEMENT_SYSTEM_PROMPT` gain one instruction: when the user explicitly
+   names a genre, copy it into `includeGenres` / `excludeGenres` in the user's
+   own wording and script, exactly as written — never translate, transliterate,
+   or guess a genre in another language or script, and never substitute a
+   different genre name for the one used. The model performs no genre
+   canonicalization or language decision of any kind; that would make the LLM
+   the effective authority over an ambiguous term such as the Hebrew `פאנק`,
+   which the closed alias table deliberately leaves unmapped.
 
 2. **Authoritative deterministic normalization (level 2).** After the existing
    `normalizeCuratorIntent` validation, each `includeGenres` / `excludeGenres`
    entry is passed through `canonicalizeGenre` **server-side**, before hard
-   filtering. This runs whether or not the model followed the prompt. It is a
+   filtering. This is the only authoritative canonicalization step for
+   validated `includeGenres` / `excludeGenres` values before curator hard
+   filtering, and it runs whether or not the model preserved the user's
+   wording. It is a
    normalization step of the same kind as the existing trim / lowercase / dedupe
    and the "exclusion dominates" rule; it does not relax any schema check and
-   does not expand curator authority.
+   does not expand curator authority. `canonicalizeGenre` is implemented
+   independently of the free-text search-key normalizer (`buildSearchKey`,
+   §7) — see §7/§12 boundary note above — so search-only behaviour (niqqud
+   stripping, NFKC) can never reach what is persisted as a personal genre or
+   used to hard-filter curator candidates.
 
 The candidate genre list on the other side of `includeGenreMatches` /
 `excludeGenres` equality is the canonical effective set (§13), so both sides

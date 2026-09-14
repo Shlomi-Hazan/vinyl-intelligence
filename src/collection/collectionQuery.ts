@@ -11,6 +11,7 @@ import {
 } from '../lib/supabase/collection.ts'
 import { buildSearchKey } from '../lib/i18n/searchKey.ts'
 import { compareNames } from '../lib/i18n/collator.ts'
+import { canonicalizeGenre } from '../lib/genre/canonical.ts'
 
 export type CollectionFilters = {
   /** Free text; case-insensitive substring of artist OR title; trimmed. */
@@ -54,9 +55,9 @@ export function decadeLabel(year: number): string {
 }
 
 /**
- * The genres a record is browsed / filtered by: the union of catalog genres
- * and the owner's personal genres (already normalised lowercase, deduped).
- * Neither source is mutated.
+ * The genres a record is browsed / filtered by: the CANONICAL effective genres
+ * (catalog + personal, deduped by canonical form - spec 0015 §10.5). Neither
+ * source is mutated.
  */
 function itemGenres(item: CollectionItemWithRelease): string[] {
   return effectiveGenres(item)
@@ -77,14 +78,16 @@ export function availableDecades(items: CollectionItemWithRelease[]): string[] {
   return [...decades].sort()
 }
 
-/** Distinct lowercase genres actually present in the loaded collection. */
+/**
+ * Distinct canonical genres present in the loaded collection - one option per
+ * canonical genre, so `rock` and a legacy personal `רוק` collapse to a single
+ * `rock` choice (spec 0015 §5).
+ */
 export function availableGenres(items: CollectionItemWithRelease[]): string[] {
   const genres = new Set<string>()
 
   for (const item of items) {
-    for (const raw of itemGenres(item)) {
-      const genre = raw.trim().toLocaleLowerCase()
-
+    for (const genre of itemGenres(item)) {
       if (genre) {
         genres.add(genre)
       }
@@ -169,6 +172,7 @@ function matchesDecade(
   return typeof year === 'number' && decadeLabel(year) === decade
 }
 
+/** `genre` is already a `canonicalizeGenre` of the raw `?genre=` value. */
 function matchesGenre(
   item: CollectionItemWithRelease,
   genre: string,
@@ -177,9 +181,7 @@ function matchesGenre(
     return true
   }
 
-  return itemGenres(item).some(
-    (value) => value.toLocaleLowerCase() === genre,
-  )
+  return itemGenres(item).includes(genre)
 }
 
 function yearSort(
@@ -241,7 +243,9 @@ export function applyCollectionQuery(
   const needle = buildSearchKey(filters.search)
   const year = parseYear(filters.year)
   const decade = filters.decade.trim()
-  const genre = filters.genre.trim().toLocaleLowerCase()
+  // Canonicalize the raw `?genre=` value so a Hebrew alias link (`?genre=רוק`)
+  // and the canonical `rock` option select the same records (spec 0015 §5).
+  const genre = canonicalizeGenre(filters.genre)
 
   const filtered = items
     .map((item, index) => ({ item, index }))
