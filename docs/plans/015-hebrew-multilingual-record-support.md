@@ -754,21 +754,27 @@ merge (normal merge commit); **no deploy**.
 
 ## Final closeout
 
-**The three planned implementation phases were completed** (PR #23 = PR 1, PR
-#25 = PR 2, PR #26 = PR 3, in that order, each independently reviewed,
-human-approved, merged, deployed, and human-accepted per this plan and spec
-0015 §21). **Two additional narrowly-scoped human-acceptance follow-ups
-occurred**, neither part of the original three-phase plan and neither
-predictable at planning time, since each was triggered by production evidence
-that only existed after its predecessor's own deployment:
+**The three planned implementation phases were delivered through primary PRs
+#23, #25, and #26**, each independently reviewed, human-approved, merged, and
+deployed per this plan and spec 0015 §21 — but "primary implementation PR"
+and "phase acceptance complete" are not the same milestone for PR 1 and PR 3.
+**PR 1 acceptance was completed by follow-up PR #24 before PR 2 began; PR 2
+completed without a follow-up; PR 3 / final runtime acceptance was completed
+by follow-up PR #27 before documentation closeout began.** Each planned phase
+was independently reviewed and its production acceptance was completed before
+the next planned phase / final closeout began — not necessarily by its
+primary PR alone. **Two additional narrowly-scoped human-acceptance
+follow-ups occurred**, neither part of the original three-phase plan and
+neither predictable at planning time, since each was triggered by production
+evidence that only existed after its predecessor's own deployment:
 
 - **PR #24, after PR 1.** PR 1's own human acceptance found a real desktop
   Collection List column-alignment defect (not a multilingual/BiDi regression
   — a pre-existing grid-track issue the BiDi pass's markup changes exposed).
   Fixed as its own reviewed PR (`bc02dff7` → merge `08e77fc6`) before PR 2
-  began, per the "each PR independently reviewed, human-accepted before the
-  next starts" discipline this plan already required for the three planned
-  phases.
+  began, per the "each planned phase's production acceptance is completed
+  before the next planned phase begins" discipline this plan already
+  required for the three planned phases.
 - **PR #27, after PR 3.** The "Open items" typography decision above records
   that PR 3 would decide, from human visual evidence, whether to accept the
   system Hebrew fallback or add fallback family names — and PR 3 did decide,
