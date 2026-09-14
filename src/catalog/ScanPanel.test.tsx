@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ScanPanel } from './ScanPanel.tsx'
@@ -6,6 +6,7 @@ import { validateImageFile } from '../lib/vision/image.ts'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import { RecognitionError, type CoverRecognition } from '../lib/vision/types.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
+import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import { textIgnoringBidi } from '../test/i18n.ts'
 
@@ -65,13 +66,41 @@ function candidate(over: Partial<CatalogCandidate> = {}): CatalogCandidate {
   }
 }
 
-function setup() {
+function ownedItem(
+  over: Partial<CollectionItemWithRelease['release']> = {},
+): CollectionItemWithRelease {
+  return {
+    id: 'c1',
+    added_at: '',
+    created_at: '',
+    rating: null,
+    is_favorite: false,
+    notes: null,
+    release: {
+      id: 'r1',
+      artist: 'Aphex Twin',
+      title: 'Selected Ambient Works 85-92',
+      release_year: 1992,
+      label: null,
+      catalog_number: null,
+      country: null,
+      format: null,
+      genres: [],
+      updated_at: '',
+      provider_release_id: '11111111-1111-4111-8111-111111111111',
+      ...over,
+    },
+  } as CollectionItemWithRelease
+}
+
+function setup(ownedItems: CollectionItemWithRelease[] = []) {
   const onCollectionChanged = vi.fn()
   const onSearchByText = vi.fn()
   render(
     <ScanPanel
       client={{} as BrowserSupabaseClient}
       userId="uid"
+      ownedItems={ownedItems}
       onCollectionChanged={onCollectionChanged}
       onSearchByText={onSearchByText}
     />,
@@ -323,5 +352,152 @@ describe('ScanPanel', () => {
       expect(screen.getByText('Choose image')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Analyse cover' })).toBeNull()
     })
+  })
+})
+
+describe('ScanPanel - duplicate-copy confirmation (spec 0016 Finding B)', () => {
+  const DIALOG_MESSAGE =
+    'You already own this release. Add another physical copy to your collection?'
+
+  it('a not-owned candidate keeps the ordinary "This is it — add" behavior, with no duplicate dialog', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalog.mockResolvedValue({})
+    const { onCollectionChanged } = setup([])
+    await selectFileAndAnalyse()
+
+    expect(screen.queryByText(DIALOG_MESSAGE)).toBeNull()
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'This is it — add' }))
+    await waitFor(() => expect(addCatalog).toHaveBeenCalledTimes(1))
+    expect(onCollectionChanged).toHaveBeenCalled()
+    expect(await screen.findByText('Added to your collection.')).toBeInTheDocument()
+  })
+
+  it('an owned candidate shows both the honest indicator and "Add another copy"', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    setup([ownedItem()])
+    await selectFileAndAnalyse()
+
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'This is it — add' })).toBeNull()
+  })
+
+  it('clicking "Add another copy" then Cancel makes zero add calls and remains on candidate selection', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    const { onCollectionChanged } = setup([ownedItem()])
+    const user = userEvent.setup()
+    await selectFileAndAnalyse()
+
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(DIALOG_MESSAGE)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(addCatalog).not.toHaveBeenCalled()
+    expect(onCollectionChanged).not.toHaveBeenCalled()
+    // still recoverable: remains on the candidate list, owned presentation intact
+    expect(screen.getByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
+  })
+
+  it('confirming "Add another copy" makes exactly one add call for the correct candidate and reaches the normal success state', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalog.mockResolvedValue({})
+    const { onCollectionChanged } = setup([ownedItem()])
+    const user = userEvent.setup()
+    await selectFileAndAnalyse()
+
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+
+    await waitFor(() => expect(addCatalog).toHaveBeenCalledTimes(1))
+    expect(addCatalog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ providerReleaseId: candidate().providerReleaseId }),
+    )
+    expect(onCollectionChanged).toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(await screen.findByText('Added to your collection.')).toBeInTheDocument()
+  })
+
+  it('a rapid/repeated confirmation cannot create a second add request', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    let resolveAdd: (v: unknown) => void = () => {}
+    addCatalog.mockImplementation(() => new Promise((r) => (resolveAdd = r)))
+    setup([ownedItem()])
+    const user = userEvent.setup()
+    await selectFileAndAnalyse()
+
+    const openDialog = () =>
+      user.click(screen.getByRole('button', { name: 'Add another copy' }))
+
+    await openDialog()
+    let dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // re-opening and confirming again while the first add is still pending
+    // must not create a second request - `confirmAddAnotherCopy` guards on
+    // `savingId` and no-ops
+    await openDialog()
+    dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+
+    resolveAdd({})
+    await waitFor(() => expect(addCatalog).toHaveBeenCalledTimes(1))
+  })
+
+  it('a failed duplicate add uses the existing Scan add-error presentation and remains recoverable', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    addCatalog.mockRejectedValue(new Error('Could not add that copy.'))
+    setup([ownedItem()])
+    const user = userEvent.setup()
+    await selectFileAndAnalyse()
+
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+
+    expect(await screen.findByText('Could not add that copy.')).toBeInTheDocument()
+    // recoverable: still on the candidate list, owned presentation intact
+    expect(screen.getByText('In your collection')).toBeInTheDocument()
+    const retryButton = screen.getByRole('button', { name: 'Add another copy' })
+    expect(retryButton).toBeInTheDocument()
+
+    // retry works by reopening the dialog and confirming again
+    addCatalog.mockResolvedValue({})
+    await user.click(retryButton)
+    const dialog2 = await screen.findByRole('dialog')
+    await user.click(within(dialog2).getByRole('button', { name: 'Add another copy' }))
+    await waitFor(() => expect(addCatalog).toHaveBeenCalledTimes(2))
+  })
+
+  it('an owned Hebrew candidate keeps the existing Bidi rendering with the duplicate UI present', async () => {
+    recognizeCover.mockResolvedValue(
+      recognition({ artist: 'שלום חנוך', albumTitle: 'מחכים למשיח' }),
+    )
+    searchCatalog.mockResolvedValue([
+      candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
+    ])
+    setup([ownedItem({ artist: 'שלום חנוך', title: 'מחכים למשיח' })])
+    await selectFileAndAnalyse()
+
+    const title = await screen.findByText('מחכים למשיח')
+    expect(title.tagName).toBe('BDI')
+    expect(title.getAttribute('lang')).toBe('he')
+    expect(screen.getByText('In your collection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add another copy' })).toBeInTheDocument()
   })
 })

@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
+import { Dialog } from '../ui/Dialog.tsx'
 import { Button, SearchInput } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { SkeletonAlbumCard } from '../ui/feedback.tsx'
@@ -14,6 +15,7 @@ import {
   addCatalogReleaseToCollection,
   searchCatalog,
 } from '../lib/catalog/client.ts'
+import { isExactCatalogReleaseOwned } from '../lib/catalog/ownedRelease.ts'
 import {
   addManualCollectionItem,
   type ManualReleaseInput,
@@ -73,6 +75,12 @@ export function DiscoverPanel({
   const [addingId, setAddingId] = useState<string | null>(null)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
   const [showManual, setShowManual] = useState(false)
+  // Local confirmation state for "Add another copy" of an already-owned
+  // release (spec 0016 Finding B / §21.7 - dialog/confirmation state is
+  // local to this panel, never shared with ScanPanel).
+  const [confirmingCandidate, setConfirmingCandidate] = useState<CatalogCandidate | null>(
+    null,
+  )
   const inProgress = useRef(false)
   const lastResult = useRef(restored?.result ?? null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -90,16 +98,6 @@ export function DiscoverPanel({
     // focus the input so the user can type immediately
     window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [userId])
-
-  const ownedReleaseIds = useMemo(() => {
-    const s = new Set<string>()
-    for (const item of ownedItems) {
-      if (item.release.provider_release_id) {
-        s.add(item.release.provider_release_id)
-      }
-    }
-    return s
-  }, [ownedItems])
 
   const runSearch = useCallback(
     async (raw?: string) => {
@@ -157,6 +155,19 @@ export function DiscoverPanel({
     await addManualCollectionItem(client, input)
     onCollectionChanged()
     setShowManual(false)
+  }
+
+  /** Confirms "Add another copy" of an already-owned release: closes the
+   * dialog immediately (so a rapid repeated click cannot hit the same
+   * confirm button twice) and reuses the existing `add` path - exactly one
+   * add request per intentional confirmation. */
+  function confirmAddAnotherCopy() {
+    if (!confirmingCandidate || addingId) {
+      return
+    }
+    const candidate = confirmingCandidate
+    setConfirmingCandidate(null)
+    void add(candidate)
   }
 
   const searched = phase !== 'initial'
@@ -247,7 +258,7 @@ export function DiscoverPanel({
       {phase === 'results' ? (
         <ul className="vi-candidate__list" aria-label="Catalog results">
           {candidates.map((c) => {
-            const owned = ownedReleaseIds.has(c.providerReleaseId)
+            const owned = isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
             const metaParts = candidateMetaParts(c)
             return (
               <li key={c.providerReleaseId}>
@@ -276,9 +287,18 @@ export function DiscoverPanel({
                     ) : null}
                     <div className="vi-candidate__actions">
                       {owned ? (
-                        <span className="vi-candidate__owned">
-                          <Icon name="check" size={15} /> In your collection
-                        </span>
+                        <>
+                          <span className="vi-candidate__owned">
+                            <Icon name="check" size={15} /> In your collection
+                          </span>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setConfirmingCandidate(c)}
+                          >
+                            Add another copy
+                          </Button>
+                        </>
                       ) : (
                         <Button
                           variant="primary"
@@ -330,6 +350,31 @@ export function DiscoverPanel({
           </Button>
         )}
       </div>
+
+      {confirmingCandidate ? (
+        <Dialog
+          open
+          onClose={() => setConfirmingCandidate(null)}
+          title="Add another copy?"
+        >
+          <p>
+            You already own this release. Add another physical copy to your
+            collection?
+          </p>
+          <div className="vi-dialog__actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmingCandidate(null)}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" onClick={confirmAddAnotherCopy}>
+              Add another copy
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
     </div>
   )
 }

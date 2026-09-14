@@ -10,11 +10,13 @@ import { useCollectionData } from '../app/useCollectionData.ts'
  * flow. The recognition + catalog business logic is unchanged; the image is
  * never persisted; a candidate is saved only on an explicit confirm. When the
  * user chooses "search by text instead", the derived query is handed to
- * Discover via the existing search draft.
+ * Discover via the existing search draft. An already-owned candidate shows an
+ * honest "In your collection" indicator plus an explicit "Add another copy"
+ * confirmation, mirroring Discover (spec 0016 Finding B).
  */
 export function ScanPage() {
   const { client, userId } = useClient()
-  const { invalidate } = useCollectionData()
+  const { items, invalidate } = useCollectionData()
   const navigate = useNavigate()
 
   return (
@@ -23,6 +25,7 @@ export function ScanPage() {
       <ScanPanel
         client={client}
         userId={userId}
+        ownedItems={items}
         onCollectionChanged={invalidate}
         onSearchByText={(query) => {
           saveCatalogSearchDraft(userId, { draftQuery: query, result: null })

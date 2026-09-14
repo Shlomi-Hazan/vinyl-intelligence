@@ -3,6 +3,7 @@ import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { isolate } from '../lib/i18n/isolate.ts'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
+import { Dialog } from '../ui/Dialog.tsx'
 import { Vinny } from '../brand/Vinny.tsx'
 import { Button } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -14,11 +15,13 @@ import {
   addCatalogReleaseToCollection,
   searchCatalog,
 } from '../lib/catalog/client.ts'
+import { isExactCatalogReleaseOwned } from '../lib/catalog/ownedRelease.ts'
 import {
   addManualCollectionItem,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
+import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 /*
@@ -54,6 +57,7 @@ type ScanState =
 type ScanPanelProps = {
   client: BrowserSupabaseClient
   userId: string
+  ownedItems: CollectionItemWithRelease[]
   onCollectionChanged: () => void
   /** "search by text instead" -> hand the derived query to Discover. */
   onSearchByText: (query: string) => void
@@ -121,6 +125,7 @@ function candidateMetaParts(c: CatalogCandidate): string[] {
 export function ScanPanel({
   client,
   userId,
+  ownedItems,
   onCollectionChanged,
   onSearchByText,
 }: ScanPanelProps) {
@@ -131,6 +136,13 @@ export function ScanPanel({
   const [addError, setAddError] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
   const [dragging, setDragging] = useState(false)
+  // Local confirmation state for "Add another copy" of an already-owned
+  // release (spec 0016 Finding B / §21.7 - local to this panel, independent
+  // of DiscoverPanel's own confirmation state; shares only the pure
+  // ownership helper).
+  const [confirmingCandidate, setConfirmingCandidate] = useState<CatalogCandidate | null>(
+    null,
+  )
   const busy = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -264,12 +276,26 @@ export function ScanPanel({
     setState({ k: 'success' })
   }
 
+  /** Confirms "Add another copy" of an already-owned release: closes the
+   * dialog immediately (so a rapid repeated click cannot hit the same
+   * confirm button twice) and reuses the existing `confirm` path - exactly
+   * one add request per intentional confirmation. */
+  function confirmAddAnotherCopy() {
+    if (!confirmingCandidate || savingId) {
+      return
+    }
+    const candidate = confirmingCandidate
+    setConfirmingCandidate(null)
+    void confirm(candidate)
+  }
+
   function reset() {
     setFile(null)
     setFileName(null)
     setShowManual(false)
     setAddError(null)
     setDragging(false)
+    setConfirmingCandidate(null)
     setState({ k: 'idle' })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -455,55 +481,73 @@ export function ScanPanel({
               nothing is saved until you confirm.
             </p>
             <ul className="vi-candidate__list" aria-label="Catalogue candidates">
-              {state.candidates.map((c) => (
-                <li key={c.providerReleaseId}>
-                  <article className="vi-candidate">
-                    <span className="vi-candidate__art">
-                      <AlbumArtwork
-                        size="thumb"
-                        artist={c.artist}
-                        title={c.title}
-                        seedId={c.providerReleaseId}
-                        releaseMbid={c.providerReleaseId}
-                        releaseGroupMbid={c.providerReleaseGroupId}
-                      />
-                    </span>
-                    <div className="vi-candidate__body">
-                      <p className="vi-candidate__artist">
-                        <BidiText>{c.artist}</BidiText>
-                      </p>
-                      <h3 className="vi-candidate__title">
-                        <BidiText>{c.title}</BidiText>
-                      </h3>
-                      {candidateMetaParts(c).length > 0 ? (
-                        <p className="vi-candidate__meta">
-                          <BidiJoin parts={candidateMetaParts(c)} />
+              {state.candidates.map((c) => {
+                const owned = isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
+                return (
+                  <li key={c.providerReleaseId}>
+                    <article className="vi-candidate" data-owned={owned}>
+                      <span className="vi-candidate__art">
+                        <AlbumArtwork
+                          size="thumb"
+                          artist={c.artist}
+                          title={c.title}
+                          seedId={c.providerReleaseId}
+                          releaseMbid={c.providerReleaseId}
+                          releaseGroupMbid={c.providerReleaseGroupId}
+                        />
+                      </span>
+                      <div className="vi-candidate__body">
+                        <p className="vi-candidate__artist">
+                          <BidiText>{c.artist}</BidiText>
                         </p>
-                      ) : null}
-                      <div className="vi-candidate__actions">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          disabled={savingId === c.providerReleaseId}
-                          onClick={() => void confirm(c)}
-                        >
-                          {savingId === c.providerReleaseId
-                            ? 'Adding…'
-                            : 'This is it — add'}
-                        </Button>
-                        <a
-                          className="vi-btn vi-btn--ghost vi-btn--sm"
-                          href={c.derivedProviderPageUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          MusicBrainz
-                        </a>
+                        <h3 className="vi-candidate__title">
+                          <BidiText>{c.title}</BidiText>
+                        </h3>
+                        {candidateMetaParts(c).length > 0 ? (
+                          <p className="vi-candidate__meta">
+                            <BidiJoin parts={candidateMetaParts(c)} />
+                          </p>
+                        ) : null}
+                        <div className="vi-candidate__actions">
+                          {owned ? (
+                            <>
+                              <span className="vi-candidate__owned">
+                                <Icon name="check" size={15} /> In your collection
+                              </span>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setConfirmingCandidate(c)}
+                              >
+                                Add another copy
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              disabled={savingId === c.providerReleaseId}
+                              onClick={() => void confirm(c)}
+                            >
+                              {savingId === c.providerReleaseId
+                                ? 'Adding…'
+                                : 'This is it — add'}
+                            </Button>
+                          )}
+                          <a
+                            className="vi-btn vi-btn--ghost vi-btn--sm"
+                            href={c.derivedProviderPageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            MusicBrainz
+                          </a>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                </li>
-              ))}
+                    </article>
+                  </li>
+                )
+              })}
             </ul>
             {addError ? (
               <p className="vi-error-text" role="alert">
@@ -558,6 +602,31 @@ export function ScanPanel({
       <p className="vi-hint" aria-hidden={thinking ? 'true' : undefined}>
         Your photo is used only to find the record. It is never saved.
       </p>
+
+      {confirmingCandidate ? (
+        <Dialog
+          open
+          onClose={() => setConfirmingCandidate(null)}
+          title="Add another copy?"
+        >
+          <p>
+            You already own this release. Add another physical copy to your
+            collection?
+          </p>
+          <div className="vi-dialog__actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmingCandidate(null)}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" onClick={confirmAddAnotherCopy}>
+              Add another copy
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
     </div>
   )
 }
