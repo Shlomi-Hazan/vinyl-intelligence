@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { AppShell } from './AppShell.tsx'
 import { AuthContext, type AuthContextValue } from '../auth/AuthContext.ts'
+import { nameIgnoringBidi, stripBidi } from '../test/i18n.ts'
 
 function wrap(route: string, ui: React.ReactNode) {
   const auth = {
@@ -95,9 +96,42 @@ describe('AppShell', () => {
   it('the user control keeps its name and expanded card when the sidebar is expanded', () => {
     const { container } = wrap('/dashboard', <AppShell>content</AppShell>)
     expect(container.querySelector('.vi-app')).toHaveAttribute('data-rail', 'false')
-    const account = screen.getByRole('button', { name: /Ana, sign out/ })
+    const account = screen.getByRole('button', { name: nameIgnoringBidi('Ana, sign out') })
     expect(within(account).getByText('Ana')).toBeInTheDocument()
     expect(within(account).getByText('Sign out')).toBeInTheDocument()
+  })
+
+  it('isolates a Hebrew display name in the account control text, title, and aria-label (PR 3)', () => {
+    const auth = {
+      status: 'authenticated',
+      client: {} as never,
+      session: null,
+      user: { id: 'u1', email: 'a@example.test' } as never,
+      profile: { id: 'u1', display_name: 'שלום חנוך', created_at: '', updated_at: '' },
+      notice: null,
+      errorMessage: null,
+      signUp: vi.fn(),
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+      updateDisplayName: vi.fn(),
+      refreshProfile: vi.fn(),
+    } as unknown as AuthContextValue
+
+    render(
+      <AuthContext.Provider value={auth}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <AppShell>content</AppShell>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+
+    const account = screen.getByRole('button', {
+      name: nameIgnoringBidi('שלום חנוך, sign out'),
+    })
+    const nameEl = within(account).getByText('שלום חנוך')
+    expect(nameEl.tagName).toBe('BDI')
+    expect(nameEl.getAttribute('lang')).toBe('he')
+    expect(stripBidi(account.getAttribute('title') ?? '')).toBe('שלום חנוך - sign out')
   })
 
   it('collapsing the sidebar keeps a labelled, contained user control (avatar only)', async () => {
@@ -108,7 +142,7 @@ describe('AppShell', () => {
 
     expect(container.querySelector('.vi-app')).toHaveAttribute('data-rail', 'true')
     // still one accessible user control, still named
-    const account = screen.getByRole('button', { name: /Ana, sign out/ })
+    const account = screen.getByRole('button', { name: nameIgnoringBidi('Ana, sign out') })
     // the expanded card text is decorative + hidden from AT in rail mode
     const text = account.querySelector('.vi-sidebar__account-text')
     expect(text).toHaveAttribute('aria-hidden', 'true')

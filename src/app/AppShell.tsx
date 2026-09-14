@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Logo } from '../brand/Logo.tsx'
 import { UserAvatar } from '../brand/UserAvatar.tsx'
+import { BidiText } from '../components/BidiText.tsx'
+import { isolate } from '../lib/i18n/isolate.ts'
 import { Icon } from '../ui/Icon.tsx'
 import { NAV, pageTitleForPath } from './nav.ts'
 import { useAuth } from '../auth/useAuth.ts'
@@ -145,13 +147,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             type="button"
             className="vi-sidebar__account"
             onClick={() => void signOut()}
-            title={`${profile?.display_name ?? user?.email ?? 'Account'} - sign out`}
-            aria-label={`${profile?.display_name ?? user?.email ?? 'Account'}, sign out`}
+            title={`${isolate(profile?.display_name ?? user?.email ?? 'Account')} - sign out`}
+            aria-label={`${isolate(profile?.display_name ?? user?.email ?? 'Account')}, sign out`}
           >
             <UserAvatar profile={profile} email={user?.email} client={client} size="md" />
             <span className="vi-sidebar__account-text" aria-hidden="true">
               <span style={{ color: 'var(--text)', fontWeight: 600 }}>
-                {profile?.display_name ?? user?.email ?? 'Account'}
+                <BidiText>{profile?.display_name ?? user?.email ?? 'Account'}</BidiText>
               </span>
               <br />
               <span style={{ color: 'var(--text-faint)' }}>Sign out</span>

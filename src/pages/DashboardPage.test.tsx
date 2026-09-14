@@ -9,6 +9,7 @@ import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import type { BrowserSupabaseClient, Profile } from '../lib/supabase/client.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
+import { nameIgnoringBidi } from '../test/i18n.ts'
 
 const loadCollection = vi.fn()
 const loadListeningEvents = vi.fn()
@@ -263,6 +264,44 @@ describe('DashboardPage', () => {
     expect(heb.some((el) => el.tagName === 'BDI' && el.getAttribute('lang') === 'he')).toBe(
       true,
     )
+  })
+
+  it('isolates a Hebrew display name in the "Welcome back" greeting (PR 3)', async () => {
+    loadCollection.mockResolvedValue([])
+    loadListeningEvents.mockResolvedValue([])
+    const hebProfile: Profile = { ...profile, display_name: 'שלום חנוך' }
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn(() => query),
+      maybeSingle: vi.fn(async () => ({ data: hebProfile, error: null })),
+    }
+    const client = {
+      auth: {
+        getSession: vi.fn(async () => ({ data: { session }, error: null })),
+        onAuthStateChange: vi.fn(() => ({
+          data: { subscription: { unsubscribe: vi.fn() } },
+        })),
+        signOut: vi.fn(async () => ({ error: null })),
+        signInWithPassword: vi.fn(),
+        signUp: vi.fn(),
+      },
+      from: vi.fn(() => query),
+    } as unknown as BrowserSupabaseClient
+
+    renderApp({ client, route: '/dashboard' })
+
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: nameIgnoringBidi('Welcome back, שלום חנוך'),
+    })
+    expect(heading.tagName).toBe('H1')
+    // `PageHeader` wraps the whole composite title in one `BidiText`, so the
+    // Hebrew name is protected by its own FSI/PDI isolate() run within that
+    // single string - not a second nested <bdi> - matching the "plain
+    // English sentence + dynamic value uses isolate()" composite rule.
+    const FSI = String.fromCodePoint(0x2068)
+    const PDI = String.fromCodePoint(0x2069)
+    expect(heading.textContent).toBe(`Welcome back, ${FSI}שלום חנוך${PDI}`)
   })
 
   it('Quick VIN navigates to /vin with a prefill and never calls the curator', async () => {

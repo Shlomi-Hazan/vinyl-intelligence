@@ -110,6 +110,7 @@ function DisplayNameForm({
         id="vi-settings-displayname"
         className="vi-input"
         type="text"
+        dir="auto"
         value={value}
         maxLength={DISPLAY_NAME_MAX_LENGTH + 8}
         placeholder="Optional"
