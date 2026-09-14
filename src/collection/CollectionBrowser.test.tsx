@@ -642,7 +642,7 @@ describe('CollectionBrowser', () => {
         },
       ]
 
-      it('requested while loading: falls back to the default order, never fabricates a listening order', () => {
+      it('requested while loading: falls back to the default order, never fabricates a listening order, and the option label says why', () => {
         const { container } = renderBrowser(
           [item('1', { added_at: '2026-08-02T00:00:00.000Z' }), item('2', { added_at: '2026-08-01T00:00:00.000Z' })],
           '/collection?sort=least-recently-played',
@@ -653,12 +653,13 @@ describe('CollectionBrowser', () => {
         expect(
           (screen.getByLabelText('Sort') as HTMLSelectElement).value,
         ).toBe('least-recently-played')
-        // but the option is unavailable while events are not ready
-        expect(
-          within(screen.getByLabelText('Sort')).getByRole('option', {
-            name: 'Least recently played',
-          }),
-        ).toBeDisabled()
+        // the option is unavailable while events are not ready, and its own
+        // label says so - a still-selected option never LOOKS active
+        // (spec 0016 review: selected-listening-sort presentation)
+        const option = within(screen.getByLabelText('Sort')).getByRole('option', {
+          name: 'Least recently played (loading history…)',
+        })
+        expect(option).toBeDisabled()
         // the EFFECTIVE order is the default ("recently added" = incoming
         // array order), not a fabricated listening-based order
         const titles = Array.from(
@@ -667,42 +668,100 @@ describe('CollectionBrowser', () => {
         expect(titles).toEqual(['Album 1', 'Album 2'])
       })
 
-      it('requested while errored: same fallback, same disabled option', () => {
+      it('requested while errored: same fallback, same disabled option, distinct label', () => {
         const { container } = renderBrowser(
           [item('1', { added_at: '2026-08-02T00:00:00.000Z' }), item('2', { added_at: '2026-08-01T00:00:00.000Z' })],
           '/collection?sort=least-recently-played',
           { eventsStatus: 'error', events: [] },
         )
-        expect(
-          within(screen.getByLabelText('Sort')).getByRole('option', {
-            name: 'Least recently played',
-          }),
-        ).toBeDisabled()
+        const option = within(screen.getByLabelText('Sort')).getByRole('option', {
+          name: 'Least recently played (history unavailable)',
+        })
+        expect(option).toBeDisabled()
         const titles = Array.from(
           container.querySelectorAll('.vi-albumcard__title'),
         ).map((el) => el.textContent)
         expect(titles).toEqual(['Album 1', 'Album 2'])
       })
 
-      it('once ready, the requested "Least recently played" becomes effective without reselecting it', () => {
-        const never = item('1', { added_at: '2026-08-02T00:00:00.000Z' })
-        const played = item('2', { added_at: '2026-08-01T00:00:00.000Z' })
-        const { container } = renderBrowser(
-          [never, played],
-          '/collection?sort=least-recently-played',
-          { eventsStatus: 'ready', events: events('2', '2026-09-01T00:00:00.000Z') },
+      it('the loading -> ready transition activates the requested sort with no reselect action, and the visible order actually changes', () => {
+        // Default (incoming) order is [played, neverPlayed]. The approved
+        // least-recently-played order is [neverPlayed, played] - genuinely
+        // different, so this proves the transition, not a coincidence.
+        const played = item('1', { added_at: '2026-08-02T00:00:00.000Z' })
+        const neverPlayed = item('2', { added_at: '2026-08-01T00:00:00.000Z' })
+        const route = '/collection?sort=least-recently-played'
+
+        const { container, rerender } = renderBrowser(
+          [played, neverPlayed],
+          route,
+          { eventsStatus: 'loading', events: [] },
         )
+
+        // --- before: loading, requested sort present but not effective ---
+        expect(
+          (screen.getByLabelText('Sort') as HTMLSelectElement).value,
+        ).toBe('least-recently-played')
+        expect(
+          within(screen.getByLabelText('Sort')).getByRole('option', {
+            name: 'Least recently played (loading history…)',
+          }),
+        ).toBeDisabled()
+        expect(screen.getByTestId('loc').textContent).toContain(
+          'sort=least-recently-played',
+        )
+        expect(
+          Array.from(container.querySelectorAll('.vi-albumcard__title')).map(
+            (el) => el.textContent,
+          ),
+        ).toEqual(['Album 1', 'Album 2']) // default order, NOT least-recently-played
+
+        // --- events become ready, with no user interaction of any kind ---
+        rerender(
+          <ToastProvider>
+            <MemoryRouter initialEntries={[route]}>
+              <Routes>
+                <Route
+                  path="/collection"
+                  element={
+                    <>
+                      <CollectionBrowser
+                        client={{} as BrowserSupabaseClient}
+                        userId="uid"
+                        items={[played, neverPlayed]}
+                        events={events('1', '2026-09-01T00:00:00.000Z')}
+                        eventsStatus="ready"
+                        onMutated={vi.fn()}
+                      />
+                      <LocationProbe />
+                    </>
+                  }
+                />
+              </Routes>
+            </MemoryRouter>
+          </ToastProvider>,
+        )
+
+        // --- after: URL unchanged, option enabled, normal label, order changed ---
+        expect(screen.getByTestId('loc').textContent).toContain(
+          'sort=least-recently-played',
+        )
+        expect(
+          (screen.getByLabelText('Sort') as HTMLSelectElement).value,
+        ).toBe('least-recently-played')
         expect(
           within(screen.getByLabelText('Sort')).getByRole('option', {
             name: 'Least recently played',
           }),
         ).not.toBeDisabled()
-        // never-played first, then the played record - the actual approved
-        // ordering, now effective purely because events became ready
         const titles = Array.from(
           container.querySelectorAll('.vi-albumcard__title'),
         ).map((el) => el.textContent)
-        expect(titles).toEqual(['Album 1', 'Album 2'])
+        // never-played (Album 2) first, then the played record (Album 1) -
+        // the approved ordering, genuinely different from the default
+        // [Album 1, Album 2] above, now effective purely because events
+        // became ready - no select/reselect action occurred.
+        expect(titles).toEqual(['Album 2', 'Album 1'])
       })
     })
 

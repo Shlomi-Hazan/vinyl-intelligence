@@ -88,6 +88,28 @@ function listeningUnavailableTitle(
 }
 
 /**
+ * "Least recently played" is the one sort option that depends on listening
+ * history, exactly like the never/stale filters - its own label must say so
+ * while disabled, so a still-selected-but-inactive option never LOOKS like
+ * the active ordering. Every other sort option's label is unchanged.
+ */
+function sortOptionLabel(
+  sort: { value: CollectionSort; label: string },
+  eventsStatus: 'loading' | 'ready' | 'error',
+): string {
+  if (sort.value !== 'least-recently-played') {
+    return sort.label
+  }
+  if (eventsStatus === 'loading') {
+    return `${sort.label} (loading history…)`
+  }
+  if (eventsStatus === 'error') {
+    return `${sort.label} (history unavailable)`
+  }
+  return sort.label
+}
+
+/**
  * The separate meta fields for a record, in display order: release year, then
  * the first effective genre. Each is a distinct dynamic field so the caller
  * isolates them individually (never as one joined string).
@@ -372,10 +394,12 @@ export function CollectionBrowser({
               value={s.value}
               // Depends on listening history exactly like the never/stale
               // filters - unavailable (but not silently cleared from the
-              // URL/selection) while that history is not ready.
+              // URL/selection) while that history is not ready. The label
+              // itself says so while disabled, so a still-selected option
+              // never looks like the active ordering (spec 0016 review).
               disabled={s.value === 'least-recently-played' && !eventsReady}
             >
-              {s.label}
+              {sortOptionLabel(s, eventsStatus)}
             </option>
           ))}
         </Select>
