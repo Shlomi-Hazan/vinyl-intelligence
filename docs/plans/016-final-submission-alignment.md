@@ -108,9 +108,19 @@ Tests:
   consistent with the existing `yearSort`'s "unknown always sorts last"
   convention — recommend reusing that convention here for consistency; flag
   for human confirmation if a different placement is wanted).
-- A record played exactly `30 * 24h` ago — pick and document one boundary
-  rule (inclusive or exclusive) and test it.
-- Combining the new listening filter with `favoritesOnly` and with an
+- A record played exactly at the 30-day cutoff timestamp — this boundary is
+  **not** an implementation guess: it follows the curator's existing,
+  already-approved `avoidRecentlyPlayed` contract (spec 0016 §21.3) — a play
+  at or after the cutoff is "recent" and does **not** qualify as stale; only
+  never-played or strictly-older-than-cutoff qualifies. Test exactly this
+  boundary (one record at the cutoff instant, one just before, one just
+  after).
+- "Never played" and "stale" are mutually exclusive: selecting one clears
+  the other; test that both cannot be simultaneously active via the URL
+  params either (e.g. a hand-crafted `?listening=never&listening=stale`-style
+  URL, however the approved single-enum param actually serializes, must not
+  produce an inconsistent state).
+- Combining the active listening filter with `favoritesOnly` and with an
   existing `CollectionFilters` field.
 - Empty collection / zero events loaded.
 - A Hebrew-titled record under every new sort/filter path.
@@ -134,10 +144,12 @@ Hebrew/multilingual Collection tests still pass unmodified.
 ### Human acceptance checklist (spec §16)
 
 On the existing production account, after merge + deploy: rating sort (both
-directions if approved); never-played filter; not-played-recently filter; the
-new listening-based sort, with never-played items ordered as designed;
-combined with at least one existing filter; desktop + mobile; grid + list
-view; at least one Hebrew-titled record visible and correctly rendered.
+directions if approved); the never-played filter; the stale (not-played-in-30-days)
+filter, confirming selecting one clears the other (mutually exclusive, never
+both active); the new listening-based sort, with never-played items ordered
+as designed; combined with at least one existing filter; desktop + mobile;
+grid + list view; at least one Hebrew-titled record visible and correctly
+rendered. No AI/model call is required for this acceptance round.
 
 ### Stop conditions
 
@@ -159,22 +171,30 @@ answered by the human.
 ### Exact likely files
 
 Runtime:
-- A new small shared helper, e.g. `src/catalog/duplicateConfirmation.ts` (or
-  a tiny hook `useDuplicateConfirm.ts`) — pure state/decision logic only: given
-  a candidate's `providerReleaseId` and the set of owned `providerReleaseId`s,
-  expose `isOwned`, and a small state machine (`idle` → `confirming` →
-  `adding`) with `requestAdd(candidate)`, `confirm()`, `cancel()` — no JSX, so
-  Discover and Scan each keep their own existing candidate-card markup and
-  just call into this helper (per §21.7's approved shape; adjust the exact
-  shape if the human approved a shared component instead).
+- A new, tiny, **pure** shared helper — e.g.
+  `src/lib/catalog/ownedRelease.ts` exporting
+  `isExactCatalogReleaseOwned(providerReleaseId, ownedItems)` (or an
+  equivalent shared derivation of the owned-`providerReleaseId` set). No
+  JSX, no state, no state machine — a pure function only, so Discover and
+  Scan can never again silently drift on what counts as "already owned"
+  (per §21.7's approved shape — the smallest shared piece, shared
+  *semantics* not shared *state*). Confirmation/dialog state (open/closed,
+  in-flight, error) is written **independently, locally**, inside each of
+  `DiscoverPanel.tsx` and `ScanPanel.tsx` — plain `useState`, matching how
+  each surface already manages its own local add/error state today. Do not
+  introduce a shared stateful hook or shared confirmation component unless
+  writing the two local implementations reveals near-identical code that
+  makes a shared *stateless* extraction obviously worthwhile — even then,
+  keep it presentation-free.
 - `src/catalog/DiscoverPanel.tsx` — replace the current
   `owned ? <span>In your collection</span> : <Button>Add</Button>` branch with:
   owned → "already owned" indicator **and** an "Add another copy" button →
-  confirmation `Dialog` → confirm calls the existing `add(candidate)` path.
+  local confirmation state → `Dialog` → confirm calls the existing
+  `add(candidate)` path.
 - `src/catalog/ScanPanel.tsx` — add an `ownedItems` prop (currently absent),
-  compute the same owned-release awareness Discover already has, and apply
-  the identical already-owned / confirm-to-add-another pattern to the
-  candidates step.
+  use the shared `isExactCatalogReleaseOwned` helper, and apply the
+  identical already-owned / confirm-to-add-another pattern (with its own
+  local confirmation state) to the candidates step.
 - Wherever `ScanPanel` and `DiscoverPanel` are mounted (their parent page
   components) — pass the already-loaded owned collection data through as a
   prop, mirroring how Discover already receives it today.
@@ -187,16 +207,21 @@ Tests:
 - `src/catalog/ScanPanel.test.tsx` — the same three cases, newly added since
   Scan has none of this today; the not-owned path (existing tests) keeps
   passing.
-- A unit test file for the new shared helper if it is non-trivial enough to
-  warrant one on its own (state machine transitions, `isOwned` derivation).
+- A small unit test file for the shared pure helper
+  (`isExactCatalogReleaseOwned` — owned/not-owned/empty-owned-set cases) is
+  worthwhile given it is now the single source of truth both surfaces rely
+  on for a security/product-correctness-adjacent check.
 
 ### Implementation order
 
-1. Write the shared helper + its own unit tests first, in isolation.
-2. Wire it into Discover (the surface that already has `ownedItems`) first;
-   get its mounted tests green.
-3. Add `ownedItems` to Scan's props and wire the identical pattern; get its
+1. Write the shared pure helper + its own unit tests first, in isolation —
+   no state, no JSX.
+2. Wire it into Discover (the surface that already has `ownedItems`) first,
+   with confirmation state written locally in `DiscoverPanel.tsx`; get its
    mounted tests green.
+3. Add `ownedItems` to Scan's props and wire the identical pattern, with its
+   own local confirmation state in `ScanPanel.tsx`; get its mounted tests
+   green.
 4. Manual local smoke: add a record, then attempt to add it again through
    both Discover and Scan, confirming the dialog, the count, and the delete
    isolation (delete one copy, confirm the other survives) — no deploy.
@@ -226,17 +251,26 @@ the existing `DiscoverPanel.test.tsx`/`ScanPanel.test.tsx` patterns).
 
 A reviewer confirms: identical contract in both surfaces (no drift between
 Discover's and Scan's copy/behavior beyond what each surface's existing
-layout requires); no backend/schema file touched; the shared helper is
-actually shared (not two independent near-duplicate implementations); mounted
-tests exist for both surfaces covering not-owned/cancel/confirm.
+layout requires); no backend/schema file touched; the ownership check is
+actually the one shared pure helper (not two independent near-duplicate
+implementations); confirmation/dialog state stayed local to each surface —
+no new shared stateful hook/component was introduced beyond what §21.7
+approved; mounted tests exist for both surfaces covering
+not-owned/cancel/confirm.
 
 ### Human acceptance checklist (spec §16)
 
 On the existing production account, using a record already owned once:
-Discover already-owned state → cancel (collection count unchanged) → confirm
-(exactly one new copy appears) — then the same sequence in Scan. Include a
-Hebrew-titled release in the exercised set if one is available in the
-catalog for the test record.
+Discover already-owned state (real MusicBrainz search, as Discover already
+requires today) → cancel (collection count unchanged) → confirm (exactly one
+new copy appears) — then the same sequence in Scan, which requires exactly
+one deliberate real Vision recognition to reach its candidate list (unless
+an already-existing production state truthfully covers it) plus the normal
+MusicBrainz call Scan already makes. Include a Hebrew-titled release in the
+exercised set if one is available in the catalog for the test record. **No**
+curator call is part of this acceptance — this finding does not touch the
+curator. Automated verification for PR C stays zero-provider (mocked/
+fixture); this bounded budget applies to human production acceptance only.
 
 ### Stop conditions
 

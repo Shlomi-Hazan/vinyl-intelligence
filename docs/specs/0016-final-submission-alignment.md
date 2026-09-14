@@ -69,9 +69,9 @@ proceeding — do not silently expand scope.
 played," and §36 (Final Product Vision) explicitly promises sorting by rating
 and finding records "I haven't played lately." Current Collection
 (`src/collection/collectionQuery.ts`, `src/collection/CollectionBrowser.tsx`)
-supports search, exact year, decade, genre, favourites-only, and four sorts
-(`recently-added`, `artist-asc`, `album-asc`, `year-desc`/`year-asc`) — **no
-rating sort/filter and no listening-recency filter/sort exist.**
+supports search, exact year, decade, genre, favourites-only, and five sort
+values (`recently-added`, `artist-asc`, `album-asc`, `year-desc`, `year-asc`)
+— **no rating sort/filter and no listening-recency filter/sort exist.**
 
 This is not a missing capability requiring new data: `CollectionBrowser`
 already receives `events: ListeningEventRecord[]` and `eventsStatus:
@@ -192,8 +192,12 @@ pending" list includes "Exact duplicate-copy representation" and "Whether
 bounded structured conversation state is persisted or kept ephemeral" — both
 resolved during implementation (duplicate copies: multiple `collection_items`
 per `release_id`, confirmed by Finding B's own evidence that this still works
-at the schema level; conversation state: React-memory-only, confirmed
-resolved in ADR 0006 / spec 0011 / the M9–M10 verification record).
+at the schema level; conversation state: React-memory-only, resolved by
+`docs/specs/0011-milestone-10-conversational-refinement.md`, the current
+`docs/ai-design.md` "Conversation State" section, and the Milestone 10
+verification record in `docs/verification.md` — **not** ADR 0006, which
+resolves listening-event mutability and the optional profile avatar, a
+different and unrelated decision).
 
 ### Finding G — Verification log current-metadata/coverage drift (MEDIUM, documentation/verification coverage)
 
@@ -230,12 +234,16 @@ the fix is consistency, not correction of behavior.
 Collection view, without navigating away or waiting on a network request:
 
 - Sort by rating (exact direction(s): see §21 open decision).
-- See which records have never been played.
-- See which records have not been played in the last 30 days.
-- Combine any of the above with existing search/genre/year/decade/favourites
-  filters and with the existing grid/list view toggle.
-- Trust that "never played" is only ever shown once listening-event data has
-  actually finished loading — never guessed from a loading or errored state.
+- Filter to records that have never been played, **or**, mutually
+  exclusively, to records that are stale (never played, or last played
+  strictly before the 30-day cutoff — see §21.3) — never both listening
+  filters active at once.
+- Combine the active listening filter (if any) with existing
+  search/genre/year/decade/favourites filters and with the existing
+  grid/list view toggle.
+- Trust that neither listening filter is ever shown as satisfied until
+  listening-event data has actually finished loading — never guessed from a
+  loading or errored state.
 
 **Discover + Scan (Finding B).** In both surfaces, when a catalog candidate's
 exact `providerReleaseId` is already owned:
@@ -294,12 +302,20 @@ a database change is actually needed for either finding, **STOP** per §3.
 
 ## 8. AI/provider implications
 
-**None.** Neither finding touches the curator, Vision, or any OpenRouter call.
-No prompt, schema, model, or token-budget change. No provider call is needed
-to implement, test, or verify either finding — all automated tests are
-mocked/fixture-based exactly like the existing `collectionQuery.test.ts` and
+**No new AI/provider surface, and zero provider calls in implementation or
+automated verification.** Neither finding touches the curator, Vision, or any
+OpenRouter call — no prompt, schema, model, or token-budget change. Every
+automated test for both findings is mocked/fixture-based exactly like the
+existing `collectionQuery.test.ts` and
 `CollectionBrowser.test.tsx`/`DiscoverPanel.test.tsx`/`ScanPanel.test.tsx`
-suites.
+suites; no PR B or PR C automated gate makes a real provider call.
+
+This does **not** mean PR C's *human production acceptance* is provider-free.
+Scan's candidate flow already requires a real cover-recognition call before
+this remediation touches it — Finding B's Scan fix only adds a duplicate-
+awareness state on top of that existing flow, it does not remove the need to
+reach that state. See §16 for the exact bounded human-acceptance provider
+budget.
 
 ## 9. Security/privacy implications
 
@@ -395,21 +411,27 @@ Collection/Discover/Scan write already works today.
 2. A "never played" filter/state exists, computed from `summarizeListeningForItem`
    returning `count === 0`, and is only ever asserted true once
    `eventsStatus === 'ready'`.
-3. A "not played in the last 30 days" filter/state exists, using the same
-   30-day value as `DEFAULT_RECENT_DAYS`/`PLAYED_WINDOW_DAYS`, computed from
-   `lastListenedAt` (or never-played) relative to render time.
-4. At least one listening-based **sort** exists (least-recently-played /
+3. A "stale" (not played in the last 30 days) filter/state exists, using the
+   same 30-day value as `DEFAULT_RECENT_DAYS`/`PLAYED_WINDOW_DAYS`, and
+   matches a record when never played **or** when `lastListenedAt` is
+   strictly before the cutoff — a play exactly at the cutoff is still
+   "recent" and does not qualify (§21.3's exact boundary, derived from the
+   curator's existing `avoidRecentlyPlayed` contract).
+4. The "never played" and "stale" filters are **mutually exclusive** —
+   activating one clears the other; both active simultaneously is not a
+   reachable state.
+5. At least one listening-based **sort** exists (least-recently-played /
    rediscovery-oriented), with never-played items ordered consistently with
    the existing Dashboard `rediscover` convention (never-played sorts as
    "most stale," i.e. first, in a least-recently-played ordering).
-5. Every existing filter/sort/search/genre/year/decade/favourites/view-toggle
+6. Every existing filter/sort/search/genre/year/decade/favourites/view-toggle
    behavior is provably unchanged (locked by existing tests continuing to
    pass unmodified, plus new tests for the new behavior only).
-6. All of the above works with zero network request beyond what the page
+7. All of the above works with zero network request beyond what the page
    already loads once on mount.
-7. An unknown/loading/errored listening-data state never renders as if a
+8. An unknown/loading/errored listening-data state never renders as if a
    record were confirmed never-played.
-8. A record with a Hebrew title/artist renders correctly (existing BiDi
+9. A record with a Hebrew title/artist renders correctly (existing BiDi
    isolation) in every new UI slot introduced.
 
 **Finding B:**
@@ -426,7 +448,12 @@ Collection/Discover/Scan write already works today.
    unchanged) never removes a sibling copy of the same release.
 6. No schema, RLS, or `POST /api/catalog/add` request/response contract
    change.
-7. No AI/provider call anywhere in the flow.
+7. The duplicate-detection/confirmation mechanic itself introduces no new
+   AI/provider call — confirming reuses the existing
+   `addCatalogReleaseToCollection` call unchanged. This does not remove
+   Scan's pre-existing real Vision-recognition step, which happens before a
+   candidate list (and therefore before any duplicate state) exists at all;
+   see §16 for the resulting human-acceptance provider budget.
 8. Mounted UI tests exist for both Discover and Scan covering: not-owned
    (unchanged single-click path), already-owned + cancel (no write), and
    already-owned + confirm (exactly one write).
@@ -439,8 +466,11 @@ repository has been: automated gate from a clean checkout (typecheck, lint,
 a confirmation that nothing regressed, not because a change is expected
 there), an independent PR review, then human production runtime acceptance
 after merge and deploy — see plan 016 for the exact per-PR gate and
-acceptance checklists. No provider call is used anywhere in verification for
-either finding.
+acceptance checklists. **Automated verification for both findings makes zero
+provider calls.** PR C's human production acceptance is not provider-free —
+see the exact bounded budget in §16 — because Scan's existing mounted flow
+already requires a real cover-recognition call to reach the candidates state
+this finding modifies.
 
 ## 16. Human production acceptance criteria
 
@@ -451,14 +481,35 @@ both desktop and mobile, in both grid and list views, including at least one
 Hebrew-titled record in the visible set.
 
 **PR C (Duplicates):** on the existing production account, using a record
-already owned once, exercise: Discover already-owned state → cancel (no
-change) → confirm (exactly one new copy) and the same sequence in Scan,
-including at least one Hebrew-titled release if a Hebrew candidate is
-available in the catalog for the test record.
+already owned once:
 
-Neither acceptance round requires a new signup/email test, a
-provider-forced-failure test, or any additional real Vision/curator call —
-consistent with this project's established acceptance practice.
+- **Discover** — catalog search (real MusicBrainz call, as Discover already
+  requires today) → already-owned candidate → cancel (no change) → confirm
+  (exactly one new copy). No new provider surface: this is the same
+  MusicBrainz call Discover already makes for every search.
+- **Scan** — real cover recognition (bounded to **exactly one** deliberate
+  Vision call for this acceptance scenario, unless an already-existing
+  production state can truthfully exercise the mounted Scan candidate list
+  without a fresh recognition) → catalog candidates (MusicBrainz, as Scan
+  already requires today) → already-owned candidate → cancel → confirm.
+
+Include at least one Hebrew-titled release in the exercised set if a Hebrew
+candidate is available in the catalog for the test record.
+
+**PR B's acceptance requires no AI/model call of any kind** — Collection's
+rating/listening controls are purely client-side over already-loaded data.
+**PR C's automated verification remains zero-provider** (mocked/fixture
+tests only); its *human production* acceptance is not provider-free, because
+Discover and Scan already reach the catalog/Vision providers today and this
+finding does not remove that — it only adds a duplicate-awareness state on
+top of the existing flow. The bounded PR C human-acceptance provider budget
+is: normal MusicBrainz calls (as both surfaces already make), exactly one
+deliberate real Vision recognition for the Scan scenario (unless existing
+production state already covers it), and **no** curator recommendation or
+refinement calls — this remediation does not touch the curator. Neither
+acceptance round requires a new signup/email test or a provider-forced-
+failure test, consistent with this project's established acceptance
+practice.
 
 ## 17. Documentation-closeout criteria (PR D)
 
@@ -541,8 +592,27 @@ should be treated as approved until the human confirms.
    toggle. *Needs approval.*
 3. **Exact listening-filter labels and shape.** *Proposed:* two toggle
    affordances styled like the existing `favoritesOnly` chip — "Never
-   played" and "Not played in 30 days" — rather than a single combined
-   dropdown. *Needs approval.*
+   played" and "Not played in 30 days" — but **mutually exclusive**: exactly
+   one of `{ none, never, stale }` is active at a time, and selecting one
+   chip clears the other (never both active together). Exact semantics,
+   derived from the already-approved curator "recently played" contract
+   (not left as an open guess):
+   - `never` — `count === 0` (never played, per
+     `summarizeListeningForItem`).
+   - `stale` — a record qualifies when it has never been played, **or**
+     when `lastListenedAt` is strictly before the 30-day cutoff (cutoff =
+     now minus 30 days). A play exactly at the cutoff timestamp is still
+     "recently played" and does **not** qualify as stale. This is the exact
+     complement of the curator's existing, already-approved
+     `avoidRecentlyPlayed` boundary
+     (`src/lib/curator/candidates.ts`: a candidate is excluded as "recently
+     played" when `lastListenedAt` time `>= cutoff`; the ones that pass —
+     never played, or strictly older than the cutoff — are precisely the
+     "stale" set here), so this is not a new boundary being invented, only
+     applied to Collection.
+   *Needs approval* — only the exact chip/label/exclusivity shape, not the
+   boundary rule, which follows directly from the existing approved curator
+   contract.
 4. **Exact ordering for never-played items in the new listening-based
    sort.** *Proposed:* never-played items sort first (as "most stale"),
    mirroring the Dashboard `rediscover` convention
@@ -555,12 +625,18 @@ should be treated as approved until the human confirms.
 6. **Duplicate-confirmation dialog copy.** *Proposed:* "You already own
    this release. Add another physical copy to your collection?" with
    "Add another copy" / "Cancel" buttons. *Needs approval.*
-7. **Shared component vs. shared helper for Discover/Scan duplicate
-   handling.** *Proposed:* a shared, small, presentation-free helper
-   (state/decision logic only — "is this owned," "confirm," "cancel"), with
-   each surface keeping its own existing candidate-card JSX, rather than a
-   new shared React component — avoids the deeper refactor the audit
-   explicitly warned against. *Needs approval.*
+7. **Shared component/hook vs. shared pure helper for Discover/Scan
+   duplicate handling.** *Proposed:* the **smallest** shared piece —  one
+   tiny, pure, presentation-free ownership helper (conceptually
+   `isExactCatalogReleaseOwned(providerReleaseId, ownedItems)`, or an
+   equivalent shared derivation of the owned-`providerReleaseId` set), so
+   Discover and Scan can never again silently drift on *what counts as
+   already owned*. Confirmation/dialog **state** (open/closed, in-flight,
+   error) stays **local** to each of Discover and Scan — no shared state
+   machine, no shared hook, no shared dialog-flow component. The goal is
+   shared duplicate *semantics*, not a new UI/state abstraction; a shared
+   stateful hook is explicitly **not** proposed unless implementation later
+   demonstrates a concrete, specific need for one. *Needs approval.*
 
 ## References (do not duplicate)
 
