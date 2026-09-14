@@ -1,8 +1,10 @@
 # Architecture
 
-As-built section last updated: 2026-09-07 (Milestone 12). The original
-2026-08-17 proposal is preserved below "As-Built Architecture" as the design
-rationale; where they differ, the as-built section is authoritative.
+As-built section last updated: 2026-09-14 (Hebrew & Multilingual Record
+Support, `docs/specs/0015-hebrew-multilingual-record-support.md`, COMPLETE).
+The original 2026-08-17 proposal is preserved below "As-Built Architecture" as
+the design rationale; where they differ, the as-built section is
+authoritative.
 
 ---
 
@@ -57,6 +59,36 @@ Hosted Supabase (project dlkaljnywnrhzfxcfklx)      OpenRouter        MusicBrain
   no runtime Google Fonts, no motion/icon/image library.
 - The browser holds no server secret, no service-role credential, no
   privileged prompt, and no authoritative security rule.
+
+### Multilingual / Hebrew dynamic content
+User- and record-owned dynamic text (artist, title, genres, notes,
+recommendation reasons) is first-class multilingual content, Hebrew in
+particular; the application chrome itself stays English/LTR — `<html
+lang="en">` is not switched, and the root is never globally RTL. Full detail:
+`docs/specs/0015-hebrew-multilingual-record-support.md`.
+- `src/lib/i18n/{script,searchKey,collator,isolate}.ts` and the `BidiText` /
+  `BidiJoin` components (`src/components/BidiText.tsx`) do field-level BiDi
+  isolation — every dynamic run gets its own `<bdi dir="auto">` (or, in a
+  plain-string context such as an `aria-label`, FSI/PDI Unicode isolate
+  controls via `isolate()`) — so one Hebrew field never reorders an adjacent
+  English label or a neighboring Latin field.
+- Collection free-text search compares a **comparison-only** normalized key
+  (`buildSearchKey`: NFKC, niqqud/cantillation strip, punctuation folds) that
+  never runs on a write/persistence path. Sorting buckets Latin, then Hebrew,
+  then other/neutral, each compared with its own `Intl.Collator` singleton.
+- `src/lib/genre/canonical.ts` is the single authoritative deterministic
+  genre-alias module (closed map, no model call, no shared code with the
+  search key) — Collection, Dashboard, and the curator all consume the same
+  canonical effective-genre set (catalog genres read raw and canonicalize at
+  use time; personal genres canonicalize known aliases at the write
+  boundary). See `docs/ai-design.md` for the curator's two-level defense.
+- Vision cover recognition preserves the original script actually printed on
+  the sleeve (no translation, no transliteration) with no schema/model/query
+  change; see `docs/ai-design.md`.
+- Small Hebrew-titled surfaces (Collection grid cards, fallback-artwork
+  labels) use targeted `bdi[lang='he']` CSS overrides onto the existing
+  `--font-sans` stack for readability — no bundled Hebrew webfont, no
+  `@font-face`, no new dependency.
 
 ### Backend (Netlify Functions)
 - `.mts` handlers delegate to `netlify/functions/_shared/*-handlers.mts`; the

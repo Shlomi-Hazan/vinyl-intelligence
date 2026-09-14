@@ -353,3 +353,59 @@ so it lives in the closeout PR, exactly as in the M12 pattern (PR #21).
   Temporally impossible — a PR cannot cite its own merge SHA, deploy SHA, or
   human-acceptance result. Chose a separate documentation-only closeout PR after
   PR 3 acceptance, matching the M12 pattern (PR #21).
+
+## Implemented and verified (2026-09-14, final documentation closeout)
+
+Status stays **accepted** — this section records that the decision was
+carried out as designed, not a new decision.
+
+- **PR 1** (`#23`, merge `82de14a1`, plus its human-acceptance correction
+  `#24`, merge `08e77fc6`) established the local BiDi handling primitives
+  (`BidiText`, `BidiJoin`, `isolate()`, `unicode-bidi: isolate` safety net)
+  and shipped the main Collection/Album Detail/History/Discover/Scan/VIN
+  multilingual coverage: the comparison-only Hebrew-aware search key
+  (niqqud/punctuation folding, never on a write path), the two-script-collator
+  mixed Latin-then-Hebrew deterministic sort, and broad `dir="auto"` coverage
+  on mounted free-text inputs/textareas. PR 1's coverage was not yet globally
+  complete at this point — PR 3 (below) later found and fixed the remaining
+  mounted gaps.
+- **PR 2** (`#25`, merge `7da74677`) shipped the single authoritative
+  deterministic canonical-genre module (`src/lib/genre/canonical.ts`, 15
+  canonical outputs, closed alias map, `פאנק` deliberately unmapped).
+  Collection, Dashboard, and VIN now share one canonical effective-genre
+  semantics. VIN preserves the user's explicit genre wording/script verbatim
+  at model extraction (level 1) — the model is never asked to translate or
+  canonicalize a genre — and deterministic server-side canonicalization
+  (level 2, `normalizeCuratorIntent` → `canonicalizeGenre`) remains the sole
+  authority over which approved aliases resolve, exactly as this ADR designed
+  and as the "LLM-assisted genre translation / inference" alternative above
+  rejected.
+- **PR 3** (`#26`, merge `12b503ae`) shipped Vision original-script
+  preservation (no translation, no transliteration, Latin only when actually
+  printed) with no recognition-schema, model, or query-builder change, and
+  completed the final mounted-runtime accessibility/BiDi sweep, fixing the
+  remaining mounted gaps PR 1 had left: a handful of un-isolated
+  `aria-label`/`title` attributes (`AppShell` account control, `DashboardPage`
+  composite greeting) and one input missing `dir="auto"` (`SettingsPage`
+  display name) — Scan/Discover candidate rendering itself was already
+  complete from PR 1. PR #26's own pre-merge review then found one more
+  composite-BiDi gap in Scan's selected-filename copy, isolated in the same
+  correction commit before merge.
+- **PR #27** (merge `59fe8236`) revisited the "bundle a Hebrew webfont" /
+  "add fallback family names" alternatives above after post-PR3 production
+  evidence showed small Hebrew Collection/Grid titles were materially less
+  readable, not merely cosmetically seamed as first accepted. It resolved the
+  seam **without** either alternative: narrowly-scoped `bdi[lang='he']`
+  overrides route those specific small-card/fallback-artwork surfaces to the
+  *existing* `--font-sans` stack (still no bundled webfont, no `@font-face`,
+  no new dependency, no new family name added to any token).
+- Confirmed still true at closeout, exactly as designed: no database
+  migration; no app-wide RTL mode; no full Hebrew UI localization; no
+  transliteration anywhere in the system; no bundled Hebrew webfont.
+- Final accepted runtime `main`: `59fe823646091b6189fc1a015c7209fbe1f8105b`.
+  Final accepted production deploy: `6aa7f8579b5591de792714f4`
+  (`https://vinyl-intelligence.netlify.app`). Production human acceptance is
+  complete for all five PRs — see `docs/verification.md` "Hebrew &
+  Multilingual Record Support" for the full evidence, and
+  `docs/specs/0015-hebrew-multilingual-record-support.md` §23 for the exact
+  chronology.

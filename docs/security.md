@@ -1,6 +1,7 @@
 # Security and Privacy
 
-Last updated: 2026-09-07 (Milestone 12 reconciliation).
+Last updated: 2026-09-14 (Hebrew & Multilingual Record Support, spec 0015,
+COMPLETE).
 
 Security is part of the product definition. The app handles personal collections, uploads, API credentials, and costly model calls.
 
@@ -96,6 +97,38 @@ For image recognition:
 - Model-reported confidence is advisory/debug only and never authoritative probability.
 - Catalog API data is preferred where available.
 - User confirmation is required before persistence.
+
+## Multilingual / Hebrew content (spec 0015, reviewed invariants)
+
+Reviewed during implementation of Hebrew & Multilingual Record Support; all
+existing invariants above held unchanged, confirmed here rather than
+redesigned:
+
+- No new secret, no new environment variable.
+- Vision: the image remains untrusted data; the added original-script
+  instruction ("report artist/albumTitle/label/catalogNumber/visibleText in
+  the original script printed on the cover, never translate/transliterate")
+  only affects which script an already-untrusted, already-validated field is
+  reported in — it grants sleeve text no new authority over model role/task.
+  Recognition schema, model, and output validation are unchanged.
+- Curator: genre canonicalization (`canonicalizeGenre`, closed deterministic
+  map, `src/lib/genre/canonical.ts`) is a post-validation normalization step —
+  the same kind as the pre-existing trim/lowercase/dedupe — not a trust
+  boundary change. The model is never asked to translate or canonicalize a
+  genre; a trusted prompt line asks it to preserve the user's own wording
+  verbatim, and the deterministic server step is the sole authority over
+  which approved aliases resolve. Allowed-candidate-ID validation, the
+  nonce-fenced untrusted-data framing, and the schema/model/rate-limit
+  contracts are all unchanged. `collection_items.notes` is still never sent
+  to any model (the curator load's new `personal_genres` column is additive
+  alongside it, not a replacement of the exclusion).
+- Displayed user/record text (Hebrew included) stays escaped by React;
+  `BidiText`/`isolate()` add bidirectional-text isolation only — no
+  `dangerouslySetInnerHTML` was introduced anywhere in this work.
+- No RLS policy change, no migration, no per-user write to the shared
+  `releases` row (catalog genres stay read-only to the browser; only
+  `collection_items.personal_genres`, already owner-write, gained
+  canonicalization at the write boundary).
 
 ## External API Safety
 

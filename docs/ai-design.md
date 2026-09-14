@@ -1,7 +1,8 @@
 # AI Design
 
-Last updated: 2026-09-07 (Milestone 12). Covers the as-built AI behaviour
-through Milestone 11.
+Last updated: 2026-09-14 (Hebrew & Multilingual Record Support, spec 0015,
+COMPLETE). Covers the as-built AI behaviour through Milestone 11 plus the
+Hebrew/multilingual genre and vision prompt additions below.
 
 AI should add cognition where deterministic software cannot naturally understand the user's intent or a record cover. It must not replace normal application logic.
 
@@ -97,6 +98,48 @@ blacklist:
 - All Milestone 9/10 ownership and allowed-candidate-ID guarantees are
   unchanged.
 
+### Hebrew & multilingual genre handling (spec 0015)
+
+Two-level defense so the model is never trusted to canonicalize a genre:
+
+- **Level 1 (trusted prompt).** `INTENT_SYSTEM_PROMPT` and
+  `REFINEMENT_SYSTEM_PROMPT` instruct the model, when the user explicitly
+  names a genre, to copy it verbatim in the user's own wording and script —
+  never translate, never transliterate, never guess a genre in another
+  language or script. The model performs no genre translation,
+  transliteration, or canonicalization; explicitly named genre terms are
+  preserved in the user's wording/script, while normal intent extraction
+  still determines whether the request explicitly asked for a hard genre
+  constraint at all (as it always has, for any hard constraint).
+- **Level 2 (authoritative, deterministic).** After schema validation,
+  `normalizeCuratorIntent` runs every `includeGenres`/`excludeGenres` value
+  through `canonicalizeGenre` (`src/lib/genre/canonical.ts`) — the same
+  closed alias table Collection and Dashboard use for effective genres. This
+  is the sole canonicalization authority for a validated curator intent; it
+  runs whether or not the model preserved the user's wording, and it is a
+  normalization step of the same kind as the existing trim/lowercase/dedupe,
+  not a trust-boundary change. Ambiguous Hebrew `פאנק` is deliberately left
+  unmapped (ambiguous between "punk" and "funk") — an unknown/ambiguous genre
+  is never guessed, by the model or by the deterministic map.
+- The curator's owned-collection load now also selects
+  `collection_items.personal_genres` (additive; `notes` is still never
+  selected) so a personal-genre-only match survives the hard filter, closing
+  a gap `docs/decisions/0006`'s Milestone 10/11 design had explicitly
+  deferred. Candidate genres are the same canonical effective set as
+  Collection/Dashboard (spec 0015 §13).
+- `SELECTION_SYSTEM_PROMPT` writes each `reason` in the language of the
+  user's request, and copies artist/title verbatim from the candidate facts —
+  never translated or transliterated. Card facts (artist, title, year,
+  genres, rating, favorite, play data) still come only from the backend
+  candidate data, never from model text, so a translated model "fact" is
+  structurally ignored.
+- No schema, model, token-budget, rate-limit, allowed-ID-validation, or
+  nonce/untrusted-framing change. Unchanged Milestone 9 call shape: intent/
+  refinement extraction runs first; a recommendation-producing successful
+  flow then performs selection (exactly two provider calls); a no-match
+  stops after the first call with no selection call; an empty collection can
+  return before any provider call.
+
 ## Architecture Boundaries
 
 Do not use RAG or vector databases for the core product.
@@ -135,6 +178,17 @@ call is shaped defensively (no extra call, no runtime retry/fallback):
   `response_format` json_schema, all field-level output validation, the handler
   auth, the per-user rate limit (`MAX_RECOGNITIONS_PER_WINDOW = 10`), and the
   MIME + magic-byte + size validation are unchanged.
+
+**Original-script preservation (spec 0015 §15).** `RECOGNITION_SYSTEM_PROMPT`
+also instructs the model to report `artist`, `albumTitle`, `label`,
+`catalogNumber`, and each `visibleText` entry in the original script actually
+printed on the cover — never translate, never transliterate, and output Latin
+text for a field only when Latin text is what is actually printed for it. This
+is the only prompt change; the untrusted-image framing above is unchanged and
+precedes it, so a sleeve still has no authority beyond which script its own
+printed text is reported in. `RECOGNITION_JSON_SCHEMA`, the model, and the
+downstream catalog-query builder (`buildCatalogQueryFromRecognition`) are
+unchanged — they were already Unicode-safe.
 
 ## Conversation State
 

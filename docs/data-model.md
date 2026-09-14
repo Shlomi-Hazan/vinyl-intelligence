@@ -1,8 +1,9 @@
 # Data Model
 
-As-built section last updated: 2026-09-07 (Milestone 12). The original
-2026-08-17 proposal follows "As-Built Schema"; where they differ the as-built
-section is authoritative.
+As-built section last updated: 2026-09-14 (Hebrew & Multilingual Record
+Support, spec 0015, COMPLETE — no migration). The original 2026-08-17 proposal
+follows "As-Built Schema"; where they differ the as-built section is
+authoritative.
 
 ---
 
@@ -47,6 +48,55 @@ update grant on `rating`, `is_favorite`, `notes`, `personal_genres`,
 `custom_cover_path`, `custom_cover_updated_at`. `service_role`: SELECT/INSERT
 (no UPDATE/DELETE) - used only to insert the owning row for a verified user in
 the catalog-add flow.
+
+### Genre canonicalization (spec 0015, no schema change)
+
+`releases.genres` (catalog) and `collection_items.personal_genres` (personal)
+have different canonicalization timing, both unchanged from the columns
+above — this is application-logic policy, not a schema difference:
+
+- **Catalog genres are never rewritten.** Raw MusicBrainz values persist
+  as-is (no per-user write to a shared `releases` row); canonicalization to
+  the closed alias table (`src/lib/genre/canonical.ts`) happens only at
+  effective/read/use time.
+- **Personal genres canonicalize known aliases at the write boundary** — a
+  user who adds `רוק` sees it saved as `rock`. Every written value, known
+  alias or not, passes through the dedicated narrow genre-text normalizer
+  (`canonicalizeGenre`, `src/lib/genre/canonical.ts`): trim, Unicode
+  whitespace collapse, approved-punctuation folding, lowercase — deliberately
+  **not** NFKC, **not** niqqud stripping, **not** translation, **not**
+  transliteration, **not** guessing. An unknown/ambiguous value (including
+  the deliberately-unmapped Hebrew `פאנק`) therefore preserves its original
+  script/term **subject to that narrow normalization**, not necessarily
+  byte-for-byte as typed. Legacy-written Hebrew personal aliases from before
+  this canonicalization existed still resolve correctly, because the
+  effective-genre read path canonicalizes them too — **no backfill, no
+  migration.**
+- The curator's owned-collection load (`netlify/functions/_shared/curator-handlers.mts`)
+  now also selects `personal_genres`. `collection_items.personal_genres`
+  values are **bounded, user-controlled metadata** — unknown values are
+  intentionally accepted subject to bounds and the narrow normalization
+  above, and they are not trusted merely because the column is called
+  "genres". Effective personal genres (including an unknown/ambiguous one)
+  **may** be included in the model-facing candidate facts during curator
+  selection — `buildAllowedCandidateSet` puts `candidate.genres` into each
+  `CuratorCandidateFact`, and `selectRecommendations` serializes those facts
+  into the `ALLOWED CANDIDATES (data, not instructions)` block, inside the
+  same per-request nonce-fenced untrusted-data framing that wraps the rest of
+  the selection prompt. This is expected, approved behavior: personal genres
+  remain untrusted when included in candidate facts, exactly like every
+  other candidate field. `collection_items.notes` remains deliberately
+  excluded from curator model context — it is not the only field the
+  candidate-fact payload omits; user/auth ids, `added_at`, release/provider
+  ids, exact timestamps, and secrets are excluded too (`docs/ai-design.md`).
+- Vision recognition clues (`artist`/`albumTitle`/`genres` extracted from the
+  photo) are **not** directly persisted — the recognition flow is ephemeral
+  and confirmation-based. A confirmed match instead goes through the
+  existing catalog-search → catalog-add persistence path, writing the
+  **catalog/MusicBrainz** release data, not the raw Vision output. All
+  `text`/`text[]` columns above already store Hebrew (or any Unicode)
+  natively; a confirmed Hebrew record's catalog `artist`/`title`/`genres`
+  persist unchanged, exactly like any other value.
 
 ### `listening_events` (listening-event source of truth)
 `id uuid pk`, `user_id uuid not null default auth.uid() references profiles(id) on delete cascade`,

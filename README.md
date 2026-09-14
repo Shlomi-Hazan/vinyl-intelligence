@@ -28,6 +28,14 @@ Vinyl collectors often remember a mood, setting, decade, or feeling before they 
   covers, optional profile avatar (both in private webp-only Storage buckets)
 - `model_calls` telemetry (provider, feature, success, latency, tokens, error
   category) and a `/api/health` endpoint
+- Multilingual dynamic record content, Hebrew in particular — the application
+  **chrome stays English/LTR** (this is not a localization project): local
+  bidirectional-text isolation for dynamic fields, Hebrew-aware
+  niqqud-insensitive search comparison, deterministic mixed-script (Latin,
+  then Hebrew) alphabetical sorting, one canonical Hebrew/English genre-alias
+  taxonomy shared by Collection/Dashboard/VIN, Hebrew-aware VIN constraints
+  and reasons, and AI cover recognition that preserves the original script
+  printed on the sleeve (`docs/specs/0015-hebrew-multilingual-record-support.md`)
 
 ## Architecture Summary
 
@@ -361,6 +369,13 @@ Never commit `.env` or local credentials. This repository tracks only a safe
 - An unmounted legacy panel subtree (`CollectionPanel`, `CatalogPanel`,
   `CatalogPhotoPanel`, `CollectionItemCard`, and related files) is retained as
   optional future cleanup; it is not reachable from any route.
+- The application UI is **not** fully localized into Hebrew or any other
+  language — it is not a bilingual application. Only user- and record-owned
+  dynamic content (titles, artists, genres, notes, VIN reasons) is
+  multilingual-aware; the app chrome, navigation, and static copy remain
+  English/LTR by design (`docs/specs/0015-hebrew-multilingual-record-support.md`).
+  No transliteration and no cross-script artist/title aliasing (e.g.
+  `Shalom Hanoch` is not treated as equivalent to `שלום חנוך`).
 
 ## Documentation
 
