@@ -12,6 +12,14 @@ import {
 import { buildSearchKey } from '../lib/i18n/searchKey.ts'
 import { compareNames } from '../lib/i18n/collator.ts'
 import { canonicalizeGenre } from '../lib/genre/canonical.ts'
+import type { ListeningSummary } from './listeningSummary.ts'
+
+/**
+ * Mutually exclusive listening-recency filter (spec 0016 Finding A / §21.3):
+ * `never` = zero listening events; `stale` = never played OR last played
+ * strictly before the 30-day cutoff. Exactly one of the three is active.
+ */
+export type ListeningFilter = 'none' | 'never' | 'stale'
 
 export type CollectionFilters = {
   /** Free text; case-insensitive substring of artist OR title; trimmed. */
@@ -22,6 +30,10 @@ export type CollectionFilters = {
   decade: string
   /** e.g. "jazz"; case-insensitive membership in release.genres. */
   genre: string
+  /** `rating >= minRating`; `0` = no filter. Unrated never matches > 0. */
+  minRating: number
+  /** See `ListeningFilter`. */
+  listening: ListeningFilter
 }
 
 export type CollectionSort =
@@ -30,12 +42,17 @@ export type CollectionSort =
   | 'album-asc'
   | 'year-desc'
   | 'year-asc'
+  | 'rating-desc'
+  | 'rating-asc'
+  | 'least-recently-played'
 
 export const EMPTY_FILTERS: CollectionFilters = {
   search: '',
   year: '',
   decade: '',
   genre: '',
+  minRating: 0,
+  listening: 'none',
 }
 
 export const DEFAULT_SORT: CollectionSort = 'recently-added'
@@ -48,7 +65,21 @@ export const COLLECTION_SORTS: { value: CollectionSort; label: string }[] = [
   { value: 'album-asc', label: 'Album alphabetical' },
   { value: 'year-desc', label: 'Year (newest)' },
   { value: 'year-asc', label: 'Year (oldest)' },
+  { value: 'rating-desc', label: 'Rating (highest)' },
+  { value: 'rating-asc', label: 'Rating (lowest)' },
+  { value: 'least-recently-played', label: 'Least recently played' },
 ]
+
+/**
+ * Spec 0016 §21.3: the "not played in the last 30 days" boundary is inherited
+ * from the curator's already-approved `avoidRecentlyPlayed` contract
+ * (`src/lib/curator/candidates.ts` `DEFAULT_RECENT_DAYS`) and the Dashboard's
+ * `PLAYED_WINDOW_DAYS` - same value, declared independently here so this
+ * module stays dependency-free of the curator and Dashboard feature
+ * boundaries (plan 016 PR B).
+ */
+const NOT_PLAYED_RECENTLY_DAYS = 30
+const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 export function decadeLabel(year: number): string {
   return `${Math.floor(year / 10) * 10}s`
@@ -103,6 +134,8 @@ export function hasActiveFilters(filters: CollectionFilters): boolean {
     || filters.year.trim().length > 0
     || filters.decade.length > 0
     || filters.genre.length > 0
+    || filters.minRating > 0
+    || filters.listening !== 'none'
   )
 }
 
@@ -184,6 +217,68 @@ function matchesGenre(
   return itemGenres(item).includes(genre)
 }
 
+/** `minRating <= 0` means no filter. Unrated (`rating: null`) never matches
+ * a positive threshold - approved UI has no "any including unrated" mode. */
+function matchesMinRating(
+  item: CollectionItemWithRelease,
+  minRating: number,
+): boolean {
+  if (minRating <= 0) {
+    return true
+  }
+
+  return item.rating !== null && item.rating >= minRating
+}
+
+/**
+ * Spec 0016 §21.3 exact boundary: a record with no events, or whose events
+ * all have an unparseable timestamp, is stale (never played qualifies). A
+ * record last played strictly before the cutoff is stale. A record last
+ * played AT OR AFTER the cutoff is recent, not stale - exact complement of
+ * the curator's `avoidRecentlyPlayed` contract (`last >= cutoff` -> recent).
+ */
+function isStale(summary: ListeningSummary | undefined, now: number): boolean {
+  // Never played (no summary, or zero events) is stale by definition.
+  if (!summary || summary.count === 0) {
+    return true
+  }
+
+  // Defensive: events exist but none had a parseable timestamp. Do not claim
+  // staleness without evidence of when the last play actually was.
+  if (summary.lastListenedAt === null) {
+    return false
+  }
+
+  const last = new Date(summary.lastListenedAt).getTime()
+
+  if (!Number.isFinite(last)) {
+    return false
+  }
+
+  const cutoff = now - NOT_PLAYED_RECENTLY_DAYS * MS_PER_DAY
+
+  return last < cutoff
+}
+
+function matchesListening(
+  item: CollectionItemWithRelease,
+  listening: ListeningFilter,
+  listeningByItem: ReadonlyMap<string, ListeningSummary>,
+  now: number,
+): boolean {
+  if (listening === 'none') {
+    return true
+  }
+
+  const summary = listeningByItem.get(item.id)
+
+  if (listening === 'never') {
+    return !summary || summary.count === 0
+  }
+
+  return isStale(summary, now)
+}
+
 function yearSort(
   a: CollectionItemWithRelease,
   b: CollectionItemWithRelease,
@@ -208,10 +303,68 @@ function yearSort(
   return direction === 'asc' ? ay - by : by - ay
 }
 
+/**
+ * Approved (spec 0016 §21.2): unrated (`rating: null`) records always sort
+ * last, in BOTH directions - never mixed in among rated records regardless
+ * of `direction`.
+ */
+function ratingSort(
+  a: CollectionItemWithRelease,
+  b: CollectionItemWithRelease,
+  direction: 'asc' | 'desc',
+): number {
+  const ar = a.rating
+  const br = b.rating
+
+  if (ar === null && br === null) {
+    return 0
+  }
+
+  if (ar === null) {
+    return 1
+  }
+
+  if (br === null) {
+    return -1
+  }
+
+  return direction === 'asc' ? ar - br : br - ar
+}
+
+/**
+ * Approved (spec 0016 §21.4): never-played records first, then played
+ * records ordered from the oldest `lastListenedAt` to the newest - mirrors
+ * the Dashboard `rediscover` convention (`lastMs ?? -Infinity`, ascending).
+ * When `listeningByItem` is empty (listening data not yet ready - see
+ * `CollectionBrowser`), every item resolves to the same `-Infinity` value,
+ * so this correctly becomes a no-op (stable index tiebreak) rather than
+ * pretending an unknown history is known.
+ */
+function leastRecentlyPlayedSort(
+  a: CollectionItemWithRelease,
+  b: CollectionItemWithRelease,
+  listeningByItem: ReadonlyMap<string, ListeningSummary>,
+): number {
+  const aVal = lastListenedMs(listeningByItem.get(a.id))
+  const bVal = lastListenedMs(listeningByItem.get(b.id))
+  return aVal - bVal
+}
+
+function lastListenedMs(summary: ListeningSummary | undefined): number {
+  if (!summary || summary.lastListenedAt === null) {
+    return Number.NEGATIVE_INFINITY
+  }
+
+  const ms = new Date(summary.lastListenedAt).getTime()
+
+  return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY
+}
+
 function compareBySort(
   a: CollectionItemWithRelease,
   b: CollectionItemWithRelease,
   sort: CollectionSort,
+  listeningByItem: ReadonlyMap<string, ListeningSummary>,
 ): number {
   switch (sort) {
     case 'artist-asc':
@@ -222,6 +375,12 @@ function compareBySort(
       return yearSort(a, b, 'desc')
     case 'year-asc':
       return yearSort(a, b, 'asc')
+    case 'rating-desc':
+      return ratingSort(a, b, 'desc')
+    case 'rating-asc':
+      return ratingSort(a, b, 'asc')
+    case 'least-recently-played':
+      return leastRecentlyPlayedSort(a, b, listeningByItem)
     case 'recently-added':
     default:
       return 0
@@ -232,11 +391,19 @@ function compareBySort(
  * Applies the filters (logical AND) then the sort. The incoming array is
  * assumed to already be in "recently added" order (added_at desc, id desc);
  * that original position is the deterministic tiebreak for every sort.
+ *
+ * `listeningByItem`/`now` are optional so every pre-existing call site
+ * (none of which touch rating/listening) keeps compiling unchanged; the
+ * caller must pass a real map + `now` to get real listening-based
+ * filtering/sorting (`CollectionBrowser` gates this on the listening-events
+ * load phase - see spec 0016 Finding A / §21).
  */
 export function applyCollectionQuery(
   items: CollectionItemWithRelease[],
   filters: CollectionFilters,
   sort: CollectionSort,
+  listeningByItem: ReadonlyMap<string, ListeningSummary> = new Map(),
+  now: number = Date.now(),
 ): CollectionItemWithRelease[] {
   // Comparison-only search key of the raw query (spec 0015 §7). The raw
   // `filters.search` string is untouched - it stays in the URL and the input.
@@ -254,11 +421,13 @@ export function applyCollectionQuery(
         matchesSearch(item, needle)
         && matchesYear(item, year)
         && matchesDecade(item, decade)
-        && matchesGenre(item, genre),
+        && matchesGenre(item, genre)
+        && matchesMinRating(item, filters.minRating)
+        && matchesListening(item, filters.listening, listeningByItem, now),
     )
 
   filtered.sort((a, b) => {
-    const primary = compareBySort(a.item, b.item, sort)
+    const primary = compareBySort(a.item, b.item, sort, listeningByItem)
     return primary !== 0 ? primary : a.index - b.index
   })
 

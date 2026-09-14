@@ -19,8 +19,12 @@ import {
   yearFilterIsInvalid,
   type CollectionFilters,
   type CollectionSort,
+  type ListeningFilter,
 } from './collectionQuery.ts'
-import { summarizeListeningForItem } from './listeningSummary.ts'
+import {
+  buildListeningSummaryMap,
+  summarizeListeningForItem,
+} from './listeningSummary.ts'
 import {
   addListeningEvent,
   type ListeningEventRecord,
@@ -36,6 +40,10 @@ type CollectionView = 'grid' | 'list'
 
 const VIEW_STORAGE_KEY = 'vi:collection:view'
 const SORT_VALUES = new Set<string>(COLLECTION_SORTS.map((s) => s.value))
+// Approved UI (spec 0016 §21.1): "Any rating" / "3+" / "4+" / "5+" only - no
+// exact-rating-only mode. Any other `?minRating=` value falls back to 0 (no
+// filter).
+const MIN_RATING_VALUES = new Set([3, 4, 5])
 
 function readStoredView(): CollectionView {
   try {
@@ -115,10 +123,24 @@ export function CollectionBrowser({
   const sort: CollectionSort = SORT_VALUES.has(sortParam)
     ? (sortParam as CollectionSort)
     : DEFAULT_SORT
+  // An out-of-set value (e.g. a hand-crafted `?minRating=2`) falls back
+  // safely to 0 - no filter (spec 0016 §21.5/§F).
+  const minRatingRaw = Number(params.get('minRating'))
+  const minRating = MIN_RATING_VALUES.has(minRatingRaw) ? minRatingRaw : 0
+  const listeningRaw = params.get('listening')
+  const listening: ListeningFilter =
+    listeningRaw === 'never' || listeningRaw === 'stale' ? listeningRaw : 'none'
 
   const filters: CollectionFilters = useMemo(
-    () => ({ search: q, genre: genreParam, decade: decadeParam, year: yearParam }),
-    [q, genreParam, decadeParam, yearParam],
+    () => ({
+      search: q,
+      genre: genreParam,
+      decade: decadeParam,
+      year: yearParam,
+      minRating,
+      listening,
+    }),
+    [q, genreParam, decadeParam, yearParam, minRating, listening],
   )
 
   const setFilterParams = useCallback(
@@ -135,12 +157,27 @@ export function CollectionBrowser({
       if (f.genre) p.set('genre', f.genre)
       if (f.decade) p.set('decade', f.decade)
       if (f.year.trim()) p.set('year', f.year.trim())
+      if (f.minRating > 0) p.set('minRating', String(f.minRating))
+      if (f.listening !== 'none') p.set('listening', f.listening)
       if (fav) p.set('fav', '1')
       if (s !== DEFAULT_SORT) p.set('sort', s)
       setParams(p, { replace: true })
     },
     [filters, sort, favoritesOnly, setParams],
   )
+
+  // Listening-events load phase gates BOTH the listening filter chips
+  // (disabled while not ready) and the actual query (an unknown/errored
+  // state is never treated as never-played/stale - spec 0016 §D). Fixed at
+  // mount so "least recently played" stays stable within a session and
+  // render stays pure (mirrors DashboardPage's `now`).
+  const eventsReady = eventsStatus === 'ready'
+  const [now] = useState(() => Date.now())
+  const listeningByItem = useMemo(
+    () => (eventsReady ? buildListeningSummaryMap(events) : new Map()),
+    [events, eventsReady],
+  )
+  const effectiveListening: ListeningFilter = eventsReady ? listening : 'none'
 
   const chooseView = useCallback((next: CollectionView) => {
     setView(next)
@@ -155,9 +192,10 @@ export function CollectionBrowser({
   const genres = useMemo(() => availableGenres(items), [items])
 
   const visible = useMemo(() => {
-    const queried = applyCollectionQuery(items, filters, sort)
+    const queryFilters: CollectionFilters = { ...filters, listening: effectiveListening }
+    const queried = applyCollectionQuery(items, queryFilters, sort, listeningByItem, now)
     return favoritesOnly ? queried.filter((i) => i.is_favorite) : queried
-  }, [items, filters, sort, favoritesOnly])
+  }, [items, filters, effectiveListening, sort, listeningByItem, now, favoritesOnly])
 
   const anyFilter = hasActiveFilters(filters) || favoritesOnly
   const yearInvalid = yearFilterIsInvalid(filters.year)
@@ -268,6 +306,21 @@ export function CollectionBrowser({
         ) : null}
 
         <Select
+          aria-label="Minimum rating"
+          value={String(filters.minRating)}
+          onChange={(e) =>
+            setFilterParams({
+              filters: { ...filters, minRating: Number(e.target.value) },
+            })
+          }
+        >
+          <option value="0">Any rating</option>
+          <option value="3">3★+</option>
+          <option value="4">4★+</option>
+          <option value="5">5★+</option>
+        </Select>
+
+        <Select
           aria-label="Sort"
           value={sort}
           onChange={(e) =>
@@ -288,6 +341,45 @@ export function CollectionBrowser({
           onClick={() => setFilterParams({ favoritesOnly: !favoritesOnly })}
         >
           <Icon name="heart" size={13} /> Favourites
+        </button>
+
+        {/* Mutually exclusive (spec 0016 §21.3): selecting one clears the
+            other, since `listening` is a single field. Disabled while
+            listening-event data is not ready - an unknown state must never
+            be shown as satisfying either filter. */}
+        <button
+          type="button"
+          className="vi-chip"
+          aria-pressed={listening === 'never'}
+          disabled={!eventsReady}
+          title={eventsReady ? undefined : 'Listening history is loading'}
+          onClick={() =>
+            setFilterParams({
+              filters: {
+                ...filters,
+                listening: listening === 'never' ? 'none' : 'never',
+              },
+            })
+          }
+        >
+          Never played
+        </button>
+        <button
+          type="button"
+          className="vi-chip"
+          aria-pressed={listening === 'stale'}
+          disabled={!eventsReady}
+          title={eventsReady ? undefined : 'Listening history is loading'}
+          onClick={() =>
+            setFilterParams({
+              filters: {
+                ...filters,
+                listening: listening === 'stale' ? 'none' : 'stale',
+              },
+            })
+          }
+        >
+          Not played in 30 days
         </button>
 
         <div className="vi-filterbar__end">

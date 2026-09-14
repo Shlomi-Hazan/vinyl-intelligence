@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { formatListenedAt, summarizeListeningForItem } from './listeningSummary.ts'
+import {
+  buildListeningSummaryMap,
+  formatListenedAt,
+  summarizeListeningForItem,
+} from './listeningSummary.ts'
 import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
 
 function event(overrides: Partial<ListeningEventRecord> = {}): ListeningEventRecord {
@@ -55,6 +59,61 @@ describe('summarizeListeningForItem', () => {
     const summary = summarizeListeningForItem(events, 'item-1')
     expect(summary.count).toBe(2)
     expect(summary.lastListenedAt).toBe('2026-08-02T00:00:00.000Z')
+  })
+})
+
+describe('buildListeningSummaryMap (spec 0016 Finding A)', () => {
+  it('an item with no events is absent from the map', () => {
+    const map = buildListeningSummaryMap([
+      event({ id: 'a', collection_item_id: 'item-2' }),
+    ])
+    expect(map.has('item-1')).toBe(false)
+  })
+
+  it('matches summarizeListeningForItem for every item, in one pass', () => {
+    const events = [
+      event({ id: 'a', collection_item_id: 'item-1', listened_at: '2026-08-01T00:00:00.000Z' }),
+      event({ id: 'b', collection_item_id: 'item-1', listened_at: '2026-08-10T00:00:00.000Z' }),
+      event({ id: 'c', collection_item_id: 'item-2', listened_at: '2026-08-05T00:00:00.000Z' }),
+    ]
+    const map = buildListeningSummaryMap(events)
+
+    expect(map.get('item-1')).toEqual(
+      summarizeListeningForItem(events, 'item-1'),
+    )
+    expect(map.get('item-2')).toEqual(
+      summarizeListeningForItem(events, 'item-2'),
+    )
+  })
+
+  it('is order-independent, like summarizeListeningForItem', () => {
+    const ascending = [
+      event({ id: 'a', listened_at: '2026-08-01T00:00:00.000Z' }),
+      event({ id: 'b', listened_at: '2026-08-10T00:00:00.000Z' }),
+      event({ id: 'c', listened_at: '2026-08-05T00:00:00.000Z' }),
+    ]
+    const shuffled = [ascending[2], ascending[0], ascending[1]]
+
+    expect(buildListeningSummaryMap(ascending).get('item-1')?.lastListenedAt).toBe(
+      '2026-08-10T00:00:00.000Z',
+    )
+    expect(buildListeningSummaryMap(shuffled).get('item-1')?.lastListenedAt).toBe(
+      '2026-08-10T00:00:00.000Z',
+    )
+  })
+
+  it('ignores an unparseable timestamp when choosing the newest, but still counts it', () => {
+    const events = [
+      event({ id: 'a', listened_at: 'not-a-date' }),
+      event({ id: 'b', listened_at: '2026-08-02T00:00:00.000Z' }),
+    ]
+    const summary = buildListeningSummaryMap(events).get('item-1')
+    expect(summary?.count).toBe(2)
+    expect(summary?.lastListenedAt).toBe('2026-08-02T00:00:00.000Z')
+  })
+
+  it('an empty events array produces an empty map', () => {
+    expect(buildListeningSummaryMap([]).size).toBe(0)
   })
 })
 
