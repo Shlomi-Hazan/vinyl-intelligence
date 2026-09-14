@@ -7,6 +7,7 @@ import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import { RecognitionError, type CoverRecognition } from '../lib/vision/types.ts'
 import type { CatalogCandidate } from '../lib/catalog/types.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
+import { textIgnoringBidi } from '../test/i18n.ts'
 
 const recognizeCover = vi.fn()
 const searchCatalog = vi.fn()
@@ -279,8 +280,21 @@ describe('ScanPanel', () => {
         dataTransfer: { files: [png()], types: ['Files'] },
       })
       expect(validateImageFile).toHaveBeenCalledTimes(1)
-      expect(screen.getByText('Selected: cover.png')).toBeInTheDocument()
+      expect(screen.getByText(textIgnoringBidi('Selected: cover.png'))).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Analyse cover' })).toBeInTheDocument()
+    })
+
+    it('isolates a Hebrew selected filename (PR #26 correction)', () => {
+      vi.mocked(validateImageFile).mockImplementation(() => {})
+      setup()
+      const hebrewFile = new File(['x'], 'מחכים למשיח.jpg', { type: 'image/jpeg' })
+      fireEvent.drop(dropZone(), {
+        dataTransfer: { files: [hebrewFile], types: ['Files'] },
+      })
+      const selected = screen.getByText(textIgnoringBidi('Selected: מחכים למשיח.jpg'))
+      const FSI = String.fromCodePoint(0x2068)
+      const PDI = String.fromCodePoint(0x2069)
+      expect(selected.textContent).toBe(`Selected: ${FSI}מחכים למשיח.jpg${PDI}`)
     })
 
     it('dropping an invalid file enters the existing validation error state', () => {
