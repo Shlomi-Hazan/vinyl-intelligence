@@ -266,6 +266,37 @@ describe('DashboardPage', () => {
     )
   })
 
+  it('a rail card locks the Hebrew title selector contract (readability fix, post-PR3)', async () => {
+    loadCollection.mockResolvedValue([
+      makeItem('01', {
+        release: {
+          id: 'rel-01',
+          artist: 'שלום חנוך',
+          title: 'מחכים למשיח',
+          release_year: 1985,
+          label: null,
+          catalog_number: null,
+          country: null,
+          format: null,
+          genres: [],
+          updated_at: '2026-08-01T00:00:00.000Z',
+        },
+      }),
+    ])
+    loadListeningEvents.mockResolvedValue([])
+    const { container } = renderApp({ client: authedClient(), route: '/dashboard' })
+    await screen.findAllByText('מחכים למשיח')
+
+    // `.vi-albumcard__title bdi[lang='he']` (components.css) depends on this
+    // exact shape - a rail card wraps the title's <bdi> in a classed <span>,
+    // unlike the Collection grid where the class sits on the <bdi> itself.
+    const wrapper = container.querySelector('.vi-albumcard__title bdi')
+    expect(wrapper?.textContent).toBe('מחכים למשיח')
+    expect(wrapper?.tagName).toBe('BDI')
+    expect(wrapper?.getAttribute('lang')).toBe('he')
+    expect(container.querySelector('bdi.vi-albumcard__title')).toBeNull()
+  })
+
   it('isolates a Hebrew display name in the "Welcome back" greeting (PR 3)', async () => {
     loadCollection.mockResolvedValue([])
     loadListeningEvents.mockResolvedValue([])

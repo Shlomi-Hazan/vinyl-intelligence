@@ -532,6 +532,26 @@ span.vi-rating__star {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/*
+ * Human production acceptance (post-PR3): --font-display (Fraunces) has no
+ * Hebrew glyphs, so a Hebrew-dominant fallback-artwork title/artist falls
+ * through to a generic OS serif substitute that reads materially smaller and
+ * thinner than the Latin Fraunces text beside it. Route Hebrew-dominant runs
+ * to --font-sans instead - it falls through to system-ui / -apple-system /
+ * Segoe UI / Roboto, which carry a proper, well-hinted native Hebrew face at
+ * a comfortable weight - and bump size/weight to visually match the Latin
+ * appearance. Latin/mixed/neutral titles (no `lang="he"`) are untouched.
+ */
+bdi.vi-art__title[lang='he'] {
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+bdi.vi-art__artist[lang='he'] {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
 
 .vi-album-grid {
   display: grid;
@@ -582,6 +602,22 @@ span.vi-rating__star {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/*
+ * Human production acceptance (post-PR3): Hebrew Collection/Grid titles read
+ * materially smaller/thinner than Latin Fraunces titles - Fraunces has no
+ * Hebrew glyphs, so the whole --font-display stack falls through to a
+ * generic OS serif substitute. --font-sans falls through to system-ui /
+ * -apple-system / Segoe UI / Roboto instead, which carry a proper Hebrew
+ * face at a comfortable weight. `.vi-albumcard__title` is the `<bdi>` itself
+ * on the Collection grid card (the truncation container IS the isolate run)
+ * but wraps a plain, un-classed `<bdi>` on the Dashboard rails - both real
+ * mounted shapes are covered. Latin/mixed/neutral titles are untouched.
+ */
+:is(bdi.vi-albumcard__title, .vi-albumcard__title bdi)[lang='he'] {
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 .vi-albumcard__meta {
   font-size: var(--fs-meta);
