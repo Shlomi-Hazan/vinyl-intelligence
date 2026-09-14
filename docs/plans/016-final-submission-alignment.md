@@ -1,6 +1,7 @@
 # 016 Final Submission Alignment (Implementation Plan)
 
-Status: **PLANNING ONLY — not started.**
+Status: **APPROVED FOR IMPLEMENTATION (2026-09-14) — implementation not
+started.** The seven §21 decisions this plan depends on are human-approved.
 Spec: `docs/specs/0016-final-submission-alignment.md`.
 Baseline `main`: `7ddd5b08ef9b0ada272ae02a97626dbf8423f142` (PR #28).
 
@@ -25,20 +26,20 @@ index-entry line for spec 0016 (adding the new artifact to the index is not
 entries in that same file, which this PR does not touch).
 
 **Explicitly not in this PR:** no runtime file, no test file, no reconciliation
-of any of Findings C–H beyond the one new index line, no resolution of the
-§21 open decisions (those require a human answer before PR B/C begin).
+of any of Findings C–H beyond the one new index line.
 
 **Gate:** documentation-only gate (§"Gates" below, PR-A row).
 
-**Done when:** independently reviewed, merged to `main`. Human answers the
-seven §21 open decisions (in this PR's review or separately) before PR B
-implementation begins.
+**Done when:** independently reviewed, merged to `main`. The seven §21
+decisions are human-approved as of 2026-09-14 (recorded in spec 0016 §21);
+PR B may begin once PR A is merged.
 
 ---
 
 ## PR B — Collection intent completion (Finding A)
 
-**Depends on:** PR A merged; §21 decisions 1–5 answered by the human.
+**Depends on:** PR A merged. (§21 decisions 1–5 are already human-approved —
+recorded 2026-09-14, spec 0016 §21.)
 
 ### Exact likely files
 
@@ -78,10 +79,13 @@ Runtime:
 Tests:
 - `src/collection/collectionQuery.test.ts` — new cases for the rating
   filter/sort and listening filter/sort, using fixed fixtures (like the
-  existing tests already do), including: never-played sorts as "most stale";
-  a record played exactly at the 30-day boundary (decide inclusive/exclusive
-  and test it); combining a new filter with an existing one (e.g. rating +
-  genre); every existing test continuing to pass unmodified.
+  existing tests already do), including: never-played sorts as "most
+  stale"; the approved 30-day boundary is exact, not an implementation
+  choice — `lastListenedAt < cutoff` → stale, `lastListenedAt >= cutoff` →
+  recent (spec §21.3) — test a record exactly at the cutoff, immediately
+  before it, and immediately after it; combining a new filter with an
+  existing one (e.g. rating + genre); every existing test continuing to
+  pass unmodified.
 - `src/collection/CollectionBrowser.test.tsx` — new mounted tests for: the
   new sort options appear and are selectable; the new toggle(s) appear,
   toggle, and update the URL; "never played"/"not played recently" never
@@ -104,10 +108,11 @@ Tests:
 
 - `eventsStatus === 'loading'` and `'error'` must never produce a false
   "never played."
-- A record with `rating: null` under the rating sort (decide: sorts last,
-  consistent with the existing `yearSort`'s "unknown always sorts last"
-  convention — recommend reusing that convention here for consistency; flag
-  for human confirmation if a different placement is wanted).
+- A record with `rating: null` under the rating sort — **approved:** unrated
+  records always sort last, in both "Rating (highest)" and "Rating
+  (lowest)" (spec 0016 §21.2, human-approved 2026-09-14; consistent with the
+  existing `yearSort`'s "unknown always sorts last" convention). Test both
+  directions explicitly.
 - A record played exactly at the 30-day cutoff timestamp — this boundary is
   **not** an implementation guess: it follows the curator's existing,
   already-approved `avoidRecentlyPlayed` contract (spec 0016 §21.3) — a play
@@ -165,8 +170,9 @@ confirms acceptance — PR C does not start before that.**
 
 ## PR C — Duplicate-copy UX restoration (Finding B)
 
-**Depends on:** PR B merged, deployed, and human-accepted; §21 decisions 6–7
-answered by the human.
+**Depends on:** PR B independently reviewed, merged, deployed, and
+human-accepted. (§21 decisions 6–7 are already human-approved — recorded
+2026-09-14, spec 0016 §21.)
 
 ### Exact likely files
 
@@ -286,7 +292,9 @@ confirms acceptance — PR D does not start before that.**
 
 ## PR D — Final repository reconciliation / closeout
 
-**Depends on:** PR B and PR C both merged, deployed, and human-accepted.
+**Depends on:** PR C independently reviewed, merged, deployed, and
+human-accepted (which itself required PR B's own acceptance first — both
+runtime PRs are complete and accepted before PR D begins).
 
 **Documentation only.** No runtime, test, CSS, config, or dependency file.
 
@@ -367,12 +375,21 @@ this plan; this closes the remediation.
 
 ## Gates (reference table)
 
-| PR | Runtime? | Tests? | Migration? | Provider calls? | Deploy required? |
+| PR | Runtime? | Tests? | Migration? | Automated provider calls? | Deploy required? |
 |---|---|---|---|---|---|
 | A (this) | no | no | no | no | no |
 | B | yes (`src/collection/*`) | yes, mocked/fixture | no | no | yes, before human acceptance |
 | C | yes (`src/catalog/*`) | yes, mocked/fixture | no | no | yes, before human acceptance |
 | D | no | no | no | no | no |
+
+**Automated provider calls are zero for every PR, including PR B and PR C —
+implementation and every automated test/gate above use only mocks/fixtures.**
+This is distinct from *human production acceptance*, where PR C is
+intentionally not provider-free: normal MusicBrainz calls (Discover and Scan
+already make them today) plus exactly one bounded real Vision recognition for
+the Scan acceptance scenario are allowed/expected, per spec §16 — no curator
+call is part of PR C's acceptance. PR B's human acceptance requires no
+AI/model call of any kind.
 
 ## Sequencing (restated for an executing agent)
 

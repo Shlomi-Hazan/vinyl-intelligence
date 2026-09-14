@@ -1,6 +1,8 @@
 # 0016 Final Submission Alignment (Specification)
 
-Status: **PLANNING ONLY — not started.** Post-closeout remediation. Plan:
+Status: **APPROVED FOR IMPLEMENTATION (2026-09-14) — implementation not
+started.** The seven decisions in §21 are human-approved; Findings A–H are
+not yet fixed. Post-closeout remediation. Plan:
 `docs/plans/016-final-submission-alignment.md`. No decision record — this is
 narrow remediation, not a new architecture/product decision (§3).
 
@@ -233,7 +235,7 @@ the fix is consistency, not correction of behavior.
 **Collection (Finding A).** A logged-in user can, from the existing
 Collection view, without navigating away or waiting on a network request:
 
-- Sort by rating (exact direction(s): see §21 open decision).
+- Sort by rating, both directions, unrated last in both (§21.2).
 - Filter to records that have never been played, **or**, mutually
   exclusively, to records that are stale (never played, or last played
   strictly before the 30-day cutoff — see §21.3) — never both listening
@@ -282,10 +284,12 @@ layer and the existing catalog-add client call:
   `src/collection/CollectionBrowser.tsx`, and their tests only. No new data
   source; `events`/`eventsStatus`/`rating` are already loaded and passed in.
 - Finding B: `src/catalog/DiscoverPanel.tsx`, `src/catalog/ScanPanel.tsx`, a
-  new small shared confirmation helper, and their tests. The existing
-  `addCatalogReleaseToCollection` client call and `POST /api/catalog/add`
-  backend function are reused unchanged — this is a frontend UX gate change,
-  not a new backend capability.
+  tiny shared **pure** ownership helper (§21.7 — ownership *semantics*
+  shared; confirmation/dialog *state* stays local to each of
+  `DiscoverPanel`/`ScanPanel`, no shared stateful abstraction), and their
+  tests. The existing `addCatalogReleaseToCollection` client call and
+  `POST /api/catalog/add` backend function are reused unchanged — this is a
+  frontend UX gate change, not a new backend capability.
 
 No other runtime surface (Dashboard, History, Settings, Album Detail, the
 curator, Vision) is touched by Findings A or B.
@@ -549,8 +553,11 @@ STOP and return to human approval if implementation discovers:
 - Discover and Scan's existing candidate-rendering markup cannot both host
   the new state without a broader refactor than "add one state, one
   affordance, one dialog."
-- Any of the §21 open UX decisions was silently resolved by a prior
-  agent/session without a recorded human answer.
+- Implementation discovers a UX/behavior ambiguity **not** already settled by
+  the §21 approved decision contract — it is resolved by a recorded human
+  answer before proceeding, never silently chosen. (The seven §21 decisions
+  themselves are already human-approved, 2026-09-14, and are not re-opened
+  by this condition.)
 
 ## 19. Historical-artifact preservation rules
 
@@ -576,67 +583,64 @@ absorbed into it), and the two real product-intent gaps (Findings A and B)
 closed with the same reviewed-PR, human-accepted discipline as every other
 milestone in this repository.
 
-## 21. Open decisions requiring human approval before PR B/C implementation begins
+## 21. Approved decision contract (human-approved 2026-09-14)
 
-These are **not** resolved by this spec. A recommendation is proposed for
-each, grounded in an existing convention already in this codebase, but none
-should be treated as approved until the human confirms.
+**Human-approved: 2026-09-14.** All seven decisions below are now
+**APPROVED FOR IMPLEMENTATION**. Approval covers the decision shape and
+semantics recorded here — it does not itself constitute implementation.
+**Implementation has not started; Findings A–H are not fixed by this
+approval; PR B and PR C remain future sequential implementation work.** The
+rationale originally proposed for each decision is preserved below so the
+approval is auditable, not just asserted.
 
-1. **Exact rating filter shape.** *Proposed:* a minimum-rating threshold
-   (`rating >= N`), mirroring the curator's existing `minRating` field
-   exactly (same semantics, same name if reused as a query param) — not an
-   exact-rating-only filter. *Needs approval.*
-2. **Exact rating sort direction(s).** *Proposed:* two sort entries, "Rating
+1. **Rating filter — APPROVED.** A minimum-rating threshold (`rating >= N`),
+   mirroring the curator's existing `minRating` field exactly. UI options:
+   "Any rating," "3★+," "4★+," "5★+." No exact-rating-only mode. URL
+   parameter: `?minRating=N`.
+2. **Rating sort — APPROVED.** Both directions are provided: "Rating
    (highest)" and "Rating (lowest)," mirroring the existing
-   `year-desc`/`year-asc` two-entry convention rather than one bidirectional
-   toggle. *Needs approval.*
-3. **Exact listening-filter labels and shape.** *Proposed:* two toggle
-   affordances styled like the existing `favoritesOnly` chip — "Never
-   played" and "Not played in 30 days" — but **mutually exclusive**: exactly
-   one of `{ none, never, stale }` is active at a time, and selecting one
-   chip clears the other (never both active together). Exact semantics,
-   derived from the already-approved curator "recently played" contract
-   (not left as an open guess):
-   - `never` — `count === 0` (never played, per
-     `summarizeListeningForItem`).
-   - `stale` — a record qualifies when it has never been played, **or**
-     when `lastListenedAt` is strictly before the 30-day cutoff (cutoff =
-     now minus 30 days). A play exactly at the cutoff timestamp is still
-     "recently played" and does **not** qualify as stale. This is the exact
-     complement of the curator's existing, already-approved
-     `avoidRecentlyPlayed` boundary
-     (`src/lib/curator/candidates.ts`: a candidate is excluded as "recently
-     played" when `lastListenedAt` time `>= cutoff`; the ones that pass —
-     never played, or strictly older than the cutoff — are precisely the
-     "stale" set here), so this is not a new boundary being invented, only
-     applied to Collection.
-   *Needs approval* — only the exact chip/label/exclusivity shape, not the
-   boundary rule, which follows directly from the existing approved curator
-   contract.
-4. **Exact ordering for never-played items in the new listening-based
-   sort.** *Proposed:* never-played items sort first (as "most stale"),
-   mirroring the Dashboard `rediscover` convention
-   (`lastMs ?? Number.NEGATIVE_INFINITY`, ascending). *Needs approval.*
-5. **Query-string parameter names/serialization.** *Proposed:* extend the
-   existing `?genre=`/`?year=`/`?decade=`/`?sort=`/`?fav=1` pattern with
-   `?minRating=N` and a single `?listening=never|stale` enum (rather than
-   two separate booleans), consistent with `sort` already being one enum
-   param. *Needs approval.*
-6. **Duplicate-confirmation dialog copy.** *Proposed:* "You already own
-   this release. Add another physical copy to your collection?" with
-   "Add another copy" / "Cancel" buttons. *Needs approval.*
-7. **Shared component/hook vs. shared pure helper for Discover/Scan
-   duplicate handling.** *Proposed:* the **smallest** shared piece —  one
-   tiny, pure, presentation-free ownership helper (conceptually
-   `isExactCatalogReleaseOwned(providerReleaseId, ownedItems)`, or an
-   equivalent shared derivation of the owned-`providerReleaseId` set), so
-   Discover and Scan can never again silently drift on *what counts as
-   already owned*. Confirmation/dialog **state** (open/closed, in-flight,
-   error) stays **local** to each of Discover and Scan — no shared state
-   machine, no shared hook, no shared dialog-flow component. The goal is
-   shared duplicate *semantics*, not a new UI/state abstraction; a shared
-   stateful hook is explicitly **not** proposed unless implementation later
-   demonstrates a concrete, specific need for one. *Needs approval.*
+   `year-desc`/`year-asc` two-entry convention. **Unrated records always
+   sort last in both directions** (not merely in one, as the earlier
+   proposal by analogy to `yearSort` might have implied — the human
+   explicitly confirmed "last in both directions"). Use explicit sort enum
+   values consistent with the existing `CollectionSort` contract.
+3. **Listening filters — APPROVED.** Two visible toggle-chip controls,
+   styled like the existing `favoritesOnly` chip: "Never played" and "Not
+   played in 30 days." **Mutually exclusive** — valid states are exactly
+   `none | never | stale`; selecting one clears the other. URL
+   representation: `?listening=never` or `?listening=stale` (absent = none).
+   Semantics:
+   - `listening=never` — `count === 0` (per `summarizeListeningForItem`).
+   - `listening=stale` — never-played records qualify, **and**
+     previously-played records qualify only when `lastListenedAt` is
+     **strictly before** the 30-day cutoff. A play exactly at the cutoff is
+     still recent and does **not** qualify as stale
+     (`lastListenedAt >= cutoff` → recent; `lastListenedAt < cutoff` →
+     stale). This boundary is inherited from the already-approved curator
+     `avoidRecentlyPlayed` contract
+     (`src/lib/curator/candidates.ts`: excluded as "recently played" when
+     `lastListenedAt` time `>= cutoff`), not invented here.
+   While listening-event state is loading or errored, the application must
+   not treat unknown data as never-played or stale.
+4. **Listening sort — APPROVED.** One sort, "Least recently played":
+   (1) never-played records first, (2) then played records ordered from
+   oldest `lastListenedAt` to newest — the rediscovery-oriented ordering,
+   consistent with the Dashboard `rediscover` convention
+   (`lastMs ?? Number.NEGATIVE_INFINITY`, ascending).
+5. **URL state — APPROVED.** `?minRating=N`, `?listening=never|stale`,
+   `?sort=<explicit sort enum>` — extending the existing
+   `?genre=`/`?year=`/`?decade=`/`?sort=`/`?fav=1` query-string convention.
+   No two separate listening booleans.
+6. **Duplicate-confirmation dialog copy — APPROVED.** Message: "You already
+   own this release. Add another physical copy to your collection?"
+   Buttons: "Add another copy" / "Cancel."
+7. **Shared duplicate logic — APPROVED.** Exactly one tiny shared **pure**
+   ownership helper (conceptually `isExactCatalogReleaseOwned(...)`, or an
+   equivalent pure owned-provider-release-ID derivation) — shared ownership
+   *semantics*, not a shared UI/state abstraction. **Do not introduce**: a
+   shared state machine, a shared stateful hook, a shared confirmation-flow
+   component, or shared `Dialog` state. Confirmation/dialog state remains
+   **local** to `DiscoverPanel` and `ScanPanel` independently.
 
 ## References (do not duplicate)
 
