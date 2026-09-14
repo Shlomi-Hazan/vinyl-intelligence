@@ -582,7 +582,7 @@ describe('CollectionBrowser', () => {
       expect(screen.getByTestId('loc').textContent).not.toContain('listening')
     })
 
-    it('disables the listening chips while events are loading or errored, and does not filter as if known', async () => {
+    it('disables the listening chips while events are loading or errored, does not present the requested filter as pressed, and does not filter as if known', async () => {
       const user = userEvent.setup()
       const { rerender } = renderBrowser(
         [item('1'), item('2')],
@@ -591,6 +591,10 @@ describe('CollectionBrowser', () => {
       )
       const loadingNever = screen.getByRole('button', { name: 'Never played' })
       expect(loadingNever).toBeDisabled()
+      // the URL still requests it, but it is NOT effective yet - never
+      // presented as pressed while unavailable (spec 0016 review finding 4)
+      expect(loadingNever).toHaveAttribute('aria-pressed', 'false')
+      expect(loadingNever).toHaveAttribute('title', 'Listening history is loading')
       // both records still shown - an unready listening state is never
       // treated as "never played" (spec 0016 §D)
       expect(screen.getByText('2 of 2 records')).toBeInTheDocument()
@@ -616,12 +620,90 @@ describe('CollectionBrowser', () => {
           </MemoryRouter>
         </ToastProvider>,
       )
-      expect(screen.getByRole('button', { name: 'Never played' })).toBeDisabled()
+      const erroredNever = screen.getByRole('button', { name: 'Never played' })
+      expect(erroredNever).toBeDisabled()
+      expect(erroredNever).toHaveAttribute('aria-pressed', 'false')
+      // distinct copy for "failed" vs. "still loading" (spec 0016 review finding 3)
+      expect(erroredNever).toHaveAttribute('title', 'Listening history is unavailable')
       expect(screen.getByText('2 of 2 records')).toBeInTheDocument()
 
       // a disabled chip does not respond to a click attempt
       await user.click(screen.getByRole('button', { name: 'Never played' }))
       expect(screen.getByText('2 of 2 records')).toBeInTheDocument()
+    })
+
+    describe('"Least recently played" must not pretend listening history is known', () => {
+      const events = (id: string, listenedAt: string): ListeningEventRecord[] => [
+        {
+          id: `event-${id}`,
+          collection_item_id: id,
+          listened_at: listenedAt,
+          created_at: listenedAt,
+        },
+      ]
+
+      it('requested while loading: falls back to the default order, never fabricates a listening order', () => {
+        const { container } = renderBrowser(
+          [item('1', { added_at: '2026-08-02T00:00:00.000Z' }), item('2', { added_at: '2026-08-01T00:00:00.000Z' })],
+          '/collection?sort=least-recently-played',
+          { eventsStatus: 'loading', events: [] },
+        )
+        // the requested sort is still shown as selected in the dropdown -
+        // the URL/selection is not silently erased
+        expect(
+          (screen.getByLabelText('Sort') as HTMLSelectElement).value,
+        ).toBe('least-recently-played')
+        // but the option is unavailable while events are not ready
+        expect(
+          within(screen.getByLabelText('Sort')).getByRole('option', {
+            name: 'Least recently played',
+          }),
+        ).toBeDisabled()
+        // the EFFECTIVE order is the default ("recently added" = incoming
+        // array order), not a fabricated listening-based order
+        const titles = Array.from(
+          container.querySelectorAll('.vi-albumcard__title'),
+        ).map((el) => el.textContent)
+        expect(titles).toEqual(['Album 1', 'Album 2'])
+      })
+
+      it('requested while errored: same fallback, same disabled option', () => {
+        const { container } = renderBrowser(
+          [item('1', { added_at: '2026-08-02T00:00:00.000Z' }), item('2', { added_at: '2026-08-01T00:00:00.000Z' })],
+          '/collection?sort=least-recently-played',
+          { eventsStatus: 'error', events: [] },
+        )
+        expect(
+          within(screen.getByLabelText('Sort')).getByRole('option', {
+            name: 'Least recently played',
+          }),
+        ).toBeDisabled()
+        const titles = Array.from(
+          container.querySelectorAll('.vi-albumcard__title'),
+        ).map((el) => el.textContent)
+        expect(titles).toEqual(['Album 1', 'Album 2'])
+      })
+
+      it('once ready, the requested "Least recently played" becomes effective without reselecting it', () => {
+        const never = item('1', { added_at: '2026-08-02T00:00:00.000Z' })
+        const played = item('2', { added_at: '2026-08-01T00:00:00.000Z' })
+        const { container } = renderBrowser(
+          [never, played],
+          '/collection?sort=least-recently-played',
+          { eventsStatus: 'ready', events: events('2', '2026-09-01T00:00:00.000Z') },
+        )
+        expect(
+          within(screen.getByLabelText('Sort')).getByRole('option', {
+            name: 'Least recently played',
+          }),
+        ).not.toBeDisabled()
+        // never-played first, then the played record - the actual approved
+        // ordering, now effective purely because events became ready
+        const titles = Array.from(
+          container.querySelectorAll('.vi-albumcard__title'),
+        ).map((el) => el.textContent)
+        expect(titles).toEqual(['Album 1', 'Album 2'])
+      })
     })
 
     it('an invalid ?minRating= or ?listening= value falls back safely to no filter', () => {
@@ -668,12 +750,37 @@ describe('CollectionBrowser', () => {
       expect(title?.getAttribute('lang')).toBe('he')
     })
 
-    it('changing the rating/listening controls triggers no reload - only client-side state', () => {
+    it('changing the rating/listening controls calls no mutation/reload callback, and the URL reflects each change', async () => {
+      const user = userEvent.setup()
       const onMutated = vi.fn()
-      renderBrowser([item('1', { rating: 5 })], '/collection', { onMutated })
-      // selecting/toggling never calls onMutated - that only fires after a
-      // real mutation (favourite toggle, log a listen), never a filter/sort
-      // change (spec 0016 §7 no-network-interaction contract).
+      renderBrowser([item('1', { rating: 5 })], '/collection', {
+        onMutated,
+        eventsStatus: 'ready',
+        events: [],
+      })
+
+      await user.selectOptions(screen.getByLabelText('Minimum rating'), '4')
+      expect(screen.getByTestId('loc').textContent).toContain('minRating=4')
+
+      await user.selectOptions(screen.getByLabelText('Sort'), 'rating-desc')
+      expect(screen.getByTestId('loc').textContent).toContain('sort=rating-desc')
+
+      await user.click(screen.getByRole('button', { name: 'Never played' }))
+      expect(screen.getByTestId('loc').textContent).toContain('listening=never')
+
+      await user.click(screen.getByRole('button', { name: 'Not played in 30 days' }))
+      expect(screen.getByTestId('loc').textContent).toContain('listening=stale')
+
+      await user.selectOptions(screen.getByLabelText('Sort'), 'least-recently-played')
+      expect(screen.getByTestId('loc').textContent).toContain('sort=least-recently-played')
+
+      // This mounted test proves these specific interactions never invoke
+      // the Collection mutation/reload callback - it does not, by itself,
+      // prove the absence of every conceivable network call. That absence
+      // is established separately by code inspection: applyCollectionQuery/
+      // buildListeningSummaryMap are pure functions with no I/O, and no new
+      // Supabase/Netlify call site was introduced by this change (spec 0016
+      // §7).
       expect(onMutated).not.toHaveBeenCalled()
     })
   })

@@ -71,6 +71,23 @@ function playsLabel(
 }
 
 /**
+ * Truthful explanation for a disabled listening control - distinct copy for
+ * "still loading" vs. "failed to load", never the same string for both.
+ * `undefined` (no title) once ready.
+ */
+function listeningUnavailableTitle(
+  status: 'loading' | 'ready' | 'error',
+): string | undefined {
+  if (status === 'loading') {
+    return 'Listening history is loading'
+  }
+  if (status === 'error') {
+    return 'Listening history is unavailable'
+  }
+  return undefined
+}
+
+/**
  * The separate meta fields for a record, in display order: release year, then
  * the first effective genre. Each is a distinct dynamic field so the caller
  * isolates them individually (never as one joined string).
@@ -178,6 +195,15 @@ export function CollectionBrowser({
     [events, eventsReady],
   )
   const effectiveListening: ListeningFilter = eventsReady ? listening : 'none'
+  // "Least recently played" depends on listening history exactly like the
+  // never/stale filters do - it must not render an ordering while that
+  // history is unknown. The requested `sort` (and the URL) are left alone
+  // so the request becomes effective again the moment events become ready
+  // in this same mounted session; only what is actually queried/rendered
+  // falls back to the default. Rating sorts are unaffected - they never
+  // depend on listening history.
+  const effectiveSort: CollectionSort =
+    !eventsReady && sort === 'least-recently-played' ? DEFAULT_SORT : sort
 
   const chooseView = useCallback((next: CollectionView) => {
     setView(next)
@@ -191,13 +217,26 @@ export function CollectionBrowser({
   const decades = useMemo(() => availableDecades(items), [items])
   const genres = useMemo(() => availableGenres(items), [items])
 
-  const visible = useMemo(() => {
-    const queryFilters: CollectionFilters = { ...filters, listening: effectiveListening }
-    const queried = applyCollectionQuery(items, queryFilters, sort, listeningByItem, now)
-    return favoritesOnly ? queried.filter((i) => i.is_favorite) : queried
-  }, [items, filters, effectiveListening, sort, listeningByItem, now, favoritesOnly])
+  // What is actually queried/rendered - always the EFFECTIVE listening
+  // filter and sort, never the raw requested values, so an unready
+  // listening state can never be presented as applied (spec 0016 §D).
+  const effectiveFilters: CollectionFilters = useMemo(
+    () => ({ ...filters, listening: effectiveListening }),
+    [filters, effectiveListening],
+  )
 
-  const anyFilter = hasActiveFilters(filters) || favoritesOnly
+  const visible = useMemo(() => {
+    const queried = applyCollectionQuery(
+      items,
+      effectiveFilters,
+      effectiveSort,
+      listeningByItem,
+      now,
+    )
+    return favoritesOnly ? queried.filter((i) => i.is_favorite) : queried
+  }, [items, effectiveFilters, effectiveSort, listeningByItem, now, favoritesOnly])
+
+  const anyFilter = hasActiveFilters(effectiveFilters) || favoritesOnly
   const yearInvalid = yearFilterIsInvalid(filters.year)
 
   async function toggleFavorite(item: CollectionItemWithRelease) {
@@ -328,7 +367,14 @@ export function CollectionBrowser({
           }
         >
           {COLLECTION_SORTS.map((s) => (
-            <option key={s.value} value={s.value}>
+            <option
+              key={s.value}
+              value={s.value}
+              // Depends on listening history exactly like the never/stale
+              // filters - unavailable (but not silently cleared from the
+              // URL/selection) while that history is not ready.
+              disabled={s.value === 'least-recently-played' && !eventsReady}
+            >
               {s.label}
             </option>
           ))}
@@ -346,13 +392,14 @@ export function CollectionBrowser({
         {/* Mutually exclusive (spec 0016 §21.3): selecting one clears the
             other, since `listening` is a single field. Disabled while
             listening-event data is not ready - an unknown state must never
-            be shown as satisfying either filter. */}
+            be shown as satisfying either filter, so `aria-pressed` reflects
+            the EFFECTIVE (gated) value, never the merely-requested one. */}
         <button
           type="button"
           className="vi-chip"
-          aria-pressed={listening === 'never'}
+          aria-pressed={effectiveListening === 'never'}
           disabled={!eventsReady}
-          title={eventsReady ? undefined : 'Listening history is loading'}
+          title={listeningUnavailableTitle(eventsStatus)}
           onClick={() =>
             setFilterParams({
               filters: {
@@ -367,9 +414,9 @@ export function CollectionBrowser({
         <button
           type="button"
           className="vi-chip"
-          aria-pressed={listening === 'stale'}
+          aria-pressed={effectiveListening === 'stale'}
           disabled={!eventsReady}
-          title={eventsReady ? undefined : 'Listening history is loading'}
+          title={listeningUnavailableTitle(eventsStatus)}
           onClick={() =>
             setFilterParams({
               filters: {
