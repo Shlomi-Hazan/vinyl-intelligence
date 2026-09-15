@@ -138,7 +138,7 @@ Verified by direct source inspection at the baseline commit above.
 | Search draft persistence | `src/catalog/catalogSearchDraft.ts` | sessionStorage, per-user-scoped key, strict shape validation (`parseDraft`/`parseResult`/`parseCandidate` — any unrecognized/missing field invalidates the **whole** stored draft, falling back to no draft); persists only `draftQuery` and the last completed `{ submittedQuery, candidates }`; no mode, no pagination state today |
 | Ownership/duplicate-copy | `src/lib/catalog/ownedRelease.ts::isExactCatalogReleaseOwned`, `src/catalog/DiscoverPanel.tsx` | exact `provider_release_id` match only; owned/not-owned is authoritative **only** when `collectionStatus === 'ready'` (spec 0016 Finding B); local per-panel confirm dialog; identical contract already shared by Discover and Scan |
 | Album Detail | `src/pages/AlbumDetailPage.tsx` | uses `release.provider_release_id` **only** for Cover Art Archive artwork lookup (`releaseMbid` prop); **no outbound MusicBrainz link exists today** — confirmed by inspection, not assumed |
-| Existing candidate MusicBrainz link | `src/catalog/DiscoverPanel.tsx`, `src/catalog/ScanPanel.tsx` | each candidate card already links to `c.derivedProviderPageUrl` — *"inspect this exact result"* — preserved unchanged, distinct purpose from §12's new *"search directly on MusicBrainz"* action |
+| Existing candidate MusicBrainz link | `src/catalog/DiscoverPanel.tsx`, `src/catalog/ScanPanel.tsx` | each candidate card already links to `c.derivedProviderPageUrl` — *"inspect this exact result"* — destination/wording/navigation unchanged (accessible labeling only enhanced, §19), distinct purpose from §12's new *"search directly on MusicBrainz"* action |
 
 ## 5. MusicBrainz Facts vs. Vinyl Intelligence Decisions
 
@@ -175,17 +175,25 @@ escaping reference they link to.
 - **Combining fields:** the `AND` operator (documented example:
   `release:Schneider AND Shake`); `Indexed_Search_Syntax` itself defers to
   Lucene's own query syntax for full boolean-operator coverage rather than
-  enumerating every operator on that one page. Standard Apache Lucene
-  classic query syntax — the query language MusicBrainz's indexed search is
-  built on — defines `OR`/`||` as a boolean operator alongside `AND`/`&&`
-  and `NOT`/`!` (case-sensitive, uppercase), independently confirmed via a
-  documentation/web search rather than a live catalog call. This is further
-  corroborated internally: the Lucene special-character escape set already
-  quoted below (`+ - && || ! ( ) { } [ ] ^ " ~ * ? : \`) already includes
-  `&&` and `||` — the symbolic forms of `AND`/`OR` — as characters requiring
+  enumerating every operator on that one page. The official Lucene
+  query-parser syntax reference
+  (`https://lucene.apache.org/core/2_9_4/queryparsersyntax.html`, "Boolean
+  Operators" section — the query language MusicBrainz's indexed search is
+  built on) states directly: *"Lucene supports AND, "+", OR, NOT and "-" as
+  Boolean operators (Note: Boolean operators must be ALL CAPS)"*, and that
+  `||` may replace the word `OR`, `&&` may replace `AND`, and `!` may
+  replace `NOT`. This is further corroborated internally: the Lucene
+  special-character escape set already quoted below
+  (`+ - && || ! ( ) { } [ ] ^ " ~ * ? : \`) already includes `&&` and
+  `||` — the symbolic forms of `AND`/`OR` — as characters requiring
   escaping specifically *because* they are reserved Lucene operator tokens.
-  §6.2's corrected `All`-mode template relies on `OR` being valid, standard
-  Lucene syntax, not on a MusicBrainz-specific worked example.
+  `AND`/`OR`/`NOT` are **word** operators, distinct from and not covered by
+  that punctuation escape set — a real gap the punctuation-only escaping in
+  an earlier draft of this spec left open; §6.2 adds a dedicated
+  Boolean-keyword literalization step to close it. §6.2's corrected
+  `All`-mode template relies on `OR` being valid, standard Lucene syntax
+  for the trusted, application-generated join between its two field
+  clauses, not on a MusicBrainz-specific worked example.
 - **Escaping:** "you'll need to escape characters special to Lucene. This is in addition to any URL encoding." The documented Lucene special characters are:
   `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \` — escaped by a preceding backslash. MusicBrainz's own example additionally escapes `/` the same way (`ac\/dc`, URL-encoded to `ac%5C%2Fdc`) for a literal band-name search, so this spec treats `/` as requiring the same backslash-escape.
 - **Rate limiting:** "each of their client applications never make more than ONE call per second," or risk being IP-blocked. (Matches the existing `MUSICBRAINZ_PACING_MS = 1000` posture exactly — unchanged by this spec, §14.)
@@ -264,16 +272,77 @@ draft:** this spec previously claimed internal whitespace runs are
 collapsed to a single space; that is not true of the current implementation
 and is not something this spec proposes adding. Internal whitespace —
 including runs of more than one space — is preserved exactly as typed and
-passed through to MusicBrainz unchanged. Let `escape(s)` be: replace every
-occurrence of any character in `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /`
-with a backslash followed by that character, applied in a single pass over
-`raw` (so the inserted backslashes are never themselves re-escaped).
+passed through to MusicBrainz unchanged.
+
+**Boolean-keyword literalization (added — a real gap in punctuation-only
+escaping):** Apache Lucene's classic query-parser syntax — the query
+language MusicBrainz's indexed search is built on — defines not only the
+symbolic operators already in the punctuation escape set below (`&&`,
+`||`, `!`), but also three ALL-CAPS **word** tokens as Boolean operators:
+`AND`, `OR`, `NOT`. Official Lucene query-parser documentation states this
+directly: *"Lucene supports AND, "+", OR, NOT and "-" as Boolean
+operators (Note: Boolean operators must be ALL CAPS)"*
+(`https://lucene.apache.org/core/2_9_4/queryparsersyntax.html`, "Boolean
+Operators" section — the same page MusicBrainz's own `Indexed_Search_Syntax`
+defers to for full operator coverage, §5.1). Punctuation escaping alone does
+**not** neutralize these — literal user text such as `LOVE AND WAR` or
+`ROCK OR ROLL` contains a real, standalone Boolean operator once sent to
+MusicBrainz, silently changing the query's meaning rather than searching
+for the literal words. The official documentation **does not** describe any
+escaping or quoting mechanism to turn a literal `AND`/`OR`/`NOT` into
+ordinary text — this spec does not invent one. It relies instead on the one
+fact the same documentation states directly and unconditionally: operator
+recognition requires the token to be **ALL CAPS**. A token that is not
+all-caps is, by the documented grammar itself, never interpreted as an
+operator — and because MusicBrainz's underlying full-text index normalizes
+case during analysis (as it already does for every other word in the
+query), lowercasing a token does not change what it matches; a search for
+`and` retrieves the same indexed occurrences of "AND"/"And"/"and" that a
+search for `AND` would have, had it not been a reserved keyword. Let
+`literalize(s)` be: split `s` **only** at the exact case-sensitive
+whole-word occurrences of `AND`, `OR`, or `NOT` — matched with word
+boundaries (`\bAND\b`, `\bOR\b`, `\bNOT\b`; a "word boundary" is a
+transition between a letter/digit/underscore and anything else, so this
+matches a standalone token but never a substring inside a longer word) —
+and replace each such occurrence with its lowercase form (`and`, `or`,
+`not`), leaving every other character, and all whitespace, untouched. This
+is a **whole-token** match: `NOTHING` contains the letters `N-O-T` but is
+never matched, because there is no word boundary between `T` and the `H`
+that follows it inside `NOTHING` — `NOTHING BUT THIEVES` therefore requires
+**zero** transformation. `AND` typed as data in `LOVE AND WAR` **is**
+matched (surrounded by spaces, i.e. word boundaries on both sides); only
+the matched keyword token itself is lowercased, and the surrounding words
+are untouched, so `LOVE AND WAR` becomes `LOVE and WAR`. This preserves
+what the user is searching for (case-folded matching is unaffected) while
+deterministically preventing the token from being parsed as a Boolean
+operator, using only the one mechanism the official documentation actually
+states (the ALL-CAPS requirement), not an invented escape syntax.
+
+Let `escape(s)` be: replace every occurrence of any character in
+`+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /` with a backslash followed by that
+character, applied in a single pass over `s` (so the inserted backslashes
+are never themselves re-escaped). This already covers the *symbolic* forms
+of the same three operators (`&&` for `AND`, `||` for `OR`, `!` for `NOT`,
+per §5.1) as well as `+`/`-` (Lucene's REQUIRED/PROHIBIT modifiers) — no
+change needed there; only the ALL-CAPS **word** forms were the gap.
+
+**Construction pipeline, applied identically in every mode:** each
+field-scoped value sent to MusicBrainz is `escape(literalize(raw))` —
+Boolean-keyword literalization first, then punctuation escaping. The two
+operate on disjoint character classes (letters vs. the documented
+special-character set) and do not interact. The trusted `OR` that joins
+`All` mode's two field clauses is inserted by Vinyl Intelligence **after**
+this pipeline runs, outside of and never derived from user-controlled text
+— it is the **only** `OR` in any generated query that is permitted to act
+as live Boolean syntax; every `OR` (or `AND`/`NOT`) that originates from
+the user's own typed text is, by construction, lowercased before it ever
+reaches MusicBrainz.
 
 | Mode | MusicBrainz `query` value sent | Escaping applied |
 | --- | --- | --- |
-| **All** | `artist:(${escape(raw)}) OR release:(${escape(raw)})` | yes |
-| **Artist** | `artist:(${escape(raw)})` | yes |
-| **Album** | `release:(${escape(raw)})` | yes |
+| **All** | `artist:(${escape(literalize(raw))}) OR release:(${escape(literalize(raw))})` | yes |
+| **Artist** | `artist:(${escape(literalize(raw))})` | yes |
+| **Album** | `release:(${escape(literalize(raw))})` | yes |
 
 **Correction from an earlier draft:** `All` mode was originally specified
 as the raw, unqualified, unescaped query — matching today's production
@@ -558,6 +627,48 @@ See §10 — the exact-URL lookup reuses this exact same `CatalogSearchResponse`
 shape (`{ candidates: [oneCandidate], offset: 0, hasMore: false }`), so no
 second response type is introduced for that flow.
 
+### 8.4 Malformed Provider Pagination Metadata
+
+**Added:** the corrected `hasMore` formula (§7.2) depends on MusicBrainz's
+own `count` and `offset` response fields being trustworthy. Today's runtime
+only validates that `payload.releases` is an array (§4); this spec adds
+validation for the pagination metadata `hasMore` now depends on, so a
+malformed provider response cannot silently corrupt pagination state.
+
+This validation applies to a **normal search response** only — the
+exact-lookup path (§8.3, §10.3) never sets `hasMore: true` and does not
+consume `count`/`offset` at all, so it is unaffected. In addition to the
+existing `releases`-is-an-array check, the handler validates:
+
+- `count` is present and is a finite, non-negative integer — not a string,
+  not `null`/`undefined`, not `NaN`/`Infinity`, not negative, not
+  fractional;
+- `offset` is present and is a finite, non-negative integer — the same
+  constraints;
+- the response's own `offset` equals the effective offset Vinyl
+  Intelligence actually requested for that page (defense against a
+  well-typed but semantically inconsistent response — e.g. a provider
+  answering a different page than the one requested).
+
+**If any of these checks fails, the entire response is mapped to the
+existing `provider_bad_response` error category** (§10.4 already defines
+this category for a normalization-rejected payload; this spec reuses it,
+not a new category). This spec explicitly does **not**:
+
+- silently default a missing/malformed `count` to any placeholder value;
+- silently default a missing/malformed `offset` to the requested offset;
+- derive `providerCount` from `candidates.length` or `rawPageCount` as a
+  fallback when `count` is unusable — that would silently reintroduce
+  exactly the exhaustion bug the corrected §7.2 formula exists to prevent;
+- continue rendering or paginating using any pagination metadata that
+  failed validation — a bad-metadata page is a full failure of that page
+  request, handled by §7.5's later-page-error behavior (page ≥ 2) or the
+  existing first-page `phase === 'error'` state (page 1), never a
+  partial/best-effort success.
+
+`hasMore` is never computed from unvalidated `count`/`offset` — this
+validation runs, and must pass, **before** §7.2's formula is evaluated.
+
 ## 9. Existing Search-Draft State — Compatibility
 
 `src/catalog/catalogSearchDraft.ts`'s persisted shape gains, additively:
@@ -769,10 +880,10 @@ explicitly-confirmed Add action (§10.3 point 7), unchanged.
 
 ## 12. Search Directly on MusicBrainz
 
-An outbound navigation action — *"Search on MusicBrainz"* (or equivalent
-product wording finalized at implementation time) — opens MusicBrainz's own
-full search UI in a new tab, for when Vinyl Intelligence's bounded (§7.1)
-result window still doesn't surface the desired pressing.
+An outbound navigation action — final wording *"Search on MusicBrainz"*
+(§28) — opens MusicBrainz's own full search UI in a new tab, for when
+Vinyl Intelligence's bounded (§7.1) result window still doesn't surface the
+desired pressing.
 
 **Verified destination** (§5.1): `https://musicbrainz.org/search?query=<term>&type=release&method=indexed`,
 directly observed to render a correct, working release-search results page.
@@ -802,17 +913,22 @@ Vinyl Intelligence server request of any kind.
 | Existing per-candidate "MusicBrainz" link (`c.derivedProviderPageUrl`) | *Inspect this exact result* | One already-returned candidate's own release page |
 | New "Search on MusicBrainz" | *Search MusicBrainz directly, beyond what Vinyl Intelligence surfaced* | MusicBrainz's own full search UI, not scoped to any one candidate |
 
-The existing per-candidate link is **preserved unchanged** — not removed,
-not duplicated in meaning.
+The existing per-candidate link's **destination, visible wording, and
+navigation behavior are unchanged** — not removed, not duplicated in
+meaning; its accessible labeling gains the same "(opens in a new tab)"
+visually-hidden note every external link in this spec gains (§19), which is
+not a functional redesign.
 
 ## 13. Record Detail — MusicBrainz Provenance Link
 
 ### 13.1 Placement and wording
 
 On the Album/Record Detail page (`src/pages/AlbumDetailPage.tsx`), add an
-outbound link — suggested wording *"View on MusicBrainz"* — with a visible
-external-link affordance (icon/label), matching the existing external-link
-idiom already used for the per-candidate MusicBrainz link in Discover/Scan.
+outbound link — final wording *"View on MusicBrainz"* (§28) — with a
+visible external-link affordance (icon/label), matching the existing
+external-link idiom already used for the per-candidate MusicBrainz link in
+Discover/Scan. Placement: the last item in the existing metadata block, not
+near the cover-art block (§28).
 
 ### 13.2 Visibility rule
 
@@ -950,7 +1066,9 @@ Manual entry (`CollectionForm`, "Can't find it? Add it manually") remains
 available, unchanged, at every stage. The full, conceptual Discover recovery
 hierarchy after this enhancement:
 
-1. normal search ("All" mode, current default behavior);
+1. normal search ("All" mode, still the default **selected** mode — its
+   underlying provider-query semantics are deliberately corrected by this
+   spec, §6.2, not left as today's raw unqualified query);
 2. search-mode refinement (Artist / Album);
 3. "Load more" within the bounded 20-result window;
 4. "Search directly on MusicBrainz" (external, unbounded);
@@ -1013,14 +1131,21 @@ dependency, or migration change.
   via `aria-describedby` (or rendered with `role="alert"`, matching the
   existing `vi-error-text`/`role="alert"` idiom already used throughout
   Discover).
-- Every new external link (candidate-scoped MusicBrainz link — unchanged;
-  "Search on MusicBrainz"; "View on MusicBrainz" on Record Detail) opens in
-  a new tab with `rel="noreferrer"` (matching the existing idiom) and its
-  accessible name or an adjacent visually-hidden note indicates it opens
-  externally (e.g. "(opens in a new tab)" for assistive technology, matching
-  common practice; exact implementation left as an implementation choice —
-  the required external behavior is: a screen-reader user is not surprised
-  by a new tab opening).
+- Every external link this spec touches — the existing candidate-scoped
+  MusicBrainz link (destination, visible wording, and navigation behavior
+  unchanged; only its accessible labeling is enhanced, below), "Search on
+  MusicBrainz," and "View on MusicBrainz" on Record Detail — opens in a new
+  tab with `rel="noreferrer"` (matching the existing idiom). **Final,
+  consistent accessibility contract (§28, resolved — not an implementation
+  choice):** each carries a visually-hidden text node reading "(opens in a
+  new tab)" inside its accessible name, using the project's own existing
+  `.vi-visually-hidden` utility class (`src/styles/base.css` — already used
+  for exactly this purpose across the app, e.g.
+  `src/ui/primitives.tsx`, `src/collection/CollectionBrowser.tsx`,
+  `src/brand/Logo.tsx`; grep-verified, not a new dependency or a new CSS
+  rule). This is a genuine, minor enhancement to the existing per-candidate
+  link — it previously carried no such note — applied uniformly so all
+  three link types announce identically to assistive technology.
 - No keyboard focus trap anywhere in this enhancement — every new control
   is reachable and leavable via normal Tab order.
 - Focus is not stolen when "Load more" appends results — the newly-added
@@ -1098,6 +1223,38 @@ every mode; leading/trailing whitespace trimming with internal whitespace
 preserved exactly as typed, not collapsed (§6.2); minimum/maximum length
 enforcement identical across modes.
 
+**Boolean-keyword literalization** (`literalize(s)`, §6.2 — a new pure
+function, unit-testable without a network mock), minimum required cases,
+in every mode:
+
+- `AND` alone → `and`;
+- `OR` alone → `or`;
+- `NOT` alone → `not`;
+- `LOVE AND WAR` → `LOVE and WAR` (surrounding words untouched);
+- `ROCK OR ROLL` → `ROCK or ROLL`;
+- `NOTHING BUT THIEVES` → unchanged (`NOT` is a substring of `NOTHING`, not
+  a standalone token — must **not** be matched or altered; this is the
+  regression guard for the whole-word-boundary requirement);
+- a lowercase `and`/`or`/`not` typed by the user → already not an operator
+  per the documented ALL-CAPS requirement (§5.1) and must pass through
+  `literalize` unchanged (it is not re-uppercased, and the function is
+  idempotent on already-lowercase input);
+- a punctuation-and-keyword combination, e.g. `AND/OR` or `(AND)` →
+  `literalize` neutralizes the standalone `AND` token first (`and/or`,
+  `(and)`), **then** `escape` applies its own punctuation escaping on top
+  (verifying the two steps compose correctly and neither undoes the
+  other's work);
+- a keyword token adjacent to Hebrew text (e.g. a mixed query) → the
+  keyword token is still matched and lowercased on its own word boundary;
+  the Hebrew text is untouched by `literalize` (it never matches the
+  ASCII-only `AND`/`OR`/`NOT` pattern) and unaffected by `escape` (§6.4);
+- the trusted, application-generated `OR` that `All` mode inserts between
+  its two field clauses is **never** passed through `literalize` — it is
+  spliced in after `literalize`/`escape` run on the user's own text, and a
+  test must assert the final `All`-mode query string contains exactly one
+  uppercase, unescaped `OR` (the trusted join) even when the user's own
+  input independently contains a literalized (lowercased) `or`.
+
 **Pagination** (`catalog-handlers.mts::handleCatalogSearch` and
 `DiscoverPanel.tsx`): initial page at offset 0; offset advancement on
 successive Load More calls; append (not replace) behavior; the 20-result
@@ -1108,6 +1265,17 @@ normalization rejects entries from a full raw page must still report
 deduplicated on append; existing candidate order is preserved; a failed
 later-page request preserves all previously-rendered candidates; repeated
 rapid clicks on "Load more" cannot produce two concurrent requests.
+
+**Malformed provider pagination metadata** (§8.4, `catalog-handlers.mts`),
+each case mapped to `provider_bad_response`, no default applied, no
+pagination continued: `count` missing; `count` a string; `count` negative;
+`count` fractional; `offset` missing; `offset` a string; `offset`
+negative; `offset` fractional; the provider's returned `offset` different
+from the offset actually requested; `releases` missing or not an array
+(regression re-check of the existing check, now alongside the new ones).
+Each case additionally asserts `providerCount` is never derived from
+`candidates.length`/`rawPageCount` as a fallback, and that `hasMore` is
+never computed when validation fails.
 
 **Server contract** (`catalog-handlers.mts`): an unrecognized `mode` value
 is **rejected** as `invalid_query` (an omitted `mode` still defaults to
@@ -1351,13 +1519,13 @@ open; they are resolved here so this section reads **NONE** for anything
 behavior-defining. Each remains a low-stakes, easily-revisited copy/layout
 choice, not a data-safety, security, ownership, or trust-boundary decision.
 
-1. **Final UI wording:** the "Find exact release" button, "Know the exact
-   release?" heading, and "Search on MusicBrainz" label already used
-   consistently throughout this spec (§10.1, §12, §13.1) are adopted as
-   final, not merely suggested — they are product-consistent, already
-   internally consistent across every section that names them, and
-   changing them later remains a trivial, reversible copy edit if
-   implementation-time product judgment prefers different wording.
+1. **Final UI wording:** "Know the exact release?" (heading, §10.1), "Find
+   exact release" (button, §10.1), "Search on MusicBrainz" (outbound
+   action, §12), and "View on MusicBrainz" (Record Detail link, §13.1) are
+   adopted as final, not merely suggested — used consistently everywhere
+   they appear in this spec, product-consistent, and a trivial, reversible
+   copy edit later if implementation-time product judgment prefers
+   different wording.
 2. **Record Detail link placement:** "View on MusicBrainz" is placed as the
    last item in the existing metadata block on `AlbumDetailPage.tsx` (release
    year, label, catalog number, country, format, etc.), **not** near the
@@ -1368,14 +1536,20 @@ choice, not a data-safety, security, ownership, or trust-boundary decision.
    positioned alongside candidate metadata in Discover/Scan, not attached
    to the candidate's artwork.
 3. **Accessible external-link indication technique:** a visually-hidden
-   text node (the existing `sr-only`-equivalent utility already used
-   elsewhere in this codebase) reading "(opens in a new tab)", appended
-   inside the accessible name of every external link this spec touches —
-   the existing per-candidate MusicBrainz link, "Search on MusicBrainz,"
-   and "View on MusicBrainz" alike. Rationale: works uniformly regardless
-   of whatever icon design implementation-time styling chooses, requires no
-   new icon/asset decision now, and matches the common accessible-link
-   practice §19 already points to.
+   text node using the project's **own existing** `.vi-visually-hidden`
+   utility class (`src/styles/base.css`; grep-verified already applied for
+   exactly this purpose in `src/ui/primitives.tsx`, `src/ui/feedback.tsx`,
+   `src/collection/CollectionBrowser.tsx`, `src/app/AppShell.tsx`,
+   `src/collection/CustomCoverControl.tsx`, `src/catalog/ScanPanel.tsx`,
+   `src/profile/AvatarControl.tsx`, and `src/brand/Logo.tsx` — not a
+   fabricated or hypothetical helper, and not a new dependency), reading
+   "(opens in a new tab)", appended inside the accessible name of every
+   external link this spec touches — the existing per-candidate
+   MusicBrainz link, "Search on MusicBrainz," and "View on MusicBrainz"
+   alike (§19). Rationale: reuses an already-shipped, already-tested
+   utility with zero new CSS or dependency, works uniformly regardless of
+   whatever icon design implementation-time styling chooses, and matches
+   the common accessible-link practice §19 already points to.
 
 No item above affects data safety, security, ownership, duplicate-copy
 correctness, or provider trust boundaries — all of those are fully resolved
