@@ -24,28 +24,28 @@ It is not a generic music recommender, and it is not a chatbot with album data b
 
 ## Table of Contents
 
-- [What Is Vinyl Intelligence?](#-what-is-vinyl-intelligence)
-- [The Problem](#-the-problem)
-- [Key Features](#-key-features)
-- [Meet VIN — AI Curator](#-meet-vin--ai-curator)
-- [Personal Collection](#-personal-collection)
-- [Discover Records](#-discover-records)
-- [Scan a Record Cover](#-scan-a-record-cover)
-- [Listening History](#-listening-history)
-- [Ratings, Favorites, Notes & Personal Genres](#-ratings-favorites-notes--personal-genres)
-- [Hebrew & Multilingual Records](#-hebrew--multilingual-records)
-- [Screenshots](#-screenshots)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Live Application](#-live-application)
-- [Local Installation](#-local-installation)
-- [Running Locally](#-running-locally)
-- [Verification](#-verification)
-- [Documentation](#-documentation)
-- [Security & Privacy](#-security--privacy)
-- [Known Limitations](#-known-limitations)
-- [Project Status & History](#-project-status--history)
-- [ASE-26 Course Context](#-ase-26-course-context)
+- [🎯 What Is Vinyl Intelligence?](#-what-is-vinyl-intelligence)
+- [💡 The Problem](#-the-problem)
+- [✨ Key Features](#-key-features)
+- [🤖 Meet VIN — AI Curator](#-meet-vin--ai-curator)
+- [📀 Personal Collection](#-personal-collection)
+- [🔎 Discover Records](#-discover-records)
+- [📸 Scan a Record Cover](#-scan-a-record-cover)
+- [🎧 Listening History](#-listening-history)
+- [⭐ Ratings, Favorites, Notes & Personal Genres](#-ratings-favorites-notes--personal-genres)
+- [🌍 Hebrew & Multilingual Records](#-hebrew--multilingual-records)
+- [🖼️ Screenshots](#-screenshots)
+- [🏗️ Architecture](#-architecture)
+- [🧰 Tech Stack](#-tech-stack)
+- [🚀 Live Application](#-live-application)
+- [💻 Local Installation](#-local-installation)
+- [▶️ Running Locally](#-running-locally)
+- [🧪 Verification](#-verification)
+- [📚 Documentation](#-documentation)
+- [🔒 Security & Privacy](#-security--privacy)
+- [⚠️ Known Limitations](#-known-limitations)
+- [📜 Project Status & History](#-project-status--history)
+- [🎓 ASE-26 Course Context](#-ase-26-course-context)
 
 ---
 
@@ -158,19 +158,24 @@ More screens are shown throughout this README and in the [User Guide](docs/USER_
 ```text
 Browser (Vite + React 19 + TypeScript SPA on Netlify static hosting)
   | react-router-dom v7, route-level code splitting
-  | Supabase JS client, publishable key only — RLS is authoritative
-  v
-Netlify Functions (six deployable functions, server secrets only)
-  |  /api/health                    liveness
-  |  /api/catalog/search    (GET)   MusicBrainz release search
-  |  /api/catalog/add       (POST)  upsert release + insert owned collection item
-  |  /api/catalog/recognize (POST)  OpenRouter vision recognition
-  |  /api/curator/recommend (POST)  initial recommendation pipeline
-  |  /api/curator/refine    (POST)  bounded refinement pipeline
-  v
-Hosted Supabase                 OpenRouter                MusicBrainz + Cover Art Archive
-  Postgres + RLS, Auth,           google/gemini-3.1-flash-lite (vision + intent)
-  Storage (private buckets)       google/gemini-3.5-flash (selection)
+  | Supabase JS client, publishable key only — no privileged credential ever reaches it
+  |
+  |---- direct, RLS / Storage-policy authorized ----> Hosted Supabase
+  |       auth · collection CRUD · ratings/favorites/      Postgres + RLS, Auth,
+  |       notes · personal genres · listening history ·    Storage (private buckets)
+  |       profile · custom cover + avatar upload
+  |
+  `---- provider access + shared-data writes -------> Netlify Functions (six functions, server secrets only)
+          |  /api/health                    liveness
+          |  /api/catalog/search    (GET)   MusicBrainz release search
+          |  /api/catalog/add       (POST)  upsert shared release + insert owned collection item
+          |  /api/catalog/recognize (POST)  OpenRouter vision recognition
+          |  /api/curator/recommend (POST)  initial recommendation pipeline
+          |  /api/curator/refine    (POST)  bounded refinement pipeline
+          v
+      Hosted Supabase (service-role,   OpenRouter                MusicBrainz + Cover Art Archive
+      shared releases + telemetry       google/gemini-3.1-flash-lite (vision + intent)
+      writes only)                      google/gemini-3.5-flash (selection)
 ```
 
 Full detail, including rejected alternatives and the reasoning behind each decision, lives in [`docs/architecture.md`](docs/architecture.md), [`docs/data-model.md`](docs/data-model.md), [`docs/ai-design.md`](docs/ai-design.md), [`docs/api-integrations.md`](docs/api-integrations.md), and [`docs/security.md`](docs/security.md).
@@ -264,9 +269,9 @@ The full verification history — every milestone's automated gate, independent 
 - Server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) never reach the browser, are never logged, and are never written to a row.
 - Row-Level Security is enabled on every table; a user can never read or write another user's collection, ratings, notes, or listening history.
 - Shared catalog (`releases`) metadata is browser-read-only; user control is expressed through owned overlays (rating, favorite, notes, personal genres, custom cover) and manual-entry editability, never by rewriting another collector's shared facts.
-- Uploaded cover images are validated (MIME allow-list, magic bytes, size cap) and never permanently stored; the recognition prompt treats all in-image text as untrusted data.
+- Every uploaded image is validated (MIME allow-list, magic bytes, size cap). A cover-recognition input photo is transient — used once to extract clues and never written to storage; a user-selected custom collection cover or avatar is the one kind of upload that's intentionally persisted, in a private, owner-scoped Storage bucket. The recognition prompt treats all in-image text as untrusted data.
 - All AI output is treated as untrusted: recognition results are clues, not persisted facts, until a human confirms them; curator recommendations are hard-rejected if their ID isn't in the server-built allowed candidate set.
-- Per-user rate limits protect the two costed AI paths (recognition, curator).
+- Cover recognition and the curator each have their own independent per-user rate limit (10 requests per rolling 10-minute window); a VIN refinement turn counts against the same budget as the initial recommendation.
 
 Full detail: [`docs/security.md`](docs/security.md).
 

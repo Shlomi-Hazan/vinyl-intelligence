@@ -4,31 +4,31 @@ A screen-by-screen guide to using the application. For the product's final contr
 
 ## Table of Contents
 
-1. [Introduction](#1-introduction)
-2. [Quick Start](#2-quick-start)
-3. [Landing & Authentication](#3-landing--authentication)
-4. [Dashboard](#4-dashboard)
-5. [Collection — Browsing, Search, Filters, Sorting, Views](#5-collection--browsing-search-filters-sorting-views)
-6. [Adding a Record Manually](#6-adding-a-record-manually)
-7. [Discovering a Record through MusicBrainz](#7-discovering-a-record-through-musicbrainz)
-8. [Duplicate-Copy Confirmation](#8-duplicate-copy-confirmation)
-9. [Scanning a Record Cover](#9-scanning-a-record-cover)
-10. [Record Detail & Personal Metadata](#10-record-detail--personal-metadata)
-11. [Listening History](#11-listening-history)
-12. [VIN — AI Curator](#12-vin--ai-curator)
-13. [Profile / Settings / Avatar](#13-profile--settings--avatar)
-14. [Hebrew & Multilingual Records](#14-hebrew--multilingual-records)
-15. [Error, Empty & Loading States](#15-error-empty--loading-states)
-16. [Privacy & Data Ownership](#16-privacy--data-ownership)
-17. [FAQ](#17-faq)
+1. [👋 Introduction](#-1-introduction)
+2. [⚡ Quick Start](#-2-quick-start)
+3. [🔐 Landing & Authentication](#-3-landing--authentication)
+4. [🏠 Dashboard](#-4-dashboard)
+5. [📀 Collection — Browsing, Search, Filters, Sorting, Views](#-5-collection--browsing-search-filters-sorting-views)
+6. [➕ Adding a Record Manually](#-6-adding-a-record-manually)
+7. [🔎 Discovering a Record through MusicBrainz](#-7-discovering-a-record-through-musicbrainz)
+8. [🔁 Duplicate-Copy Confirmation](#-8-duplicate-copy-confirmation)
+9. [📸 Scanning a Record Cover](#-9-scanning-a-record-cover)
+10. [💿 Record Detail & Personal Metadata](#-10-record-detail--personal-metadata)
+11. [🎧 Listening History](#-11-listening-history)
+12. [🤖 VIN — AI Curator](#-12-vin--ai-curator)
+13. [👤 Profile / Settings / Avatar](#-13-profile--settings--avatar)
+14. [🌍 Hebrew & Multilingual Records](#-14-hebrew--multilingual-records)
+15. [⚠️ Error, Empty & Loading States](#-15-error-empty--loading-states)
+16. [🔒 Privacy & Data Ownership](#-16-privacy--data-ownership)
+17. [❓ FAQ](#-17-faq)
 
 ---
 
-## 1. Introduction
+## 👋 1. Introduction
 
 Vinyl Intelligence has two ways to use your collection: browse it directly (Collection, search, filters), or describe what you're in the mood for and let VIN pick from what you actually own. Nothing described here requires developer knowledge — this guide assumes only that you have an account and, ideally, at least one record in your collection.
 
-## 2. Quick Start
+## ⚡ 2. Quick Start
 
 1. Open **<https://vinyl-intelligence.netlify.app>**.
 2. Create an account or sign in.
@@ -36,7 +36,7 @@ Vinyl Intelligence has two ways to use your collection: browse it directly (Coll
 4. Browse **Collection** to see it organized automatically.
 5. Ask **VIN** what to play.
 
-## 3. Landing & Authentication
+## 🔐 3. Landing & Authentication
 
 <p align="center"><img src="assets/screenshots/01-landing.png" alt="Landing page" width="720"></p>
 
@@ -52,7 +52,7 @@ The landing page explains the product to a signed-out visitor and links to sign-
 
 New accounts require email confirmation before first sign-in.
 
-## 4. Dashboard
+## 🏠 4. Dashboard
 
 <p align="center"><img src="assets/screenshots/03-dashboard.png" alt="Dashboard" width="820"></p>
 
@@ -66,7 +66,7 @@ The Dashboard is the home screen after sign-in.
 | Recently added | Your newest records | "View all" opens Collection sorted the same way |
 | Rediscover | Owned records you rarely play | Surfaces "forgotten" records deterministically from listening history |
 
-## 5. Collection — Browsing, Search, Filters, Sorting, Views
+## 📀 5. Collection — Browsing, Search, Filters, Sorting, Views
 
 <p align="center"><img src="assets/screenshots/04-collection.png" alt="Collection grid view" width="820"></p>
 
@@ -91,11 +91,11 @@ Applying any filter updates the "N of M records" count immediately and adds a **
 
 List view adds a per-row play count ("Never played" / "N play(s)") plus quick favorite/play-log icon buttons.
 
-## 6. Adding a Record Manually
+## ➕ 6. Adding a Record Manually
 
 From Collection, click **Add record** (or **Add a record** in the top bar). Fill in the fields you know — artist and title are required, everything else is optional — and save. Use this when a record genuinely has no MusicBrainz match (a bootleg, an extremely obscure pressing, a private release).
 
-## 7. Discovering a Record through MusicBrainz
+## 🔎 7. Discovering a Record through MusicBrainz
 
 <p align="center"><img src="assets/screenshots/09-discover.png" alt="Discover — initial state" width="820"></p>
 
@@ -105,7 +105,7 @@ Type an artist and album (the example chips — "Alice Coltrane," "Bowie Low," "
 
 Each result shows the release's year, label, catalog number, country, and format, plus a link to view it on MusicBrainz. Click **Add to collection** on the correct edition to import it. If none match, use **Can't find it? Add it manually** at the bottom of the page.
 
-## 8. Duplicate-Copy Confirmation
+## 🔁 8. Duplicate-Copy Confirmation
 
 If a search result is a release you already own (matched by its exact MusicBrainz release ID), Discover tells you honestly instead of blocking or silently duplicating it:
 
@@ -120,7 +120,7 @@ If a search result is a release you already own (matched by its exact MusicBrain
 
 This exact same behavior exists in **Scan** for a candidate recognized from a photo (§9).
 
-## 9. Scanning a Record Cover
+## 📸 9. Scanning a Record Cover
 
 <p align="center"><img src="assets/screenshots/12-scan.png" alt="Scan a cover — initial state" width="820"></p>
 
@@ -131,7 +131,7 @@ This exact same behavior exists in **Scan** for a candidate recognized from a ph
 
 If the photo is unclear, you'll be offered "Search by text instead" (hands the clues to Discover) or "Add manually." **Your photo is used only to find the record — it is never saved.**
 
-## 10. Record Detail & Personal Metadata
+## 💿 10. Record Detail & Personal Metadata
 
 <p align="center"><img src="assets/screenshots/07-record-detail.png" alt="Record detail page" width="820"></p>
 
@@ -147,13 +147,13 @@ If the photo is unclear, you'll be offered "Search by text instead" (hands the c
 
 Personal notes (not shown in the screenshot above) are available on the same page for a private, free-text note per record — never shared, never sent to any AI model.
 
-## 11. Listening History
+## 🎧 11. Listening History
 
 <p align="center"><img src="assets/screenshots/14-history.png" alt="Listening history" width="820"></p>
 
 Every logged play appears here, grouped by day, newest first. **Edit time** lets you correct a mistyped listening time on your own entry; **Delete** removes your own accidental log entry. Neither action can move a play to a different record or affect anyone else's history — that boundary is enforced by the database itself, not just the interface.
 
-## 12. VIN — AI Curator
+## 🤖 12. VIN — AI Curator
 
 <p align="center"><img src="assets/screenshots/13-vin.png" alt="Ask VIN" width="820"></p>
 
@@ -166,7 +166,7 @@ Every logged play appears here, grouped by day, newest first. **Edit time** lets
 
 Your VIN conversation lives only in your browser's memory for the current session — refreshing, signing out, or starting over clears it. Nothing is stored server-side.
 
-## 13. Profile / Settings / Avatar
+## 👤 13. Profile / Settings / Avatar
 
 <p align="center"><img src="assets/screenshots/15-settings.png" alt="Settings page" width="820"></p>
 
@@ -177,27 +177,27 @@ Your VIN conversation lives only in your browser's memory for the current sessio
 | Account email | Read-only here — it's your sign-in identifier and can't be changed from this screen |
 | Sign out | Ends your session |
 
-## 14. Hebrew & Multilingual Records
+## 🌍 14. Hebrew & Multilingual Records
 
 <p align="center"><img src="assets/screenshots/08-hebrew-record.png" alt="A Hebrew-titled record's detail page" width="820"></p>
 
 A record with a Hebrew (or any non-Latin-script) title and artist renders correctly and reads right-to-left where appropriate, while the surrounding app chrome (menu, labels, buttons) stays in English. Search and sorting understand Hebrew text (including ignoring niqqud/vowel points), and cover recognition preserves whatever script is actually printed on the sleeve rather than translating it.
 
-## 15. Error, Empty & Loading States
+## ⚠️ 15. Error, Empty & Loading States
 
 - An empty Collection shows a clear call to action rather than a blank page.
 - A search with no results is shown distinctly from a search that failed — "no matches, try different words" is not the same message as "the catalog is unreachable, try again."
 - A failed AI call (recognition or VIN) is shown as a failure with a retry path — never as a silently empty result or a made-up answer.
 - Every add/write action that's in progress disables its own trigger button so a second click can't double-submit.
 
-## 16. Privacy & Data Ownership
+## 🔒 16. Privacy & Data Ownership
 
 - Your collection, ratings, notes, personal genres, and listening history are yours — Row-Level Security means no other user can read or write them, and there is no admin UI that bypasses that.
-- Uploaded cover photos are used only to identify a record and are never permanently stored.
+- A photo you upload to **Scan** is used only to identify a record — it is transient and is not permanently stored. A **custom cover** you choose for a record, by contrast, is artwork you're intentionally keeping, and is stored in your own private Storage space until you replace or remove it.
 - Your VIN conversation is never saved anywhere.
 - Shared catalog facts (the parts sourced from MusicBrainz) are shared read-only reference data used by everyone's collection — editing them isn't offered because they aren't yours alone to change; your own corrections live in the personal-metadata overlays described in §10.
 
-## 17. FAQ
+## ❓ 17. FAQ
 
 **Does adding a second pressing of a record I own overwrite the first?**
 No. See §8 — it always requires an explicit confirmation and always creates a separate item; deleting one never touches the other.

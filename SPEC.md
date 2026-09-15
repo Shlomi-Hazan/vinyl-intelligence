@@ -38,12 +38,23 @@ Streaming or playback of copyrighted audio; a marketplace or valuation feature; 
 ## 7. Final System Boundary
 
 ```text
-Browser (SPA)  →  Netlify Functions (server secrets, auth-gated)  →  Hosted Supabase (Postgres + RLS + Auth + Storage)
-                                                                   →  OpenRouter (vision + text models)
-                                                                   →  MusicBrainz + Cover Art Archive
+Browser SPA (Supabase publishable key only, no privileged credential)
+  |
+  |---- direct, RLS / Storage-policy authorized ---->  Hosted Supabase
+  |       auth · collection CRUD · ratings/favorites/       (Postgres + RLS, Auth,
+  |       notes · personal genres · listening-event           Storage — private buckets)
+  |       log/correct/delete · profile · custom-cover
+  |       upload · avatar upload
+  |
+  `---- provider access + shared-data writes -------->  Netlify Functions (server-only secrets)
+                                                            |---> Supabase, service-role key
+                                                            |     (shared `releases` writes,
+                                                            |      AI telemetry only)
+                                                            |---> MusicBrainz + Cover Art Archive
+                                                            `---> OpenRouter (vision + text models)
 ```
 
-The browser never holds a privileged credential. Every write path that matters (collection ownership, catalog persistence, AI telemetry) is authorized server-side, and Postgres Row-Level Security is the final authority on data access even if application logic is wrong.
+The browser never holds a privileged credential — it authenticates and reads/writes with the Supabase **publishable** key only. A large share of ordinary user-owned writes (§9–§27: personal signals, personal genres, listening-event log/correct/delete, profile, custom cover, avatar) are authorized **directly against Supabase**, by Row-Level Security and Storage policies — not by a server-side check. Netlify Functions handle everything else: calls to an external provider (MusicBrainz, OpenRouter), any write to the **shared** `releases` table (the browser has no write grant on it), and AI telemetry. The one server-only secret that ever leaves the browser process is the OpenRouter API key (used only inside the vision/curator Functions); the Supabase service-role key is used only for the shared-release write and the telemetry write, and never reaches the browser either way. Postgres RLS is the final authority on every direct-browser write, whether or not application logic is correct.
 
 ## 8. Core User Journeys
 
@@ -79,6 +90,8 @@ Search by artist and album title; the backend queries MusicBrainz and returns no
 ## 14. AI Cover Recognition
 
 Photograph or upload a cover (JPEG/PNG/WebP, size-capped, magic-byte validated). A vision model (`google/gemini-3.1-flash-lite` by default) extracts likely identifying clues — artist, title, label, catalog number, an approximate year — under strict structured-output validation. Those clues drive a deterministic MusicBrainz search exactly like Discover's. **The vision model never persists anything and never bypasses catalog confirmation**; a candidate is saved only on explicit user confirm, exactly like a manual catalog add. Low-confidence or no-match results offer "search by text instead" or manual entry, never a silent guess.
+
+**The recognition input photo itself is transient**: it is sent once to the vision Function, used only to extract clues, and is not written to any database or Storage bucket — it is not retained as persistent application data. This is a distinct flow from the optional, intentionally-persisted custom collection cover described in §22.
 
 ## 15. Duplicate-Copy Handling
 
@@ -119,7 +132,7 @@ User-owned tags layered on top of (never overwriting) the shared catalog `genres
 
 ## 22. Artwork & Custom Covers
 
-Cover Art Archive supplies display-time artwork for catalog releases by default; a user may upload their own cover for any item, stored in a private, owner-scoped Storage bucket. No cover is ever required.
+Cover Art Archive supplies display-time artwork for catalog releases by default; a user may upload their own cover for any item. Unlike a recognition input photo (§14), a custom cover is **intentionally persisted**: it is uploaded directly from the browser to a private, owner-scoped Storage bucket (`collection-covers`), associated with that collection item, and retained until the user replaces or removes it. No cover is ever required.
 
 ## 23. Listening History
 
@@ -143,11 +156,28 @@ Display name (shown across the app) and an optional profile avatar (private buck
 
 ## 28. Hebrew & Multilingual Dynamic Content
 
-Dynamic record content (title, artist, label, personal notes are exempt by design, genres) renders correctly regardless of script: local bidirectional-text isolation per field (not page-wide `dir="rtl"`), Hebrew-aware niqqud-insensitive search comparison, deterministic Latin-then-Hebrew sorting, one canonical Hebrew/English genre-alias taxonomy shared by Collection/Dashboard/VIN, and vision recognition that preserves the original sleeve script rather than translating or transliterating it. **The application chrome, navigation, and static copy remain English/left-to-right by design** — this is not a localization project.
+Dynamic, record-owned text — artist, title, label, and catalog/personal genre tags — renders correctly regardless of script:
+
+- **Bidirectional isolation.** Each field is wrapped individually (a `<bdi>`-based `BidiText`/`BidiJoin` component, or the `FSI`/`PDI` Unicode isolate marks in plain-text contexts like a scan clue chip) so a Hebrew value never drags neighboring Latin/English text out of order — never a page-wide `dir="rtl"`.
+- **Hebrew-aware search.** Search comparison folds out niqqud (vowel points) and cantillation marks before comparing, so a query matches a title whether or not those marks are present.
+- **Deterministic mixed-script sorting.** Alphabetical sorts order Latin-script entries before Hebrew-script entries, deterministically, via a dedicated comparator.
+- **Genre aliasing.** One canonical Hebrew/English genre-alias table normalizes a genre value to a single canonical form, shared by Collection, Dashboard, and VIN, so a Hebrew and an English spelling of the same genre are treated as one filterable tag. A user's own personal genre tags go through the same canonicalization as catalog genres — there is no separate, laxer path for them.
+- **Personal notes are the one field handled differently, deliberately**: the note field is a plain `<textarea dir="auto">`, relying on the browser's native automatic bidi direction detection rather than the app's per-field isolation component — appropriate for free-text entry the user is actively typing, not a structured display field.
+- **VIN** receives genre constraints already canonicalized by the same shared table before it reasons about them, and preserves whatever script the user's request or the matched record uses in its explanation — it does not translate or transliterate.
+- **Vision recognition** preserves the original script printed on the sleeve in its extracted clues — no translation, no transliteration.
+
+**The application chrome, navigation, and static copy remain English/left-to-right by design** — this is not a localization project, and there is no cross-script artist/title aliasing (a Hebrew and a Latin-transliterated spelling of the same name are not treated as equivalent).
 
 ## 29. AI Runtime Boundaries
 
-Every model call is server-side only, with a server-only API key, a strict JSON output schema, a bounded timeout, no automatic retry beyond one deliberate catalog-only retry path, and a per-user rate limit (10 requests per 10-minute window, shared for vision recognition and curator intent calls). Telemetry (feature, model, success, latency, token counts, estimated cost, error category — never prompt text, image data, or model output) is recorded via `model_calls` for every attempt.
+Every model call is server-side only, with a server-only API key, a strict JSON output schema, a bounded timeout, and no automatic retry beyond one deliberate catalog-only retry path. Two **independent** per-user rate-limit buckets exist, each 10 attempts per rolling 10-minute window:
+
+- **Cover recognition** (`cover_vision` feature) — checked before every Vision call; a request that would exceed the window is rejected before any provider call is made.
+- **Curator intent** (`curator_intent` feature) — checked before every curator intent-extraction call, shared by the **initial recommendation** and **every refinement turn** (a refinement is recorded under the same `curator_intent` feature and checked against the same budget as the initial request). The second curator call (`curator_selection`, the ranking/explanation step) has no separate rate-limit check of its own — it only ever runs after its own turn's intent/refinement call has already passed the shared gate.
+
+(Source: `src/lib/curator/types.ts` — `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MINUTES`, `CURATOR_INTENT_FEATURE`, `CURATOR_SELECTION_FEATURE`; `netlify/functions/_shared/curator-handlers.mts` — `enforceRateLimit`, called identically by `handleCuratorRecommend` and `handleCuratorRefine`; `netlify/functions/_shared/recognition-handlers.mts` — `MAX_RECOGNITIONS_PER_WINDOW`, `RATE_LIMIT_WINDOW_MINUTES`.)
+
+Telemetry (feature, model, success, latency, token counts, estimated cost, error category — never prompt text, image data, or model output) is recorded via `model_calls` for every attempt.
 
 ## 30. Deterministic vs AI Responsibilities
 
@@ -183,7 +213,7 @@ None of these providers' uptime, pricing, or exact response shape is guaranteed 
 
 - No server secret is ever sent to the browser, logged, or persisted in a row.
 - RLS is enabled on every user-scoped table and Storage bucket; grants are least-privilege and, where relevant, column-scoped (e.g. `listening_events.listened_at` is the only mutable column on an existing row).
-- Uploaded images are validated by MIME allow-list, magic bytes, and size cap; never permanently stored.
+- Every uploaded image (recognition photo, custom cover, avatar) is validated by MIME allow-list, magic bytes, and size cap before use. A recognition photo is discarded after use and never written to storage (§14); a custom cover or avatar is the one kind of upload that is intentionally persisted, in a private, owner-scoped Storage bucket (§22, §27).
 - All model output — vision and curator alike — is treated as untrusted and schema-validated before use.
 - In-image text is explicitly framed to the vision model as untrusted data, not as instructions.
 
