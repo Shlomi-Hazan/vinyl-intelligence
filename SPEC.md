@@ -46,17 +46,22 @@ Browser SPA (Supabase publishable key only, no privileged credential)
   |       log/correct/delete · profile · custom-cover
   |       upload · avatar upload
   |
+  |---- direct, plain <img> hotlink ------------------------>  Cover Art Archive
+  |       display-time artwork only - built client-side          (release / release-group
+  |       from a MusicBrainz id; no backend call, no                front images)
+  |       persisted URL, no proxy
+  |
   `---- provider access + privileged catalog persistence -->  Netlify Functions (server-only secrets)
                                                                  |---> Supabase, service-role key
                                                                  |     (catalog add: shared `releases`
                                                                  |      upsert AND the resulting owned
                                                                  |      `collection_items` insert;
                                                                  |      model-call telemetry write)
-                                                                 |---> MusicBrainz + Cover Art Archive
+                                                                 |---> MusicBrainz (catalog search / add)
                                                                  `---> OpenRouter (vision + text models)
 ```
 
-The browser never holds a privileged credential — it authenticates and reads/writes with the Supabase **publishable** key only. A large share of ordinary user-owned writes (§9–§27: personal signals, personal genres, listening-event log/correct/delete, profile, custom cover, avatar, and a fully browser-direct manual release + collection item when no catalog match applies) are authorized **directly against Supabase**, by Row-Level Security and Storage policies — not by a server-side check. Netlify Functions handle: calls to an external provider (MusicBrainz, OpenRouter); the privileged **catalog-add** persistence step, which upserts the shared `releases` row *and* inserts the resulting `collection_items` row together, both with service-role authority (this is distinct from — and more privileged than — the browser's own scoped manual-release insert); and the model-call telemetry write. `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are both server-only secrets, used only inside these Functions, and neither ever reaches the browser. Postgres RLS is the final authority on every direct-browser write, whether or not application logic is correct.
+The browser never holds a privileged credential — it authenticates and reads/writes with the Supabase **publishable** key only. A large share of ordinary user-owned writes (§9–§27: personal signals, personal genres, listening-event log/correct/delete, profile, custom cover, avatar, and a fully browser-direct manual release + collection item when no catalog match applies) are authorized **directly against Supabase**, by Row-Level Security and Storage policies — not by a server-side check. The browser also fetches display-time artwork **directly from Cover Art Archive**, as a plain `<img src>` built client-side from a MusicBrainz id — no backend call, no image proxy, no persisted CAA URL (§22). Netlify Functions handle: calls to MusicBrainz (catalog search/add) and OpenRouter; the privileged **catalog-add** persistence step, which upserts the shared `releases` row *and* inserts the resulting `collection_items` row together, both with service-role authority (this is distinct from — and more privileged than — the browser's own scoped manual-release insert); and the model-call telemetry write. `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are both server-only secrets, used only inside these Functions, and neither ever reaches the browser. Postgres RLS is the final authority on every direct-browser write, whether or not application logic is correct.
 
 ## 8. Core User Journeys
 
@@ -197,7 +202,7 @@ A model can suggest; it can never invent an owned record, a database ID, a ratin
 ## 31. External Integrations
 
 - **MusicBrainz** — release search and metadata; a documented, free, best-effort-paced public API. No SLA is assumed; failures are surfaced as visible errors, not silent empties.
-- **Cover Art Archive** — display-time artwork only; no `releases.cover_url` column, no catalog-add-time lookup.
+- **Cover Art Archive** — display-time artwork only, fetched **directly by the browser** (a plain `<img src>` built client-side from a MusicBrainz id) — not a Netlify Function call; no `releases.cover_url` column, no catalog-add-time lookup.
 - **OpenRouter** — gateway to the vision and text models listed in §29/§25. A provider outage is a visible, recoverable failure, never a fabricated result.
 - **Supabase** — Postgres, Auth, Storage; hosted, least-privilege configured.
 - **Netlify** — static hosting + Functions; manual deploy from merged `main`, no CI.

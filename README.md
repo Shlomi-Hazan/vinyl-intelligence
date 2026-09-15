@@ -165,15 +165,21 @@ Browser (Vite + React 19 + TypeScript SPA on Netlify static hosting)
   |       notes · personal genres · listening history ·    Storage (private buckets)
   |       profile · custom cover + avatar upload
   |
-  `---- provider access + privileged catalog persistence --> Netlify Functions (six functions, server secrets only)
-          |  /api/health                    liveness
-          |  /api/catalog/search    (GET)   MusicBrainz release search
-          |  /api/catalog/add       (POST)  upsert shared release + insert owned collection item
-          |  /api/catalog/recognize (POST)  OpenRouter vision recognition
-          |  /api/curator/recommend (POST)  initial recommendation pipeline
-          |  /api/curator/refine    (POST)  bounded refinement pipeline
+  |---- direct, plain <img> hotlink ------------------> Cover Art Archive
+  |       display-time artwork only, built client-side       (release / release-group
+  |       from a MusicBrainz id — no backend call,              front images)
+  |       no proxy, no persisted URL
+  |
+  `---- provider access + privileged catalog persistence --> Netlify Functions
+          |  /api/health             (GET)   public liveness — no auth
+          |  /api/catalog/search     (GET)   MusicBrainz release search        [auth]
+          |  /api/catalog/add        (POST)  upsert shared release + insert    [auth]
+          |                                  owned collection item
+          |  /api/catalog/recognize  (POST)  OpenRouter vision recognition     [auth]
+          |  /api/curator/recommend  (POST)  initial recommendation pipeline   [auth]
+          |  /api/curator/refine     (POST)  bounded refinement pipeline       [auth]
           v
-      Hosted Supabase (service-role:    OpenRouter                MusicBrainz + Cover Art Archive
+      Hosted Supabase (service-role:    OpenRouter                MusicBrainz
       catalog-add's release upsert       google/gemini-3.1-flash-lite (vision + intent)
       AND collection-item insert,        google/gemini-3.5-flash (selection)
       plus telemetry writes)
@@ -184,7 +190,7 @@ Full detail, including rejected alternatives and the reasoning behind each decis
 ## 🧰 Tech Stack
 
 - **Frontend:** Vite 8, React 19, TypeScript, `react-router-dom` v7
-- **Backend:** Netlify Functions (`.mts`), six auth-gated endpoints
+- **Backend:** Netlify Functions (`.mts`), six endpoints — five auth-gated application endpoints plus one public `/api/health` liveness endpoint
 - **Database / Auth / Storage:** hosted Supabase — Postgres with RLS on every table, Supabase Auth, two private Storage buckets
 - **AI:** OpenRouter — `google/gemini-3.1-flash-lite` (vision + curator intent), `google/gemini-3.5-flash` (curator selection); strict JSON schemas; allowed-candidate-ID validation
 - **Music metadata:** MusicBrainz; Cover Art Archive for display-time artwork
