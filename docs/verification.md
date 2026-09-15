@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-09-07.
+Last updated: 2026-09-15.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -23,7 +23,19 @@ Verification must be based on written acceptance criteria, not on generated conf
 - Saved record remains after refresh/login.
 - User A cannot access User B's collection.
 - User can edit and delete owned records.
-- Duplicate behavior follows the documented rule.
+- Duplicate behavior follows the documented rule (`intent.txt` §19): an exact
+  already-owned catalog release is honestly disclosed, never silently
+  blocked and never silently duplicated:
+  - an exact owned candidate is disclosed ("In your collection") in both
+    Discover and Scan, identically.
+  - an explicit "Add another copy" confirmation is required to add a second
+    physical copy - Cancel makes zero add calls; Confirm creates exactly one
+    additional physical `collection_item`.
+  - ownership is never inferred from a loading or errored collection-load
+    state - it is authoritative only once the collection load is `ready`
+    (spec `0016` Finding B).
+  - deleting one physical copy never deletes or otherwise affects a sibling
+    copy of the same release.
 
 ### Search and Filtering
 
@@ -32,6 +44,22 @@ Verification must be based on written acceptance criteria, not on generated conf
 - Filter by year and decade works.
 - Combined filters behave predictably.
 - Empty results display a clear state.
+- Minimum-rating filter (`rating >= N`) works; unrated records never match a
+  positive threshold.
+- Rating sort works in both directions; unrated records always sort last in
+  both directions (spec `0016` Finding A).
+- "Never played" filter and "Not played in 30 days" filter are mutually
+  exclusive and match the documented 30-day boundary.
+- "Least recently played" sort orders never-played records first, then
+  oldest-to-newest by last-listened time.
+- Listening-derived filters/sorts are never presented as active, and never
+  silently applied, while listening-event data is loading or errored - only
+  a `ready` load is authoritative.
+- Combined filters (new + pre-existing) behave predictably.
+- Filter/sort/view state round-trips correctly through the URL and survives
+  a refresh.
+- Grid and List views both render correctly on desktop and on a narrow
+  (mobile) viewport.
 
 ### Listening History
 
@@ -5385,3 +5413,207 @@ display webfont — small Hebrew cards intentionally use the existing
 system-oriented `--font-sans` fallback, human-accepted in PR #27. Historical
 `docs/roadmaps/2026-08-18-complete-project-roadmap.md` remains byte-unchanged
 (sha256 `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
+
+## Final Submission Alignment Evidence
+
+An independent final course/submission audit compared `intent.txt`,
+`AGENTS.md`/`CLAUDE.md`, the roadmaps, specs, plans, ADRs, this verification
+log, and actual runtime behavior, and recorded eight findings (A–H) in
+`docs/specs/0016-final-submission-alignment.md`. This section records the
+evidence for the two runtime findings (A, B) and this documentation-only
+closeout (PR D covers Findings C–H). All previous historical evidence above
+this section is preserved unchanged.
+
+Note on evidence provenance throughout this section: **AUTOMATED / AGENT-RUN
+LOCAL EVIDENCE** below means commands actually executed by the implementation
+agent from a local clean checkout (typecheck, lint, `vitest run`, `vite
+build`, `supabase test db`, `supabase db lint`, `npm audit`). This repository
+has **no GitHub Actions / CI pipeline** — no GitHub status check ever ran
+against these commits; "independent review" means a separate independent
+review pass (human-directed, agent-assisted), not a CI gate. **HUMAN-OBSERVED
+PRODUCTION EVIDENCE** means the human exercised the deployed production
+application directly and reported the observed result.
+
+### PR A — Planning / Findings lock
+
+PR #29, merge `f3a6925714c5471416ec228baf39aca0e907e0d0`. Planning only — no
+runtime change. Locked Findings A–H (`docs/specs/0016-final-submission-alignment.md`)
+and the implementation plan (`docs/plans/016-final-submission-alignment.md`).
+**Human approval:** all seven §21 UX decisions (minimum-rating filter/sort,
+listening filters/sort, URL state, duplicate-confirmation dialog copy, the
+shared-duplicate-ownership-helper shape) approved 2026-09-14.
+
+### PR B — Finding A (Collection rating and listening browse controls)
+
+**AUTOMATED / AGENT-RUN LOCAL EVIDENCE (final head `4eac8ad26e8542b585fe120c2144e3bbdc305ace`):**
+
+- `git diff --check` clean; `npm run typecheck` clean; `npm run lint` 0
+  warnings.
+- `npm run test:run`: **70 test files / 842 tests**, all passing.
+- `npm run build` clean; CSS byte-identical to the pre-PR build.
+- `npx supabase test db`: **10 files / 507 assertions PASS** (no migration).
+- `npx supabase db lint`: no errors.
+- `npm audit --omit=dev`: **0 vulnerabilities**.
+- Historical roadmap byte-unchanged (sha256
+  `cca3d3c864f213bd25844ff96372e870a411b21be6464c26c68d1bc4127b26a4`).
+- Zero real provider calls anywhere in implementation or automated
+  verification (all `searchCatalog`/`addCatalogReleaseToCollection`/listening
+  fixtures mocked).
+
+**Independent-review correction chronology:**
+
+1. Original implementation: commit `8de635bd996106c2560a890d3284ed3f876821a8`.
+2. Independent review found 2 MEDIUM + 2 LOW (listening-sort readiness
+   gating not honest while loading/errored; a "no reload" test that did not
+   actually interact; a shared loading/error tooltip; a disabled chip still
+   reporting `aria-pressed`). Fixed in correction
+   `2926b78d3811ec45514a70158e1edf616972dc40`.
+3. Independent re-review found 1 MEDIUM + 1 LOW (the disabled "Least
+   recently played" sort option's label still looked active; the "once
+   ready" test did not actually exercise the loading→ready transition).
+   Fixed in final micro-correction
+   `4eac8ad26e8542b585fe120c2144e3bbdc305ace`.
+4. Final independent review at that head: **0 BLOCKER / 0 HIGH / 0 MEDIUM /
+   0 LOW — APPROVED FOR MERGE.**
+
+**Merge and deploy:** normal merge commit
+`2430230af12e89b61ac9a54da81ef31e1ad59ad3` (parents: prior `main`
+`f3a6925714c5471416ec228baf39aca0e907e0d0`, PR head `4eac8ad2…`). Production
+deploy `6aa86ad76bc83b77bc42c651` at `https://vinyl-intelligence.netlify.app`;
+safe technical smoke (root, `/collection`, `/api/health`, matching asset
+hash) passed with zero provider calls.
+
+**HUMAN-OBSERVED PRODUCTION EVIDENCE — PASS, 2026-09-15:**
+
+- Minimum rating: "Any rating" → 10/10 records; "3★+" → 2 records; "4★+" → 1
+  record; "5★+" → 0 records.
+- "Rating (highest)" and "Rating (lowest)" both correct; unrated records
+  accepted as sorting last in **both** directions.
+- "Never played" → 7 records; "Not played in 30 days" → 7 records; the two
+  listening filters confirmed mutually exclusive.
+- "Least recently played" correct (never-played records first, then played
+  records oldest-to-newest).
+- Combining a new control with an existing filter behaved correctly.
+- "Clear filters" restored 10/10 records.
+- Grid view and List view both correct; a Hebrew-titled record rendered
+  correctly throughout.
+- URL state (`minRating`, `listening`, `sort`) persisted correctly across a
+  refresh.
+- Mobile/narrow-viewport layout, and mobile rating/listening/sort/Grid/List
+  interactions, all correct; no visible overflow or regression.
+
+**Finding A is CLOSED.**
+
+### PR C — Finding B (duplicate-copy UX restoration in Discover and Scan)
+
+**AUTOMATED / AGENT-RUN LOCAL EVIDENCE (final head `eadb146ec1c9ee49b08858bb2560002e09be16d8`):**
+
+- Focused (shared helper + `DiscoverPanel` + `ScanPanel`): **3 files / 57
+  tests**, all passing.
+- Full suite: **71 test files / 871 tests**, all passing.
+- `npm run typecheck` clean; `npm run lint` 0 warnings; `npm run build`
+  clean, CSS byte-identical.
+- `npx supabase test db`: **10 files / 507 assertions PASS** (no migration).
+- `npx supabase db lint`: no errors.
+- `npm audit --omit=dev`: **0 vulnerabilities**.
+- Historical roadmap byte-unchanged (same sha256 as above).
+- Zero real provider calls anywhere in implementation or automated
+  verification (`searchCatalog`/`addCatalogReleaseToCollection`/
+  `recognizeCover` mocked throughout).
+
+**Independent-review correction chronology:**
+
+1. Original implementation: commit `68f1e8d7715677a5641a35be3212ed32152791e9`
+   — one shared pure ownership helper
+   (`src/lib/catalog/ownedRelease.ts::isExactCatalogReleaseOwned`, exact
+   `provider_release_id` match only), an identical local-confirmation-dialog
+   pattern independently in `DiscoverPanel` and `ScanPanel` (no shared
+   state/hook/component), and the exact approved dialog copy/buttons.
+2. Independent review found **1 HIGH + 1 LOW**:
+   - HIGH — ownership must never be inferred from non-authoritative
+     collection-load data. `CollectionDataProvider`'s `status` (`'loading' |
+     'ready' | 'error'`) means `ownedItems` is not always authoritative — a
+     reload (including the reload triggered right after a successful add)
+     deliberately retains the previous items as **stale** data while
+     `status` is `'loading'`. This left a real hole: add a not-yet-owned
+     candidate, the reload starts, stale `ownedItems` still excludes the new
+     release, and the ordinary "Add to collection" action could become
+     clickable again before the authoritative reload returned — permitting
+     an undisclosed second copy with no duplicate confirmation at all.
+   - LOW — the "Add another copy" action stayed enabled while its own add
+     was in flight, inviting a reopened dialog and a silent no-op confirm
+     (an internal guard already prevented a second write, but the button
+     falsely invited one).
+3. Both fixed in correction `eadb146ec1c9ee49b08858bb2560002e09be16d8`:
+   ownership/add semantics are authoritative only when
+   `collectionStatus === 'ready'` (a new prop threaded from the existing
+   `useCollectionData()` status, no new fetch); while not ready, every
+   candidate shows a disabled, truthful placeholder ("Checking collection…"
+   / "Collection unavailable") instead of any enabled add action; the
+   "Add another copy" action disables and reads "Adding…" while its own add
+   is in flight. Still exactly one shared ownership helper, unchanged.
+4. Final independent review at that head: **0 BLOCKER / 0 HIGH / 0 MEDIUM /
+   0 LOW.**
+
+**Merge and deploy:** normal merge commit
+`81812c1f52d56bea84e142d828dd1e1427a0ec4b` (parents:
+`2430230af12e89b61ac9a54da81ef31e1ad59ad3`,
+`eadb146ec1c9ee49b08858bb2560002e09be16d8`). Production deploy
+`6aa8783d1835a5e433449dd4` at `https://vinyl-intelligence.netlify.app`; safe
+technical smoke (root, `/discover`, `/scan`, `/api/health`, matching asset
+hash) passed with zero provider calls.
+
+**HUMAN-OBSERVED PRODUCTION EVIDENCE — PASS, 2026-09-15:**
+
+Discover:
+
+- Baseline Collection count: 10.
+- The exact owned J. Cole — *2014 Forest Hills Drive* release showed "In
+  your collection" + "Add another copy"; other non-owned releases of the
+  same album still showed the ordinary "Add to collection."
+- The exact approved duplicate-dialog copy displayed.
+- Cancel → count remained 10.
+- Confirm → count 10 → 11; exactly two physical copies visible; Discover
+  still showed the exact release as owned afterward.
+
+Scan (exactly one deliberate real Vision recognition; the normal
+MusicBrainz lookup Scan already requires; **no curator call**):
+
+- Baseline before the Scan duplicate add: 11.
+- Hebrew sleeve exercised: טונה — מזרח פרוע; recognition clues preserved the
+  Hebrew script.
+- The exact owned candidate showed "In your collection" + "Add another
+  copy"; another non-owned candidate still showed "This is it — add."
+- The exact approved duplicate dialog displayed.
+- Cancel → count remained 11.
+- Confirm → count 11 → 12; exactly two physical copies visible; normal Scan
+  success behavior remained intact.
+
+Copy isolation:
+
+- One of the two duplicate physical collection items was deleted; the
+  sibling copy remained — confirms separate collection-item semantics
+  (`intent.txt` §19) were not regressed.
+
+Mobile:
+
+- Owned Discover candidate layout PASS; no horizontal overflow; "In your
+  collection" readable; "Add another copy" usable; the duplicate dialog fit
+  the phone viewport with uncut text; Cancel and Add another copy both
+  tappable.
+
+**Finding B is CLOSED.**
+
+### PR D — Documentation reconciliation (Findings C–H)
+
+Documentation-only reconciliation represented by the current repository/Git
+history: `intent.txt` §4.3 clarified (shared catalog metadata is
+browser-read-only; user control is expressed through overlays, candidate
+correction, and manual-entry editability - Finding C); README and this
+current roadmap's status brought current (Findings D, E, H); the spec index
+and decision index corrected (Finding F); this verification log's metadata
+and acceptance-area coverage expanded, and this section added (Findings G,
+H). No runtime, test, schema, or configuration file changed; the accepted
+production runtime remains the PR C merge above
+(`81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy
+`6aa8783d1835a5e433449dd4`).

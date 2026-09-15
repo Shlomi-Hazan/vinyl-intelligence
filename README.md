@@ -15,8 +15,11 @@ Vinyl collectors often remember a mood, setting, decade, or feeling before they 
 - Manual collection browsing, deterministic search / filter / sort, edit, delete
 - Organization by artist, genre, year, decade, rating, favourites, and listening
   history; user-owned personal genres
-- Append-only listening history with browser-derived play count and last-listened
-  time; a user may correct or delete their own play
+- Listening history (`listening_events`) with browser-derived play count and
+  last-listened time; shipped append-only at Milestone 8, then minimally
+  superseded by an owner-scoped `listened_at` correction + delete grant
+  (ADR 0006) — a play can never be re-pointed to another user's or another
+  item's row
 - Ratings, favourites, and personal notes per record
 - AI curator (VIN) that interprets natural-language listening intent and
   recommends **only** from records the user owns, with grounded explanations and
@@ -58,10 +61,38 @@ As built (see [`docs/architecture.md`](docs/architecture.md) for detail):
 
 ## Project Status
 
-**Current state (2026-09-07): Milestones 0–12 are COMPLETE — production accepted — submission-ready.**
-The application is **live at <https://vinyl-intelligence.netlify.app>**, from
-merged `main` `c2037b8a09b10da796fa2435f268f316f7bb8442` (Netlify deploy
-`6a9eaf39df3f13d430f76828`). **Human production acceptance passed 2026-09-07.**
+**Accepted production runtime (2026-09-15):** the application is **live at
+<https://vinyl-intelligence.netlify.app>**, from merged `main`
+`81812c1f52d56bea84e142d828dd1e1427a0ec4b` (Netlify deploy
+`6aa8783d1835a5e433449dd4`). **Human production acceptance passed
+2026-09-15.**
+
+The project reached this state through three distinct phases:
+
+1. **Milestones 0–12** were completed and production-accepted on
+   2026-09-07, at `main` `c2037b8a09b10da796fa2435f268f316f7bb8442` (deploy
+   `6a9eaf39df3f13d430f76828`) — see "Milestone evidence" below.
+2. **Hebrew & Multilingual Record Support** — a deliberate post-M12
+   enhancement, not part of the original milestone plan (planning PR #22;
+   runtime PR #23 + correction PR #24, PR #25, PR #26 + typography
+   correction PR #27; documentation closeout PR #28) — accepted at `main`
+   `59fe823646091b6189fc1a015c7209fbe1f8105b` (deploy
+   `6aa7f8579b5591de792714f4`); see
+   [`docs/specs/0015-hebrew-multilingual-record-support.md`](docs/specs/0015-hebrew-multilingual-record-support.md).
+3. **Final Submission Alignment** — an audit-triggered post-completion
+   remediation, not a new numbered milestone (see
+   [`docs/specs/0016-final-submission-alignment.md`](docs/specs/0016-final-submission-alignment.md)):
+   planning PR #29 (merge `f3a6925714c5471416ec228baf39aca0e907e0d0`);
+   **Finding A** (Collection rating/listening browse controls) CLOSED via
+   PR #30 (merge `2430230af12e89b61ac9a54da81ef31e1ad59ad3`, deploy
+   `6aa86ad76bc83b77bc42c651`, human production acceptance PASS
+   2026-09-15); **Finding B** (duplicate-copy confirmation UX in Discover
+   and Scan) CLOSED via PR #31 (merge
+   `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy
+   `6aa8783d1835a5e433449dd4`, human production acceptance PASS
+   2026-09-15). The remaining documentation-reconciliation findings (C–H)
+   are addressed by this documentation-only change (PR D); it does not
+   alter the accepted production runtime above.
 
 Milestones 0–10, the **Visual Experience & Product Identity pass** (a
 human-directed product-quality pass deliberately inserted between Milestone 10
@@ -272,7 +303,10 @@ Implemented:
 - Reliability / security / AI-safety re-proof, dependency triage, as-built
   documentation reconciliation, and a mobile app-shell + History-row layout fix
   (Milestone 12; PR #19, PR #20). **M0–M12 complete; production accepted
-  2026-09-07; current `main` `c2037b8`, deploy `6a9eaf39`.**
+  2026-09-07 at `main` `c2037b8`, deploy `6a9eaf39`** — this was the
+  accepted runtime at M12 acceptance, since superseded by the Hebrew &
+  Multilingual enhancement and Final Submission Alignment; see "Project
+  Status" above for the current accepted production runtime.
 
 ## Local Setup
 

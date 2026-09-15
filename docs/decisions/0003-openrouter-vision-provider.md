@@ -1,8 +1,15 @@
 # 0003 OpenRouter Vision Provider For Cover Recognition
 
-Status: proposed (pending human approval with Milestone 5)
+Status: accepted
 
 Date: 2026-08-29
+
+**Implementation note (final submission alignment, 2026-09-15):** implemented
+in Milestone 5 exactly as decided below - OpenRouter, primary model
+`google/gemini-3.1-flash-lite`, shipped and verified in production
+(`docs/specs/0006-milestone-5-photo-recognition.md`). The later Hebrew &
+Multilingual acceptance (`docs/specs/0015`) confirmed cover recognition
+preserves the original sleeve script unchanged from this decision.
 
 Relates to: Milestone 5 (`docs/specs/0006-milestone-5-photo-recognition.md`),
 `docs/ai-design.md`, `docs/api-integrations.md`, `docs/architecture.md`.

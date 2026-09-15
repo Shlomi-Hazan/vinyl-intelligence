@@ -1,13 +1,18 @@
 # 016 Final Submission Alignment (Implementation Plan)
 
-Status: **APPROVED FOR IMPLEMENTATION (2026-09-14) — implementation not
-started.** The seven §21 decisions this plan depends on are human-approved.
+Status: **FINAL DOCUMENTATION CLOSEOUT (PR D) — current as of 2026-09-15.**
+PR A (planning, PR #29) is merged. PR B (Finding A, PR #30) and PR C
+(Finding B, PR #31) are each complete: implemented, independently reviewed,
+merged, deployed, and human-accepted — see `docs/verification.md` → "Final
+Submission Alignment Evidence" for the full record. PR D is this
+documentation-only reconciliation of Findings C–H; it changes no runtime
+file. The original PR A/B/C/D operational plan below is preserved unchanged
+as the plan being executed.
 Spec: `docs/specs/0016-final-submission-alignment.md`.
 Baseline `main`: `7ddd5b08ef9b0ada272ae02a97626dbf8423f142` (PR #28).
 
 This plan is operational: another agent should be able to execute PR B, PR C,
 or PR D from this document plus the spec, without re-deriving product intent.
-It does not begin implementation.
 
 **Four sequential PRs. Do not create one giant branch. PR B does not start
 until PR A (this planning PR) is reviewed and merged. PR C does not start
@@ -397,3 +402,15 @@ AI/model call of any kind.
 acceptance completes before PR D closeout begins.** Do not open PR C's
 branch before PR B's human-acceptance checklist has actually passed on
 production. Do not open PR D's branch before PR C's has.
+
+## Final execution status (2026-09-15)
+
+This sequencing was followed exactly: PR A (#29) merged →
+PR B (#30) implemented, independently reviewed, merged, deployed,
+human-accepted (Finding A CLOSED) → PR C (#31) implemented, independently
+reviewed, merged, deployed, human-accepted (Finding B CLOSED) → PR D, this
+documentation-only reconciliation of Findings C–H. Full evidence:
+`docs/verification.md` → "Final Submission Alignment Evidence";
+`docs/specs/0016-final-submission-alignment.md` §22. The accepted production
+runtime remains PR C's merge, `81812c1f52d56bea84e142d828dd1e1427a0ec4b`
+(deploy `6aa8783d1835a5e433449dd4`); PR D changes no runtime file.

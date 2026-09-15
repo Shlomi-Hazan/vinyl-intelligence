@@ -4,11 +4,11 @@
 **Course:** Agentic Software Engineering (ASE-26)
 **Repository:** `Shlomi-Hazan/vinyl-intelligence`
 **Primary build workflow:** Human-directed agentic software engineering (Codex, then Claude Code)
-**Roadmap version:** 2026-09-02 (current); status updated 2026-09-07
+**Roadmap version:** 2026-09-02 (current); status updated 2026-09-15
 **Supersedes:** `docs/roadmaps/2026-08-18-complete-project-roadmap.md` — preserved unchanged as the historical snapshot
-**Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10
+**Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10, including two post-M12 evolutions (Hebrew & Multilingual Record Support; Final Submission Alignment)
 
-**Project status (2026-09-07): M0–M12 COMPLETE — production accepted — submission-ready.** Live at `https://vinyl-intelligence.netlify.app`, from merged `main` `c2037b8a09b10da796fa2435f268f316f7bb8442` (Netlify deploy `6a9eaf39df3f13d430f76828`). Human production acceptance passed 2026-09-07.
+**Project status (2026-09-15): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled by this documentation change (PR D).** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b` (Netlify deploy `6aa8783d1835a5e433449dd4`). Human production acceptance passed 2026-09-15. See "Post-M12 evolution" below for the full chronology; M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) is preserved as history in section 22 and is no longer the current accepted runtime.
 
 ---
 
@@ -35,8 +35,94 @@ original 2026-08-18 roadmap
   -> M11 Production Deployment executed and completed (production live, main 55f514c)
   -> PR #18 post-M11 UX enhancement merged (main ee6d695, deploy 6a9dfeaacb28d21bd0c88eb6)
   -> M12 Reliability / Security / Telemetry / Polish COMPLETE (PR #19; runtime fixes PR #19/#20)
-  -> M0-M12 complete, production accepted 2026-09-07 (current: main c2037b8, deploy 6a9eaf39)
+  -> M0-M12 complete, production accepted 2026-09-07 (main c2037b8, deploy 6a9eaf39)
+  -> Hebrew & Multilingual Record Support: deliberate post-M12 enhancement
+     (PR #22 planning; PR #23+#24, PR #25, PR #26+#27 runtime; PR #28 docs)
+     accepted (main 59fe8236, deploy 6aa7f857)
+  -> Final Submission Alignment: audit-triggered post-completion remediation,
+     not a new numbered milestone (PR #29 planning; PR #30 Finding A CLOSED;
+     PR #31 Finding B CLOSED; PR D Findings C-H documentation reconciliation)
+  -> accepted production runtime built from main 81812c1f, deploy 6aa8783d
+     (2026-09-15) - later documentation-only history, including PR D, does
+     not change this deployed runtime
 ```
+
+---
+
+## Post-M12 evolution
+
+M0–M12 were the original roadmap's scope. Two further phases followed,
+neither of which is a new numbered milestone: a deliberate feature
+enhancement, then an audit-triggered documentation/UX remediation.
+
+### Hebrew & Multilingual Record Support
+
+A deliberate post-M12 product enhancement — full detail in
+`docs/specs/0015-hebrew-multilingual-record-support.md` and
+`docs/plans/015-hebrew-multilingual-record-support.md`.
+
+- **PR #22** — planning (spec + plan approved).
+- **PR #23** — multilingual UI foundation (BiDi isolation, script
+  classification, Hebrew-aware search, deterministic sort).
+- **PR #24** — desktop List-view alignment correction (independent-review
+  follow-up on PR #23).
+- **PR #25** — canonical Hebrew/English genre-alias taxonomy shared by
+  Collection/Dashboard/VIN, Hebrew-aware VIN curator constraints/reasons.
+- **PR #26** — AI cover-recognition preserving the original sleeve script,
+  accessibility pass, final multilingual runtime work.
+- **PR #27** — Hebrew small-card typography correction (independent-review
+  follow-up on PR #26).
+- **PR #28** — documentation closeout (no runtime change).
+
+**Final accepted Hebrew runtime:** `main` `59fe823646091b6189fc1a015c7209fbe1f8105b`.
+**Final accepted Hebrew production deploy:** `6aa7f8579b5591de792714f4`.
+Human production acceptance PASS. Historical roadmap
+(`docs/roadmaps/2026-08-18-complete-project-roadmap.md`) untouched throughout.
+
+### Final Submission Alignment
+
+An independent final course/submission audit compared `intent.txt`,
+`AGENTS.md`/`CLAUDE.md`, the roadmaps, specs, plans, ADRs, the verification
+log, and actual runtime behavior, and recorded eight findings (A–H) in
+`docs/specs/0016-final-submission-alignment.md`. This is an **audit-triggered
+post-completion remediation, not a new numbered product milestone** — it
+follows the same PR-per-change / independent-review / merge / deploy /
+human-acceptance discipline as every milestone above.
+
+- **PR A — PR #29 (planning).** Locked Findings A–H; the human approved the
+  seven §21 UX decisions (rating filter/sort, listening filters/sort, URL
+  state, duplicate-confirmation dialog copy, shared duplicate-ownership
+  helper shape). No runtime change. Merge `f3a6925714c5471416ec228baf39aca0e907e0d0`.
+- **PR B — PR #30 (Finding A: Collection rating/listening browse
+  controls).** Minimum-rating filter, rating sort (unrated always last),
+  mutually-exclusive never-played/stale-listening filters, least-recently-
+  played sort — all client-side/deterministic, gated on listening-event
+  readiness. Two independent-review correction rounds
+  (`2926b78d3811ec45514a70158e1edf616972dc40`,
+  `4eac8ad26e8542b585fe120c2144e3bbdc305ace`); final independent review 0
+  BLOCKER/HIGH/MEDIUM/LOW. Merge `2430230af12e89b61ac9a54da81ef31e1ad59ad3`;
+  deploy `6aa86ad76bc83b77bc42c651`. **Human production acceptance PASS,
+  2026-09-15. Finding A CLOSED.**
+- **PR C — PR #31 (Finding B: duplicate-copy UX in Discover/Scan).**
+  Restored the `intent.txt` §19 contract (warn on an exact already-owned
+  release; allow an intentionally-confirmed second physical copy) via one
+  shared pure ownership helper and an identical local-confirmation-dialog
+  pattern in both `DiscoverPanel` and `ScanPanel`. Independent review found
+  1 HIGH (ownership must never be inferred from non-authoritative/stale
+  collection-load state) + 1 LOW (the duplicate action must reflect an
+  in-flight add); both fixed in correction
+  `eadb146ec1c9ee49b08858bb2560002e09be16d8`; final independent review 0
+  BLOCKER/HIGH/MEDIUM/LOW. Merge `81812c1f52d56bea84e142d828dd1e1427a0ec4b`
+  (parents `2430230a…`, `eadb146e…`); deploy `6aa8783d1835a5e433449dd4`.
+  **Human production acceptance PASS, 2026-09-15. Finding B CLOSED.**
+- **PR D — this documentation-only reconciliation.** Addresses Findings
+  C–H (living-intent wording, this roadmap's own currency, the spec index,
+  the ADR index/ADR 0003 status, and `docs/verification.md` currency and
+  coverage). It changes no runtime, test, schema, or configuration file;
+  the accepted production runtime remains the PR C merge above.
+
+Historical roadmap (`docs/roadmaps/2026-08-18-complete-project-roadmap.md`)
+untouched throughout this phase as well.
 
 ---
 
@@ -291,7 +377,7 @@ The inserted pass added, as standing verification for its surface area: measured
 | 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`; M11 completed at `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS.** |
 | 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Complete — verification + docs pass (PR #19); human production acceptance 2026-09-07; two runtime fixes (PR #19, PR #20) merged + deployed + re-verified. Final `main` `c2037b8`, deploy `6a9eaf39`.** |
 
-Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). Milestone 11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16); PR #18 then moved production to `ee6d695b449e3b7810be3663b5cd5b221fedd059`. **The current / accepted `main` is `c2037b8a09b10da796fa2435f268f316f7bb8442`** (after M12: PR #19 → PR #20; Netlify deploy `6a9eaf39df3f13d430f76828`). M0–M12 are complete and production is human-accepted.
+Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). Milestone 11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16); PR #18 then moved production to `ee6d695b449e3b7810be3663b5cd5b221fedd059`. **Milestone 12's accepted `main` was `c2037b8a09b10da796fa2435f268f316f7bb8442`** (after M12: PR #19 → PR #20; Netlify deploy `6a9eaf39df3f13d430f76828`) — M0–M12 were complete and production human-accepted at that point. Two further post-M12 phases followed (see "Post-M12 evolution" above). The current accepted production runtime was built from `main` at `81812c1f52d56bea84e142d828dd1e1427a0ec4b`; later documentation-only history, including PR D, does not change that deployed runtime.
 
 ---
 
@@ -576,7 +662,7 @@ The automated gate passed from a clean checkout (typecheck; lint 0 warnings; **6
 - **PR #19** — the transient VIN session (recommendations + bounded conversation) was lost after `VIN → View record → back`. Fixed by lifting exactly that transient `CuratorPanel` state into a client-only `CuratorSessionProvider` mounted above the route outlet; a Dashboard "Quick VIN" seed is a plain event-handler reset+set. **React-memory-only privacy contract unchanged** (no storage, no server, no transcript; refresh / user-change / "Start over" clear it), and no curator API / prompt / schema / model change. Merge `a74d689593eb796b6d347cb771ca8f3122491abb`.
 - **PR #20** — a shared mobile app-shell defect: at the mobile breakpoint the app grid collapsed to one explicit column but `.vi-main` kept `grid-column: 2`, so CSS Grid added an implicit column and every route was shifted right and squeezed to its content width (surfaced as History looking compressed on a phone). Fixed with `.vi-main { grid-column: 1 }` in the mobile block, plus mobile History-row polish (`104d32b`). CSS only. Merge `c2037b8a09b10da796fa2435f268f316f7bb8442`.
 
-**Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`; production deploy `6a9eaf39df3f13d430f76828`** at `https://vinyl-intelligence.netlify.app`. **M0–M12 complete — production accepted — submission-ready.**
+**Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`; production deploy `6a9eaf39df3f13d430f76828`** at `https://vinyl-intelligence.netlify.app`. **M0–M12 complete — production accepted — submission-ready.** (This was Milestone 12's own accepted state on 2026-09-07; see "Post-M12 evolution" and the top-of-document project status for the current accepted production runtime.)
 
 **Not performed / not claimed:** no forced-provider-failure human test (automated provider-failure and model-safety coverage is recorded in the milestone-specific verification sections); no signup / email-confirmation re-test (an existing account was used; that flow was verified in Milestone 11).
 
@@ -650,7 +736,16 @@ PR #18 post-M11 UX enhancement  (`main` `ee6d695`, deploy `6a9dfeaacb28d21bd0c88
 M12 Reliability / Security / Telemetry / Final Polish  (COMPLETE -> PR #19; runtime fixes PR #19/#20)
  |
  v
-M0-M12 COMPLETE - production accepted 2026-09-07  (current: `main` `c2037b8`, deploy `6a9eaf39`)
+M0-M12 COMPLETE - production accepted 2026-09-07  (main `c2037b8`, deploy `6a9eaf39`)
+ |
+ v
+Hebrew & Multilingual Record Support  (post-M12 enhancement; main `59fe8236`, deploy `6aa7f857`)
+ |
+ v
+Final Submission Alignment  (audit-triggered remediation; Finding A/PR #30 + Finding B/PR #31 CLOSED)
+ |
+ v
+accepted production runtime built from main `81812c1f`, deploy `6aa8783d` (2026-09-15) - later documentation-only history does not change this deployed runtime
 ```
 
 This order is intentional. The AI curator is delayed until authentication, ownership, collection data, structured metadata, preference signals, and listening-history signals are all trustworthy. The Visual Experience & Product Identity pass is deliberately placed **after** the functional product is complete and **before** production deployment: it is a product-quality gate, not a feature milestone, and it must not destabilize the verified M0–M10 behavior.
@@ -699,10 +794,16 @@ The repository should tell the story of the engineering process.
 
 # 26. Definition of Done
 
-**Met — 2026-09-07.** M0–M12 complete, production human-accepted, submission-ready
-(final `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`, deploy
-`6a9eaf39df3f13d430f76828`). The criteria below are recorded as met; evidence is
-in `docs/verification.md`, the specs and plans, the PR history, and Git.
+**Met for M0–M12 — 2026-09-07.** M0–M12 complete, production human-accepted,
+submission-ready (final `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`,
+deploy `6a9eaf39df3f13d430f76828`). The criteria below are recorded as met for
+that scope; evidence is in `docs/verification.md`, the specs and plans, the PR
+history, and Git. Two further post-M12 phases (Hebrew & Multilingual Record
+Support; Final Submission Alignment — see "Post-M12 evolution" above) each
+followed the same specification/plan/review/merge/deploy/human-acceptance
+discipline and are independently evidenced; the accepted production runtime
+was built from `main` at `81812c1f52d56bea84e142d828dd1e1427a0ec4b` - later
+documentation-only history does not change that deployed runtime.
 
 The entire Vinyl Intelligence project is done only when:
 
