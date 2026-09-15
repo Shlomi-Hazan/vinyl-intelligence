@@ -38,7 +38,7 @@ separately reviewed PR. The existing historical freeze tag
 `821676801084ddccb40e7f61821e945abe07b77a`, peeling to
 `9ee871bf352564d3271181558d26498685afa98e`) remains **permanent, unmoved
 evidence of what shipped before this enhancement began**. A **new** tag is
-created only after this enhancement's own full closeout (§21).
+created only after this enhancement's own full closeout (§24, §26).
 
 ## 1. Product Problem
 
@@ -52,10 +52,16 @@ there is no `offset`/pagination; re-running the same query returns the same
 first page every time — there is no way to see more results. Observed
 real-usage friction:
 
-- MusicBrainz's default cross-field ranking for an unqualified query can rank
-  an unwanted edition/compilation ahead of the specific pressing the user
-  wants, with no way to tell MusicBrainz "this term is the artist" or "this
-  term is the release title."
+- MusicBrainz's own documentation states that an unqualified query searches
+  only the `release` (title) field — never artist name
+  (`https://musicbrainz.org/doc/Indexed_Search_Syntax`, §5.1). A search for
+  just an artist's name (e.g. "Portishead") returns whatever releases
+  happen to contain that string in their title, which is frequently few or
+  none, with no way to tell MusicBrainz "this term is the artist, not the
+  release title." This is a more severe gap than a ranking/ordering
+  problem — for an artist-only query, today's single-field behavior can
+  fail to surface the wanted artist's releases at all, not merely rank them
+  poorly.
 - The visible result window (≤ 10, typically 5) is too small when the wanted
   release is not near the top of MusicBrainz's default ranking.
 - When Vinyl Intelligence's own bounded search genuinely cannot surface the
@@ -144,19 +150,42 @@ is making on top of them**.
 ### 5.1 Verified MusicBrainz facts
 
 Source: `https://musicbrainz.org/doc/MusicBrainz_API/Search`,
-`https://musicbrainz.org/doc/MusicBrainz_API`, and the Lucene escaping
-reference they link to.
+`https://musicbrainz.org/doc/MusicBrainz_API`,
+`https://musicbrainz.org/doc/Indexed_Search_Syntax` (the field-table page —
+consulted directly, and treated as the citation of record for every
+field-behavior claim below, after two earlier general-page fetches gave
+inconsistent summaries of the same underlying content), and the Lucene
+escaping reference they link to.
 
 - **Release search endpoint:** `GET /ws/2/release?query=<QUERY>&fmt=json&limit=<LIMIT>&offset=<OFFSET>` (already used exactly this way by `buildMusicBrainzSearchUrl`, minus `offset` today).
 - **`limit`:** integer, **1–100 inclusive**, defaults to 25 if omitted. (Vinyl Intelligence already imposes its own tighter product bound — §7 — well inside this range.)
 - **`offset`:** "Return search results starting at a given offset. Used for paging through more than one page of results."
 - **Response JSON top-level fields:** `created`, `count`, `offset`, `releases`. `count` is the **total number of matching results in the entire result set**; `offset` **echoes the starting position of the returned page**. (`searchMusicBrainzReleases` today reads only `payload.releases`; it does not yet read `count`/`offset` — §8.2 extends it to.)
+- **Default (unqualified) field:** "If you don't specify a field, the terms
+  will be searched for in the `release` field" (`Indexed_Search_Syntax`,
+  release-index section, quoted verbatim). An unqualified query is
+  therefore **release-title-only**, never cross-field and never
+  artist-inclusive — this corrects an earlier draft of this spec, which
+  incorrectly assumed default cross-field ranking (§1, §5.2, §6.2).
 - **Release-search field names** (a non-exhaustive list; only the ones this spec uses):
   - `artist` — "the combined credited artist name for the release, including join phrases" (e.g. "Artist X feat. Artist Y").
   - `artistname` — "the name of any of the release artists" (an individual credited artist, not the joined string).
   - `release` — "(part of) the name of the release."
   - (Other documented fields — `arid`, `catno`, `country`, `date`, `format`, `label`, `tag`, etc. — exist but are not used by this enhancement.)
-- **Combining fields:** the `AND` operator (documented example: `release:Schneider AND Shake`).
+- **Combining fields:** the `AND` operator (documented example:
+  `release:Schneider AND Shake`); `Indexed_Search_Syntax` itself defers to
+  Lucene's own query syntax for full boolean-operator coverage rather than
+  enumerating every operator on that one page. Standard Apache Lucene
+  classic query syntax — the query language MusicBrainz's indexed search is
+  built on — defines `OR`/`||` as a boolean operator alongside `AND`/`&&`
+  and `NOT`/`!` (case-sensitive, uppercase), independently confirmed via a
+  documentation/web search rather than a live catalog call. This is further
+  corroborated internally: the Lucene special-character escape set already
+  quoted below (`+ - && || ! ( ) { } [ ] ^ " ~ * ? : \`) already includes
+  `&&` and `||` — the symbolic forms of `AND`/`OR` — as characters requiring
+  escaping specifically *because* they are reserved Lucene operator tokens.
+  §6.2's corrected `All`-mode template relies on `OR` being valid, standard
+  Lucene syntax, not on a MusicBrainz-specific worked example.
 - **Escaping:** "you'll need to escape characters special to Lucene. This is in addition to any URL encoding." The documented Lucene special characters are:
   `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \` — escaped by a preceding backslash. MusicBrainz's own example additionally escapes `/` the same way (`ac\/dc`, URL-encoded to `ac%5C%2Fdc`) for a literal band-name search, so this spec treats `/` as requiring the same backslash-escape.
 - **Rate limiting:** "each of their client applications never make more than ONE call per second," or risk being IP-blocked. (Matches the existing `MUSICBRAINZ_PACING_MS = 1000` posture exactly — unchanged by this spec, §14.)
@@ -166,9 +195,51 @@ reference they link to.
 
 ### 5.2 Vinyl Intelligence product decisions built on those facts
 
-- **Mode → field mapping (§6.2):** `Artist` mode scopes the query to the `artist` field (the combined credited-artist string, matching what a collector visually reads on a sleeve/spine, e.g. "Portishead" or "Simon & Garfunkel" as one string) rather than `artistname` (which would match any *individual* credited artist separately and could surface unrelated collaborators). `Album` mode scopes to `release`. This is a product choice favoring what the user visually recognizes over exhaustive per-artist matching; documented here as a deliberate choice, not asserted as MusicBrainz's own recommendation.
-- **Escaping applies only to the two new field-qualified modes (§6.4):** `All` mode is byte-for-byte unchanged from current production behavior (raw, unescaped, unqualified query) specifically **because** changing it is not required to satisfy any goal in §2 and would be an unrequested behavior change to an already-shipped, already-Hebrew-tested path. `Artist`/`Album` mode escape the Lucene special-character set from §5.1 before wrapping the (already-trimmed) input in `field:(...)`, because these modes are new server-constructed field-qualified queries and an unescaped user value could otherwise break out of the intended field scope or inject additional clauses.
-- **Non-Latin/Hebrew text (§27 requirement):** because MusicBrainz's own documentation does not explicitly address this, and because the *already-shipped* `All` mode already sends raw Hebrew text to the same `query` parameter today with accepted, human-verified behavior (`docs/specs/0015-hebrew-multilingual-record-support.md`), this spec's product decision is: **treat non-Latin text as literal, un-transliterated, un-translated query text in every mode**, subject only to the same Lucene special-character escaping applied to Latin text in `Artist`/`Album` mode (escaping is character-class-based, not script-based, so it behaves identically regardless of script). No transliteration table, no per-script logic, is introduced.
+- **Mode → field mapping (§6.2):** `Artist` mode scopes the query to the
+  `artist` field (the combined credited-artist string, matching what a
+  collector visually reads on a sleeve/spine, e.g. "Portishead" or "Simon &
+  Garfunkel" as one string) rather than `artistname` (which would match any
+  *individual* credited artist separately and could surface unrelated
+  collaborators). `Album` mode scopes to `release`. `All` mode — since an
+  unqualified query is release-title-only (§5.1) and would therefore
+  silently fail to match a pure artist-name search, arguably the single
+  most common thing a collector types — is redefined as an explicit
+  two-field query, `artist:(...) OR release:(...)` (§6.2), so a term
+  matching either the artist or the release title is returned. This is a
+  deliberate product choice restoring the "search anything" behavior a
+  field literally labeled "All" implies, not a MusicBrainz-recommended
+  default; it is a genuine behavior change from today's production query
+  (see the escaping bullet below), made because leaving `All` unqualified
+  would ship a mode that cannot find records by artist name at all — a
+  strictly worse outcome than the ranking-order problem an earlier draft of
+  this spec incorrectly attributed to it (§1).
+- **Escaping applies in all three modes (§6.2 — corrected from an earlier
+  draft):** because `All` mode is now also a server-constructed
+  field-qualified query (`artist:(...) OR release:(...)`, above — this spec
+  no longer sends the raw, unqualified `query` value in any mode), every
+  mode escapes the Lucene special-character set from §5.1 before wrapping
+  the (already-trimmed, whitespace-preserved — §6.2) input in `field:(...)`.
+  An unescaped user value could otherwise break out of the intended field
+  scope or inject an additional clause in any of the three modes, not only
+  the two an earlier draft of this spec identified as "new." **This is a
+  genuine, deliberate behavior change to the already-shipped `All` path** —
+  an earlier draft of this spec instead claimed `All` stays
+  "byte-for-byte unchanged," which is no longer accurate now that `All`'s
+  query semantics are also being corrected (bullet above); shipping an
+  unescaped two-field `OR` query would reopen the same field-scope-injection
+  concern already identified for `Artist`/`Album`, so the same escaping
+  discipline is applied uniformly.
+- **Non-Latin/Hebrew text (elaborated in §6.4–§6.5 below):** because
+  MusicBrainz's own documentation does not explicitly address this, and
+  because the *already-shipped* `All` mode already sends raw Hebrew text to
+  the same `query` parameter today with accepted, human-verified behavior
+  (`docs/specs/0015-hebrew-multilingual-record-support.md`), this spec's
+  product decision is: **treat non-Latin text as literal, un-transliterated,
+  un-translated query text in every mode**, subject only to the same Lucene
+  special-character escaping applied to Latin text in every mode (escaping
+  is character-class-based, not script-based, so it behaves identically
+  regardless of script). No transliteration table, no per-script logic, is
+  introduced.
 - **Pagination window (§7):** MusicBrainz permits `limit` up to 100; Vinyl Intelligence deliberately keeps its own much smaller product bound (initial page 5, total exposed window 20) for the same reasons the original `MAX_SEARCH_LIMIT = 10` was chosen — a small, high-quality, human-scannable candidate list, consistent with `intent.txt` §17's cost/latency-consciousness principle, not because MusicBrainz requires it.
 - **Exact-lookup API shape (§10):** MusicBrainz's public API offers no "search by URL" primitive — the URL is a Vinyl Intelligence product affordance, parsed entirely client-and-server-side within this app, that resolves to a plain `providerReleaseId` lookup MusicBrainz already supports natively.
 
@@ -184,26 +255,49 @@ Exactly three, mutually exclusive, single-select:
 
 ### 6.2 Exact query templates
 
-Let `raw` be the user's input, trimmed of leading/trailing whitespace, with
-internal whitespace runs collapsed to a single space (matching the existing
-`.trim()` discipline already used for the query field — no new normalization
-philosophy). Let `escape(s)` be: replace every occurrence of any character in
-`+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /` with a backslash followed by that
-character, applied in a single pass over `raw` (so the inserted backslashes
-are never themselves re-escaped).
+Let `raw` be the user's input with leading/trailing whitespace removed via
+the existing `.trim()` call already used for the query field today
+(`DiscoverPanel.tsx`, `client.ts`, `catalog-handlers.mts` — grep-verified;
+no internal-whitespace-collapsing logic exists anywhere in the current
+codebase, and this spec introduces none). **Correction from an earlier
+draft:** this spec previously claimed internal whitespace runs are
+collapsed to a single space; that is not true of the current implementation
+and is not something this spec proposes adding. Internal whitespace —
+including runs of more than one space — is preserved exactly as typed and
+passed through to MusicBrainz unchanged. Let `escape(s)` be: replace every
+occurrence of any character in `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /`
+with a backslash followed by that character, applied in a single pass over
+`raw` (so the inserted backslashes are never themselves re-escaped).
 
 | Mode | MusicBrainz `query` value sent | Escaping applied |
 | --- | --- | --- |
-| **All** | `raw` (unmodified — current production behavior, byte-for-byte) | none (unchanged from today) |
+| **All** | `artist:(${escape(raw)}) OR release:(${escape(raw)})` | yes |
 | **Artist** | `artist:(${escape(raw)})` | yes |
 | **Album** | `release:(${escape(raw)})` | yes |
 
+**Correction from an earlier draft:** `All` mode was originally specified
+as the raw, unqualified, unescaped query — matching today's production
+behavior byte-for-byte. That was based on an incorrect assumption that an
+unqualified MusicBrainz query searches multiple fields. Official
+MusicBrainz documentation (`https://musicbrainz.org/doc/Indexed_Search_Syntax`,
+§5.1) states unambiguously that an unqualified query searches the `release`
+field only — so today's production `All` mode cannot match on artist name
+at all. `All` mode is therefore corrected to the explicit two-field `OR`
+query above, a genuine, deliberate behavior change to the already-shipped
+`All` path (§5.2), not a preservation of it. `OR` is standard Apache Lucene
+boolean-query syntax, the same query language MusicBrainz's indexed search
+is built on (§5.1's "Combining fields" bullet documents the corroborating
+evidence for this); MusicBrainz's own `Indexed_Search_Syntax` page
+demonstrates only the `AND` form in its worked example and defers to
+Lucene's own syntax documentation for the rest.
+
 Field-scoped values are **not** phrase-quoted (no wrapping `"..."`): this
 preserves Lucene's default multi-term-OR-with-relevance-scoring behavior
-*within* the chosen field, which is more forgiving of word order and partial
-matches than a strict phrase match, while still constraining the match to
-the correct field — the precision problem in §1 is "MusicBrainz doesn't know
-which field," not "MusicBrainz needs exact phrase matching."
+*within* each chosen field, which is more forgiving of word order and
+partial matches than a strict phrase match, while still constraining each
+side of the query to the correct field — the precision problem in §1 is
+"MusicBrainz doesn't know which field(s) to search," not "MusicBrainz needs
+exact phrase matching."
 
 ### 6.3 Input bounds
 
@@ -271,34 +365,72 @@ Let `rawPageCount` be the number of entries MusicBrainz's `releases` array
 returned for a given `(query, mode, limit, offset)` request — **before**
 Vinyl Intelligence's own normalization filtering (`normalizeMusicBrainzRelease`
 can reject an entry, e.g. for a malformed MBID or missing required field;
-per §12's own finding, relying on the *post-normalization* candidate count to
-detect exhaustion could be wrong if the provider's raw page was full but
-Vinyl Intelligence rejected some of its entries).
+relying on the *post-normalization* candidate count to detect exhaustion
+could be wrong if the provider's raw page was full but Vinyl Intelligence
+rejected some of its entries — the same concern §8.2 relies on when it
+requires `hasMore` to be computed from the raw page, not `candidates.length`).
+Let `providerCount` be the response's own top-level `count` field (§5.1) —
+the provider's authoritative total number of matching results for the whole
+query, independent of pagination.
 
-**"Load more" is offered after a page if and only if:**
+**Correction from an earlier draft:** the formula below originally used
+only `rawPageCount === limitRequestedForThatPage` ("was the raw page
+full?") as evidence more results exist. That is insufficient on its own: a
+full raw page can also be the *entire* result set (e.g. `providerCount = 5`,
+`offset = 0`, `limit = 5` returns one full 5-row page with nothing left
+beyond it), which the old formula would have incorrectly reported as
+`hasMore = true`. The corrected formula adds `providerCount` as a required
+third condition.
+
+**"Load more" is offered after a page if and only if all three hold:**
 
 ```
 rawPageCount === limitRequestedForThatPage
-  AND (offsetOfNextPage) < MAX_EXPOSED_RESULTS
+  AND (offset + limitRequestedForThatPage) < MAX_EXPOSED_RESULTS
+  AND (offset + rawPageCount) < providerCount
 ```
 
-i.e. the provider returned a completely full raw page (strong evidence more
-may exist) **and** the next page would still be within the 20-result window.
-If MusicBrainz returns fewer raw entries than requested (a partial page),
-that is treated as authoritative exhaustion regardless of the normalized
-candidate count, and "Load more" is not offered.
+i.e. the provider returned a completely full raw page (this page was not
+the tail end of the result set) **and** a next page would still be within
+the 20-result window **and** the provider's own total confirms more rows
+actually exist beyond this page.
+
+Worked examples (`offset`/`limit` describe the page just fetched):
+
+| `providerCount` | `offset` | `limit` | `rawPageCount` | Full page? | Inside window? | More per provider? | `hasMore` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 5 | 0 | 5 | 5 | yes | yes (0+5=5 < 20) | no (0+5=5, not < 5) | **false** |
+| 6 | 0 | 5 | 5 | yes | yes (0+5=5 < 20) | yes (0+5=5 < 6) | **true** |
+| 100 | 15 | 5 | 5 | yes | **no** (15+5=20, not < 20) | — (short-circuits) | **false** |
+
+The first row is exactly the regression case the corrected formula exists
+to prevent: a completely full raw page that is nonetheless the whole result
+set. The third row is the 20-result product-bound case (§7.1): even though
+MusicBrainz reports 100 total matches, offset 15 with limit 5 is already
+the last page this UI ever fetches (offsets 0, 5, 10, 15 only), so
+`hasMore` is `false` regardless of `providerCount` — a deliberate product
+bound, not a provider limitation (§21 distinguishes the two for the user).
+
+If MusicBrainz returns fewer raw entries than requested (a partial page,
+`rawPageCount < limitRequestedForThatPage`), the first condition alone
+already makes `hasMore = false` — this subsumes an earlier draft's separate
+"partial page ⇒ exhausted" rule, no longer stated as a distinct case
+because the corrected three-condition formula already produces the same
+result for it.
 
 - **Fewer than one page on the very first request** (0 < rawPageCount <
   `PAGE_SIZE`): show exactly those normalized candidates (possibly zero, if
   every raw entry was rejected by normalization — this is the existing
-  "no results" empty state, §21, not an error); no "Load more."
+  "no results" empty state, §21, not an error); no "Load more" (per the
+  formula above).
 - **Zero raw results on the first request:** existing "no results" state,
   unchanged.
 - **Window exhausted at 20:** "Load more" is not shown, regardless of
   whether MusicBrainz might have more beyond offset 15 — this is the
   deliberate product bound from §7.1, not a provider limitation, and should
   read to the user as "you've seen the bounded set Vinyl Intelligence
-  offers here" (§21 error-state text), distinct from genuine exhaustion.
+  offers here" (§21 error-state text), distinct from genuine provider
+  exhaustion.
 
 ### 7.3 Reset behavior
 
@@ -346,21 +478,44 @@ entries are appended after them in the order MusicBrainz returned them).
 `GET /api/catalog/search` gains two new, optional query parameters, in
 addition to the existing `q` and `limit`:
 
-- `mode` — one of `all` | `artist` | `album`. Omitted or unrecognized ⇒
-  `all` (matches §6.1's default and preserves compatibility with any
-  in-flight/cached request built by not-yet-updated client code during a
-  deploy transition).
-- `offset` — non-negative integer. Omitted ⇒ `0`. Server clamps/validates:
-  an `offset` that is not a non-negative integer, or that is `≥
-  MAX_EXPOSED_RESULTS` (20), is rejected with the existing `invalid_query`
-  error code (400) — this is the defense-in-depth server-side bound
-  discussed in §5.2; the client's own UI logic (§7.1–§7.2) is expected to
-  never construct such a request in normal operation, but the server does
-  not trust the client alone.
+- `mode` — one of `all` | `artist` | `album`. **Omitted** ⇒ `all` (matches
+  §6.1's default and preserves compatibility with any in-flight/cached
+  request built by not-yet-updated client code during a deploy transition).
+  A **present but unrecognized** value (anything other than the three exact
+  strings above) is rejected as `invalid_query` (400) — it is **not**
+  silently coerced to `all`. **Correction from an earlier draft**, which
+  did not distinguish "omitted" from "present but unrecognized" and would
+  have silently treated both the same way: a client bug that sends a
+  typo'd mode string must surface as a visible error, not silently search
+  under different semantics than the user selected and misrepresent what
+  was actually searched (`intent.txt` §16, "user-visible failure is
+  preferable to fake success").
+- `offset` — non-negative integer. Omitted ⇒ `0`. An `offset` that is not a
+  non-negative integer is rejected as `invalid_query` (400).
 
 `limit` keeps its existing validated range (1–10, default 5,
 `DEFAULT_SEARCH_LIMIT`/`MAX_SEARCH_LIMIT`) — this enhancement does not widen
 it; `PAGE_SIZE = 5` is simply the value the client always sends.
+
+**Combined window bound (correction from an earlier draft):** validating
+`offset` in isolation (`offset ≥ 20 ⇒ rejected`) is not sufficient, because
+`limit` can independently be as large as 10 — the earlier rule would have
+allowed `offset=15&limit=10`, a request whose window (rows 16–25) extends
+five rows past `MAX_EXPOSED_RESULTS`. The server therefore rejects as
+`invalid_query` (400) any request where:
+
+```
+offset + limit > MAX_EXPOSED_RESULTS   // 20
+```
+
+using whatever `limit` value applies after the existing 1–10 validation
+above (the client-sent value, or `DEFAULT_SEARCH_LIMIT` when omitted). This
+is the defense-in-depth server-side bound discussed in §5.2; the client's
+own UI logic (§7.1–§7.2) is expected to never construct an out-of-bound
+request in normal operation, but the server does not trust the client
+alone. It allows the legitimate boundary case `offset=15&limit=5` (rows
+16–20, exactly filling the window — §7.2's third worked example) while
+rejecting `offset=15&limit=10` and `offset=20&limit=1` alike.
 
 ### 8.2 Server → client response
 
@@ -376,13 +531,17 @@ export type CatalogSearchResponse = {
 ```
 
 `hasMore` is computed **server-side**, using the raw MusicBrainz page size
-per §7.2 — the client never re-derives it from `candidates.length` alone,
-precisely because normalization can reject entries. This requires
+**and** the provider's own `count` field, per §7.2's corrected
+three-condition formula — the client never re-derives it from
+`candidates.length` alone, precisely because normalization can reject
+entries, and never re-derives it from raw page size alone, precisely
+because a full raw page can be the entire result set (§7.2). This requires
 `searchMusicBrainzReleases` (`src/lib/catalog/musicbrainz.ts`) to expose
-enough raw-page-size information (implementation detail — e.g. returning
-`{ candidates, rawCount }` internally, or a sibling function) for the
-handler to compute `hasMore`; the *exported public normalization contract*
-(`normalizeMusicBrainzRelease`) is unchanged.
+enough raw-page-size **and** provider-count information (implementation
+detail — e.g. returning `{ candidates, rawCount, providerCount }`
+internally, or a sibling function) for the handler to compute `hasMore`;
+the *exported public normalization contract* (`normalizeMusicBrainzRelease`)
+is unchanged.
 
 The client computes `nextOffset` itself as `offset + PAGE_SIZE` when it
 next calls "Load more" — it is not sent by the server, since it is a pure
@@ -420,7 +579,7 @@ export type CatalogSearchDraft = {
 ```
 
 **Backward compatibility with an already-stored old-shaped draft** (a tab
-left open across a deploy, per §13's own framing): the parser
+left open across a deploy): the parser
 (`parseDraft`/`parseResult`) is extended to treat the three new fields as
 **optional on read**, defaulting `mode = 'all'`, `offset = 0`, `hasMore =
 false` when absent — it does **not** invalidate the whole stored draft the
@@ -553,14 +712,21 @@ Function.**
 `GET /api/catalog/search` accepts **either**:
 
 - `q` (+ optional `mode`, `offset`, `limit` — §8.1), **or**
-- `releaseId` — a single MusicBrainz release MBID, already validated
+- `releaseId` alone — a single MusicBrainz release MBID, already validated
   client-side against `MUSICBRAINZ_RELEASE_ID_PATTERN` before being sent, and
   **re-validated server-side against the same pattern** (defense in depth;
   the server never trusts client-side validation alone).
 
-Providing **both** `q` and `releaseId`, or **neither**, is an
-`invalid_query` (400) — exactly the same error code family the endpoint
-already uses for a malformed request.
+**Mutual exclusivity (corrected from an earlier draft):** `releaseId`
+together with **any** of `q`, `mode`, `offset`, or `limit` — not just `q` —
+is rejected as `invalid_query` (400), and so is a request with **neither**
+`q` nor `releaseId`. An earlier draft of this spec only described `q` +
+`releaseId` together as invalid, leaving open whether e.g. `releaseId` +
+`offset=10` (a request with no coherent meaning — the exact lookup returns
+exactly one release; there is no page to offset into) would be silently
+accepted with the extra parameter simply ignored. It is not: any presence
+of `mode`, `offset`, or `limit` alongside `releaseId` is rejected the same
+way `q` alongside `releaseId` is.
 
 When `releaseId` is present, the handler skips `parseSearchRequest`'s
 query/mode/offset handling entirely and instead calls
@@ -652,9 +818,21 @@ idiom already used for the per-candidate MusicBrainz link in Discover/Scan.
 
 Shown **if and only if**:
 
-1. the release is provider-backed (`release.provider === 'musicbrainz'`, or
-   equivalently `source !== 'manual'` per the existing manual/catalog
-   distinction already established in `src/lib/supabase/collection.ts`), **and**
+1. the release is catalog-backed, using the **same, already-existing**
+   `isEditableRelease` helper (`src/lib/supabase/collection.ts`) already
+   used elsewhere to draw exactly this boundary — shown when
+   `!isEditableRelease(release)` is `true`. **Correction from an earlier
+   draft**, which wrote this condition as
+   `release.provider === 'musicbrainz'`: `CollectionItemWithRelease['release']`
+   (grep-verified, `src/lib/supabase/collection.ts`) does **not** select
+   any `provider` field — only `provider_release_id?`,
+   `provider_release_group_id?`, and `source?: 'manual' | 'catalog' | null`.
+   `isEditableRelease` is the project's own existing, already-tested
+   function over exactly these real fields (`source === 'catalog'` ⇒
+   catalog; `source === 'manual'` ⇒ manual; `source` absent ⇒ catalog only
+   if a provider id is present) — reusing it here avoids a second, parallel
+   implementation of the same manual/catalog distinction, consistent with
+   this spec's own shared-helper preference (§13.3), **and**
 2. `release.provider_release_id` is present **and** matches
    `MUSICBRAINZ_RELEASE_ID_PATTERN` — the **same, already-existing** pattern
    reused throughout this spec, not a new validator.
@@ -806,13 +984,24 @@ dependency, or migration change.
 
 ## 19. Accessibility
 
-- The `All` / `Artist` / `Album` selector is a proper grouped control (radio
-  group or equivalent ARIA semantics — `role="radiogroup"` with
-  `role="radio"`/`aria-checked`, or a native fieldset/radio input group) —
+- The `All` / `Artist` / `Album` selector uses proper radio-group ARIA
+  semantics — `role="radiogroup"` with three `role="radio"` elements each
+  carrying `aria-checked` (`true` for the selected mode, `false` for the
+  other two), or, equivalently, a native `<fieldset>` with three
+  mutually-exclusive `<input type="radio">` elements sharing one `name` —
   **not** color-only differentiation; the selected mode has a visible,
-  non-color-dependent indicator (e.g. a filled/outlined state plus
-  `aria-pressed`/`aria-checked`), consistent with the existing Grid/List
-  toggle idiom already shipped in Collection (spec 0016 Finding A).
+  non-color-dependent indicator (e.g. a filled/outlined state) in addition
+  to the ARIA state. **Correction from an earlier draft**, which suggested
+  `aria-pressed`/`aria-checked` interchangeably and cited the existing
+  Grid/List toggle idiom (spec 0016 Finding A) as a direct precedent:
+  `aria-pressed` is toggle-button semantics (an independent boolean per
+  button, appropriate for the two-option Grid/List case) and must **not**
+  be mixed with `role="radio"`/`aria-checked` (mutually-exclusive
+  single-selection semantics, correct for this three-option case) on the
+  same control — a control follows one pattern or the other, never both.
+  The Grid/List idiom may still inform this control's *visual* styling, but
+  its ARIA pattern is not a correct precedent to copy literally for a
+  three-way selector.
 - The search input keeps its existing accessible label and `dir="auto"`
   behavior (`src/ui/primitives.tsx::SearchInput`) — unchanged.
 - "Load more results" is a real, focusable, keyboard-activatable `<button>`
@@ -900,12 +1089,14 @@ behavior for:
 
 **Search-mode query builder** (`src/lib/catalog/musicbrainz.ts` and/or a new
 sibling covering the mode→template mapping, §6.2): All/Artist/Album query
-construction; Lucene special-character escaping (each character in the
-documented set, §5.1); a literal `/` case (MusicBrainz's own documented
-example); quote handling; Hebrew/non-Latin input passes through unescaped-
-by-script, un-transliterated, in every mode; leading/trailing/internal
-whitespace normalization; minimum/maximum length enforcement identical
-across modes.
+construction, including the corrected `All` mode's two-field
+`artist:(...) OR release:(...)` query; Lucene special-character escaping in
+**every** mode (each character in the documented set, §5.1); a literal `/`
+case (MusicBrainz's own documented example); quote handling; Hebrew/
+non-Latin input passes through unescaped-by-script, un-transliterated, in
+every mode; leading/trailing whitespace trimming with internal whitespace
+preserved exactly as typed, not collapsed (§6.2); minimum/maximum length
+enforcement identical across modes.
 
 **Pagination** (`catalog-handlers.mts::handleCatalogSearch` and
 `DiscoverPanel.tsx`): initial page at offset 0; offset advancement on
@@ -918,14 +1109,24 @@ deduplicated on append; existing candidate order is preserved; a failed
 later-page request preserves all previously-rendered candidates; repeated
 rapid clicks on "Load more" cannot produce two concurrent requests.
 
-**Server contract** (`catalog-handlers.mts`): invalid `mode` value falls
-back to `all` (not rejected — §8.1); invalid/out-of-range `limit` (existing
-behavior, unchanged, re-verified not regressed); invalid `offset` (negative,
-non-integer, or `≥ 20`) rejected as `invalid_query`; provider-error mapping
-for the new code paths (pagination, exact lookup) matches the existing error
-category table; `releaseId` + `q` together, or neither, rejected as
-`invalid_query`; `hasMore`/`offset` present and correct in the response
-shape.
+**Server contract** (`catalog-handlers.mts`): an unrecognized `mode` value
+is **rejected** as `invalid_query` (an omitted `mode` still defaults to
+`all` — §8.1, corrected from an earlier draft that silently coerced any
+unrecognized value to `all`); invalid/out-of-range `limit` (existing
+behavior, unchanged, re-verified not regressed); invalid `offset` (negative
+or non-integer) rejected as `invalid_query`; a combined `offset + limit >
+MAX_EXPOSED_RESULTS` (20) is rejected as `invalid_query` even when `offset`
+and `limit` are each individually valid (§8.1's corrected combined-window
+bound — e.g. `offset=15&limit=10` must be rejected, not just `offset ≥ 20`
+alone); provider-error mapping for the new code paths (pagination, exact
+lookup) matches the existing error category table; `releaseId` together
+with `q`, `mode`, `offset`, **or** `limit` — not just `q` — is rejected as
+`invalid_query`, and so is providing neither `q` nor `releaseId` (§11.1);
+`hasMore` correctly reflects the count-aware formula from §7.2 (a synthetic
+case where `providerCount` equals the exact number of rows already returned
+must report `hasMore: false` even though the raw page was completely
+full — the regression case the corrected formula exists to prevent);
+`offset` present and correct in the response shape.
 
 **MusicBrainz URL parser** (a new pure module/function, unit-testable
 without a network mock): canonical `https://musicbrainz.org/release/<mbid>`;
@@ -980,7 +1181,12 @@ human-authorized, reversible action (e.g. add-then-delete the same test
 copy), documented honestly in the acceptance evidence — matching the exact
 discipline already used for spec 0016 Finding B's own human acceptance.
 
-1. All-mode search still works exactly as before.
+1. All-mode search still finds a release by its own title (as before), and
+   now also finds it by artist name alone (the corrected behavior, §5.2/
+   §6.2) — verify with at least one real query that is an artist name only,
+   not a release title, and confirm it now returns that artist's releases
+   (a case that would previously have returned poor or no results under
+   the old release-title-only unqualified query).
 2. Artist mode search produces artist-focused MusicBrainz results (the
    selected/expected release ranks visibly better for at least one
    deliberately ambiguous real-world test case).
@@ -992,9 +1198,18 @@ discipline already used for spec 0016 Finding B's own human acceptance.
 6. "Load more" appends new results without replacing/losing the old ones.
 7. Rapid repeated "Load more" clicks do not produce parallel/duplicate
    requests or duplicate rendered candidates.
-8. A simulated/observed Load More failure (e.g. a genuinely narrow query
-   that exhausts early is an acceptable substitute for forcing a real
-   provider failure) leaves prior results visible.
+8. **Load-More-failure-preserves-prior-results is proven by the automated
+   tests in §22** (a mocked later-page provider failure that leaves
+   previously-rendered candidates untouched), not by human acceptance —
+   deliberately forcing a real MusicBrainz provider failure in production
+   is neither reliable nor a reasonable human-acceptance action.
+   **Correction from an earlier draft**, which treated "a genuinely narrow
+   query that exhausts early" as an acceptable substitute for observing a
+   failure: that is a different state (normal exhaustion, §7.2, already
+   covered by item 9 below), not a failure, and does not exercise the same
+   code path. If a real Load More failure is naturally observed during
+   acceptance (e.g. a transient network blip), note it as bonus evidence,
+   but it is not a required step.
 9. Result exhaustion (raw partial page, or the 20-result window) correctly
    removes/disables "Load more."
 10. A real, valid MusicBrainz release URL resolves to the exact expected
@@ -1038,9 +1253,9 @@ changed current truth, update:
 - `docs/api-integrations.md` (the MusicBrainz section — new query modes,
   pagination, exact lookup);
 - `docs/architecture.md` (only if the topology or endpoint count/shape
-  wording changed — this spec's design, §11, changes an existing endpoint's
-  *parameters*, not the topology or endpoint count, so this may turn out to
-  need no change; evaluate, don't assume);
+  wording changed — this spec's design, §8 and §11, changes an existing
+  endpoint's *parameters*, not the topology or endpoint count, so this may
+  turn out to need no change; evaluate, don't assume);
 - `docs/verification.md` (a new evidence section, following the exact
   precedent of spec 0016's "Final Submission Alignment Evidence" section —
   automated evidence distinguished from human-observed production evidence,
@@ -1106,8 +1321,11 @@ code alone is not completion:
 5. No unintended migration, dependency, or AI/model change occurred (§3,
    §18) — or, if one was found genuinely necessary, it was stopped and
    explicitly human-approved first.
-6. An independent code audit passes (0 BLOCKER / 0 HIGH, matching this
-   project's established bar).
+6. An independent code audit passes (0 BLOCKER / 0 HIGH / 0 MEDIUM,
+   matching this project's established bar — e.g. the "FINAL PROFESSOR
+   ATTACK" independent audit and every PR reviewed since. **Correction from
+   an earlier draft**, which stated the bar as "0 BLOCKER / 0 HIGH" only,
+   omitting the MEDIUM threshold this project has actually held throughout.)
 7. Human local/runtime verification passes.
 8. Merged through a reviewed PR (normal merge commit, matching this
    project's established Git discipline).
@@ -1127,25 +1345,37 @@ code alone is not completion:
 
 Repository evidence and official MusicBrainz documentation resolved every
 consequential decision this spec needed to make (§5.2 records each such
-resolution explicitly, with its rationale). Genuinely unresolved items, left
-open for the implementation plan / human approval rather than silently
-decided here because they are cosmetic/flexible rather than behavior-
-defining:
+resolution explicitly, with its rationale). **Correction from an earlier
+draft:** the three cosmetic/non-behavioral items below were previously left
+open; they are resolved here so this section reads **NONE** for anything
+behavior-defining. Each remains a low-stakes, easily-revisited copy/layout
+choice, not a data-safety, security, ownership, or trust-boundary decision.
 
-1. **Exact final UI wording** for the "Find exact release" button, the
-   "Know the exact release?" heading, and the "Search on MusicBrainz" label
-   — this spec fixes the *behavior* each must have (§10, §12) and gives
-   product-consistent suggested wording, but leaves final copy to
-   implementation-time product judgment, consistent with how prior specs
-   (e.g. spec 0016) treated non-behavioral copy choices.
-2. **Whether "View on MusicBrainz" on Record Detail sits near the existing
-   metadata block or near the cover-art block** — a layout/placement choice
-   with no behavioral consequence; §13.1/§13.2 fully define *when* it shows
-   and *where it points*, not its exact pixel position.
-3. **The precise accessible-external-link-indication implementation**
-   (visually-hidden text vs. an icon with an accessible name vs. both) —
-   §19 states the required external behavior (a screen-reader user is not
-   surprised); the exact technique is left as an implementation choice.
+1. **Final UI wording:** the "Find exact release" button, "Know the exact
+   release?" heading, and "Search on MusicBrainz" label already used
+   consistently throughout this spec (§10.1, §12, §13.1) are adopted as
+   final, not merely suggested — they are product-consistent, already
+   internally consistent across every section that names them, and
+   changing them later remains a trivial, reversible copy edit if
+   implementation-time product judgment prefers different wording.
+2. **Record Detail link placement:** "View on MusicBrainz" is placed as the
+   last item in the existing metadata block on `AlbumDetailPage.tsx` (release
+   year, label, catalog number, country, format, etc.), **not** near the
+   cover-art block. Rationale: it is provenance metadata about the release
+   record, not a cover-art action (cover art has its own distinct existing
+   action set — custom cover upload — unrelated to provenance); this also
+   matches how the existing per-candidate MusicBrainz link is already
+   positioned alongside candidate metadata in Discover/Scan, not attached
+   to the candidate's artwork.
+3. **Accessible external-link indication technique:** a visually-hidden
+   text node (the existing `sr-only`-equivalent utility already used
+   elsewhere in this codebase) reading "(opens in a new tab)", appended
+   inside the accessible name of every external link this spec touches —
+   the existing per-candidate MusicBrainz link, "Search on MusicBrainz,"
+   and "View on MusicBrainz" alike. Rationale: works uniformly regardless
+   of whatever icon design implementation-time styling chooses, requires no
+   new icon/asset decision now, and matches the common accessible-link
+   practice §19 already points to.
 
 No item above affects data safety, security, ownership, duplicate-copy
 correctness, or provider trust boundaries — all of those are fully resolved
