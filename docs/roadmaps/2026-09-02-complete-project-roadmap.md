@@ -42,8 +42,9 @@ original 2026-08-18 roadmap
   -> Final Submission Alignment: audit-triggered post-completion remediation,
      not a new numbered milestone (PR #29 planning; PR #30 Finding A CLOSED;
      PR #31 Finding B CLOSED; PR D Findings C-H documentation reconciliation)
-  -> current accepted production runtime: main 81812c1f, deploy 6aa8783d
-     (2026-09-15) - PR D changes documentation only, not this runtime
+  -> accepted production runtime built from main 81812c1f, deploy 6aa8783d
+     (2026-09-15) - later documentation-only history, including PR D, does
+     not change this deployed runtime
 ```
 
 ---
@@ -376,7 +377,7 @@ The inserted pass added, as standing verification for its surface area: measured
 | 11 | Production Deployment | Real hosted application | **Complete — live at `https://vinyl-intelligence.netlify.app`; M11 completed at `main` `55f514c` (PR #14 → #15 → #16); hosted smoke PASS.** |
 | 12 | Reliability / Security / Telemetry / Polish | Final hardening and submission readiness | **Complete — verification + docs pass (PR #19); human production acceptance 2026-09-07; two runtime fixes (PR #19, PR #20) merged + deployed + re-verified. Final `main` `c2037b8`, deploy `6a9eaf39`.** |
 
-Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). Milestone 11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16); PR #18 then moved production to `ee6d695b449e3b7810be3663b5cd5b221fedd059`. **Milestone 12's accepted `main` was `c2037b8a09b10da796fa2435f268f316f7bb8442`** (after M12: PR #19 → PR #20; Netlify deploy `6a9eaf39df3f13d430f76828`) — M0–M12 were complete and production human-accepted at that point. Two further post-M12 phases followed (see "Post-M12 evolution" above); the current accepted `main` is `81812c1f52d56bea84e142d828dd1e1427a0ec4b`.
+Historical context: `origin/main` at this roadmap's original date (2026-09-02) was `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38` (the Visual Experience pass Phase 0 merge, PR #12). Milestone 11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (after PR #13 → #14 → #15 → #16); PR #18 then moved production to `ee6d695b449e3b7810be3663b5cd5b221fedd059`. **Milestone 12's accepted `main` was `c2037b8a09b10da796fa2435f268f316f7bb8442`** (after M12: PR #19 → PR #20; Netlify deploy `6a9eaf39df3f13d430f76828`) — M0–M12 were complete and production human-accepted at that point. Two further post-M12 phases followed (see "Post-M12 evolution" above). The current accepted production runtime was built from `main` at `81812c1f52d56bea84e142d828dd1e1427a0ec4b`; later documentation-only history, including PR D, does not change that deployed runtime.
 
 ---
 
@@ -744,7 +745,7 @@ Hebrew & Multilingual Record Support  (post-M12 enhancement; main `59fe8236`, de
 Final Submission Alignment  (audit-triggered remediation; Finding A/PR #30 + Finding B/PR #31 CLOSED)
  |
  v
-current accepted production runtime: main `81812c1f`, deploy `6aa8783d` (2026-09-15)
+accepted production runtime built from main `81812c1f`, deploy `6aa8783d` (2026-09-15) - later documentation-only history does not change this deployed runtime
 ```
 
 This order is intentional. The AI curator is delayed until authentication, ownership, collection data, structured metadata, preference signals, and listening-history signals are all trustworthy. The Visual Experience & Product Identity pass is deliberately placed **after** the functional product is complete and **before** production deployment: it is a product-quality gate, not a feature milestone, and it must not destabilize the verified M0–M10 behavior.
@@ -800,8 +801,9 @@ that scope; evidence is in `docs/verification.md`, the specs and plans, the PR
 history, and Git. Two further post-M12 phases (Hebrew & Multilingual Record
 Support; Final Submission Alignment — see "Post-M12 evolution" above) each
 followed the same specification/plan/review/merge/deploy/human-acceptance
-discipline and are independently evidenced; the current accepted production
-runtime is `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`.
+discipline and are independently evidenced; the accepted production runtime
+was built from `main` at `81812c1f52d56bea84e142d828dd1e1427a0ec4b` - later
+documentation-only history does not change that deployed runtime.
 
 The entire Vinyl Intelligence project is done only when:
 

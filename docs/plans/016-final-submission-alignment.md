@@ -1,12 +1,13 @@
 # 016 Final Submission Alignment (Implementation Plan)
 
-Status: **EXECUTED — current as of 2026-09-15.** PR A (planning, PR #29) is
-merged. PR B (Finding A, PR #30) and PR C (Finding B, PR #31) are each
-implemented, independently reviewed, merged, deployed, and human-accepted —
-see `docs/verification.md` → "Final Submission Alignment Evidence" for the
-full record. PR D is this documentation-only reconciliation of Findings C–H;
-it changes no runtime file. The original PR A/B/C/D operational plan below is
-preserved unchanged as the plan that was executed.
+Status: **FINAL DOCUMENTATION CLOSEOUT (PR D) — current as of 2026-09-15.**
+PR A (planning, PR #29) is merged. PR B (Finding A, PR #30) and PR C
+(Finding B, PR #31) are each complete: implemented, independently reviewed,
+merged, deployed, and human-accepted — see `docs/verification.md` → "Final
+Submission Alignment Evidence" for the full record. PR D is this
+documentation-only reconciliation of Findings C–H; it changes no runtime
+file. The original PR A/B/C/D operational plan below is preserved unchanged
+as the plan being executed.
 Spec: `docs/specs/0016-final-submission-alignment.md`.
 Baseline `main`: `7ddd5b08ef9b0ada272ae02a97626dbf8423f142` (PR #28).
 
