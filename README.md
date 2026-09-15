@@ -165,7 +165,7 @@ Browser (Vite + React 19 + TypeScript SPA on Netlify static hosting)
   |       notes · personal genres · listening history ·    Storage (private buckets)
   |       profile · custom cover + avatar upload
   |
-  `---- provider access + shared-data writes -------> Netlify Functions (six functions, server secrets only)
+  `---- provider access + privileged catalog persistence --> Netlify Functions (six functions, server secrets only)
           |  /api/health                    liveness
           |  /api/catalog/search    (GET)   MusicBrainz release search
           |  /api/catalog/add       (POST)  upsert shared release + insert owned collection item
@@ -173,9 +173,10 @@ Browser (Vite + React 19 + TypeScript SPA on Netlify static hosting)
           |  /api/curator/recommend (POST)  initial recommendation pipeline
           |  /api/curator/refine    (POST)  bounded refinement pipeline
           v
-      Hosted Supabase (service-role,   OpenRouter                MusicBrainz + Cover Art Archive
-      shared releases + telemetry       google/gemini-3.1-flash-lite (vision + intent)
-      writes only)                      google/gemini-3.5-flash (selection)
+      Hosted Supabase (service-role:    OpenRouter                MusicBrainz + Cover Art Archive
+      catalog-add's release upsert       google/gemini-3.1-flash-lite (vision + intent)
+      AND collection-item insert,        google/gemini-3.5-flash (selection)
+      plus telemetry writes)
 ```
 
 Full detail, including rejected alternatives and the reasoning behind each decision, lives in [`docs/architecture.md`](docs/architecture.md), [`docs/data-model.md`](docs/data-model.md), [`docs/ai-design.md`](docs/ai-design.md), [`docs/api-integrations.md`](docs/api-integrations.md), and [`docs/security.md`](docs/security.md).
@@ -269,7 +270,7 @@ The full verification history — every milestone's automated gate, independent 
 - Server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) never reach the browser, are never logged, and are never written to a row.
 - Row-Level Security is enabled on every table; a user can never read or write another user's collection, ratings, notes, or listening history.
 - Shared catalog (`releases`) metadata is browser-read-only; user control is expressed through owned overlays (rating, favorite, notes, personal genres, custom cover) and manual-entry editability, never by rewriting another collector's shared facts.
-- Every uploaded image is validated (MIME allow-list, magic bytes, size cap). A cover-recognition input photo is transient — used once to extract clues and never written to storage; a user-selected custom collection cover or avatar is the one kind of upload that's intentionally persisted, in a private, owner-scoped Storage bucket. The recognition prompt treats all in-image text as untrusted data.
+- A cover-recognition input photo is checked server-side (MIME allow-list, size cap, and magic-byte content sniffing) before it ever reaches the vision model, then discarded — never written to storage. A custom cover or avatar is checked client-side (accepted MIME, size cap, decode/re-encode to WebP) and is the one kind of upload that's intentionally persisted, in a private, owner-scoped Storage bucket. The recognition prompt treats all in-image text as untrusted data.
 - All AI output is treated as untrusted: recognition results are clues, not persisted facts, until a human confirms them; curator recommendations are hard-rejected if their ID isn't in the server-built allowed candidate set.
 - Cover recognition and the curator each have their own independent per-user rate limit (10 requests per rolling 10-minute window); a VIN refinement turn counts against the same budget as the initial recommendation.
 

@@ -46,15 +46,17 @@ Browser SPA (Supabase publishable key only, no privileged credential)
   |       log/correct/delete · profile · custom-cover
   |       upload · avatar upload
   |
-  `---- provider access + shared-data writes -------->  Netlify Functions (server-only secrets)
-                                                            |---> Supabase, service-role key
-                                                            |     (shared `releases` writes,
-                                                            |      AI telemetry only)
-                                                            |---> MusicBrainz + Cover Art Archive
-                                                            `---> OpenRouter (vision + text models)
+  `---- provider access + privileged catalog persistence -->  Netlify Functions (server-only secrets)
+                                                                 |---> Supabase, service-role key
+                                                                 |     (catalog add: shared `releases`
+                                                                 |      upsert AND the resulting owned
+                                                                 |      `collection_items` insert;
+                                                                 |      model-call telemetry write)
+                                                                 |---> MusicBrainz + Cover Art Archive
+                                                                 `---> OpenRouter (vision + text models)
 ```
 
-The browser never holds a privileged credential — it authenticates and reads/writes with the Supabase **publishable** key only. A large share of ordinary user-owned writes (§9–§27: personal signals, personal genres, listening-event log/correct/delete, profile, custom cover, avatar) are authorized **directly against Supabase**, by Row-Level Security and Storage policies — not by a server-side check. Netlify Functions handle everything else: calls to an external provider (MusicBrainz, OpenRouter), any write to the **shared** `releases` table (the browser has no write grant on it), and AI telemetry. The one server-only secret that ever leaves the browser process is the OpenRouter API key (used only inside the vision/curator Functions); the Supabase service-role key is used only for the shared-release write and the telemetry write, and never reaches the browser either way. Postgres RLS is the final authority on every direct-browser write, whether or not application logic is correct.
+The browser never holds a privileged credential — it authenticates and reads/writes with the Supabase **publishable** key only. A large share of ordinary user-owned writes (§9–§27: personal signals, personal genres, listening-event log/correct/delete, profile, custom cover, avatar, and a fully browser-direct manual release + collection item when no catalog match applies) are authorized **directly against Supabase**, by Row-Level Security and Storage policies — not by a server-side check. Netlify Functions handle: calls to an external provider (MusicBrainz, OpenRouter); the privileged **catalog-add** persistence step, which upserts the shared `releases` row *and* inserts the resulting `collection_items` row together, both with service-role authority (this is distinct from — and more privileged than — the browser's own scoped manual-release insert); and the model-call telemetry write. `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are both server-only secrets, used only inside these Functions, and neither ever reaches the browser. Postgres RLS is the final authority on every direct-browser write, whether or not application logic is correct.
 
 ## 8. Core User Journeys
 
@@ -177,7 +179,7 @@ Every model call is server-side only, with a server-only API key, a strict JSON 
 
 (Source: `src/lib/curator/types.ts` — `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MINUTES`, `CURATOR_INTENT_FEATURE`, `CURATOR_SELECTION_FEATURE`; `netlify/functions/_shared/curator-handlers.mts` — `enforceRateLimit`, called identically by `handleCuratorRecommend` and `handleCuratorRefine`; `netlify/functions/_shared/recognition-handlers.mts` — `MAX_RECOGNITIONS_PER_WINDOW`, `RATE_LIMIT_WINDOW_MINUTES`.)
 
-Telemetry (feature, model, success, latency, token counts, estimated cost, error category — never prompt text, image data, or model output) is recorded via `model_calls` for every attempt.
+Each provider/model attempt makes a **best-effort** telemetry write to `model_calls` — feature, model, success, latency, token counts, estimated cost, error category; never prompt text, image data, or raw model output. Telemetry writes are deliberately wrapped so a telemetry failure is logged by category and never fails the user's own request — it is a best-effort observability record, not an absolute persistence guarantee.
 
 ## 30. Deterministic vs AI Responsibilities
 
@@ -213,7 +215,7 @@ None of these providers' uptime, pricing, or exact response shape is guaranteed 
 
 - No server secret is ever sent to the browser, logged, or persisted in a row.
 - RLS is enabled on every user-scoped table and Storage bucket; grants are least-privilege and, where relevant, column-scoped (e.g. `listening_events.listened_at` is the only mutable column on an existing row).
-- Every uploaded image (recognition photo, custom cover, avatar) is validated by MIME allow-list, magic bytes, and size cap before use. A recognition photo is discarded after use and never written to storage (§14); a custom cover or avatar is the one kind of upload that is intentionally persisted, in a private, owner-scoped Storage bucket (§22, §27).
+- Every uploaded image is validated before use, but the exact validation differs by flow. The **recognition photo** (§14) is checked server-side against a MIME allow-list, a size cap, *and* magic-byte content sniffing (the declared type must match the file's actual signature) before it is ever sent to the vision model; it is discarded after use and never written to storage. A **custom cover or avatar** (§22, §27) is checked client-side against an accepted-MIME allow-list and an input-size cap, then decoded, downscaled/cropped, and re-encoded to WebP entirely in the browser (a corrupt or mislabeled file simply fails to decode) before being uploaded — this path does not perform the same explicit magic-byte signature check as recognition, and is the one kind of upload that is intentionally persisted, in a private, owner-scoped Storage bucket.
 - All model output — vision and curator alike — is treated as untrusted and schema-validated before use.
 - In-image text is explicitly framed to the vision model as untrusted data, not as instructions.
 
