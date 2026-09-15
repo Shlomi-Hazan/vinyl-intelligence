@@ -1,326 +1,228 @@
-# Vinyl Intelligence
+# 💿 Vinyl Intelligence
 
-Vinyl Intelligence is an AI-assisted web application for vinyl collectors. It turns a personal record collection into a searchable, organized, conversational music library.
+**Your record collection, understood.**
 
-The product is not a generic music recommender. Its core job is to help a collector decide what to play from records they actually own.
+Vinyl Intelligence turns a personal vinyl collection into a searchable, visual, organized, and conversational music library. It exists to answer one question a spreadsheet or a shelf never can:
 
-## Problem
+> **"What from the records I actually own should I listen to right now — and why?"**
 
-Vinyl collectors often remember a mood, setting, decade, or feeling before they remember the exact album. Traditional collection tools answer "what do I own?" Vinyl Intelligence should also answer "given what I own, what should I listen to now, and why?"
+It is not a generic music recommender, and it is not a chatbot with album data bolted on. Every recommendation, every filter, and every piece of metadata is grounded in a collection the user actually owns.
 
-## Capabilities (shipped)
+<p align="center">
+  <img src="docs/assets/screenshots/01-landing.png" alt="Vinyl Intelligence landing page" width="820">
+</p>
 
-- Personal authenticated vinyl collection (Supabase Auth + RLS)
-- MusicBrainz catalog search and metadata import through a Netlify Function
-- Manual collection browsing, deterministic search / filter / sort, edit, delete
-- Organization by artist, genre, year, decade, rating, favourites, and listening
-  history; user-owned personal genres
-- Listening history (`listening_events`) with browser-derived play count and
-  last-listened time; shipped append-only at Milestone 8, then minimally
-  superseded by an owner-scoped `listened_at` correction + delete grant
-  (ADR 0006) — a play can never be re-pointed to another user's or another
-  item's row
-- Ratings, favourites, and personal notes per record
-- AI curator (VIN) that interprets natural-language listening intent and
-  recommends **only** from records the user owns, with grounded explanations and
-  bounded multi-turn refinement; an out-of-scope request gets a fixed bounded
-  reply and makes no selection call
-- AI cover-photo recognition (OpenRouter vision) with catalog candidate
-  confirmation before anything is saved
-- Album artwork from Cover Art Archive at display time, optional user custom
-  covers, optional profile avatar (both in private webp-only Storage buckets)
-- `model_calls` telemetry (provider, feature, success, latency, tokens, error
-  category) and a `/api/health` endpoint
-- Multilingual dynamic record content, Hebrew in particular — the application
-  **chrome stays English/LTR** (this is not a localization project): local
-  bidirectional-text isolation for dynamic fields, Hebrew-aware
-  niqqud-insensitive search comparison, deterministic mixed-script (Latin,
-  then Hebrew) alphabetical sorting, one canonical Hebrew/English genre-alias
-  taxonomy shared by Collection/Dashboard/VIN, Hebrew-aware VIN constraints
-  and reasons, and AI cover recognition that preserves the original script
-  printed on the sleeve (`docs/specs/0015-hebrew-multilingual-record-support.md`)
+<p align="center">
+  <a href="https://vinyl-intelligence.netlify.app"><b>🚀 Live Application</b></a> ·
+  <a href="docs/USER_GUIDE.md"><b>📖 User Guide</b></a> ·
+  <a href="docs/INSPECT.md"><b>🔎 Visual Inspect</b></a> ·
+  <a href="SPEC.md"><b>📋 Specification</b></a> ·
+  <a href="docs/architecture.md"><b>🏗 Architecture</b></a>
+</p>
 
-## Architecture Summary
+---
 
-As built (see [`docs/architecture.md`](docs/architecture.md) for detail):
+## Table of Contents
 
-- Frontend: Vite 8 + React 19 + TypeScript SPA, `react-router-dom` v7 with
-  route-level `React.lazy` code splitting, on Netlify static hosting.
-- Backend: six Netlify Functions (`.mts`) for auth-gated catalog / recognition /
-  curator work; server secrets never reach the browser.
-- Database / Auth / Storage: hosted Supabase Postgres (13 migrations, RLS on
-  every table), Supabase Auth (built-in email), two private webp-only Storage
-  buckets.
-- AI: OpenRouter — `google/gemini-3.1-flash-lite` (vision + curator intent),
-  `google/gemini-3.5-flash` (curator selection); strict JSON schemas,
-  allowed-owned-ID validation.
-- Music metadata: MusicBrainz (chosen over Discogs, [`docs/decisions/0002`](docs/decisions/0002-proposed-catalog-provider-boundary.md)); Cover Art Archive for display-time artwork.
-- Deployment: Netlify, default `*.netlify.app` domain, manual deploy from merged
-  `main` (no CI, no custom domain).
-- Not used: RAG / vector DB, multi-agent, Next.js, analytics infrastructure.
+- [🎯 What Is Vinyl Intelligence?](#-what-is-vinyl-intelligence)
+- [💡 The Problem](#-the-problem)
+- [✨ Key Features](#-key-features)
+- [🤖 Meet VIN — AI Curator](#-meet-vin--ai-curator)
+- [📀 Personal Collection](#-personal-collection)
+- [🔎 Discover Records](#-discover-records)
+- [📸 Scan a Record Cover](#-scan-a-record-cover)
+- [🎧 Listening History](#-listening-history)
+- [⭐ Ratings, Favorites, Notes & Personal Genres](#-ratings-favorites-notes--personal-genres)
+- [🌍 Hebrew & Multilingual Records](#-hebrew--multilingual-records)
+- [🖼️ Screenshots](#-screenshots)
+- [🏗️ Architecture](#-architecture)
+- [🧰 Tech Stack](#-tech-stack)
+- [🚀 Live Application](#-live-application)
+- [💻 Local Installation](#-local-installation)
+- [▶️ Running Locally](#-running-locally)
+- [🧪 Verification](#-verification)
+- [📚 Documentation](#-documentation)
+- [🔒 Security & Privacy](#-security--privacy)
+- [⚠️ Known Limitations](#-known-limitations)
+- [📜 Project Status & History](#-project-status--history)
+- [🎓 ASE-26 Course Context](#-ase-26-course-context)
 
-## Project Status
+---
 
-**Accepted production runtime (2026-09-15):** the application is **live at
-<https://vinyl-intelligence.netlify.app>**, from merged `main`
-`81812c1f52d56bea84e142d828dd1e1427a0ec4b` (Netlify deploy
-`6aa8783d1835a5e433449dd4`). **Human production acceptance passed
-2026-09-15.**
+## 🎯 What Is Vinyl Intelligence?
 
-The project reached this state through three distinct phases:
+A web application for vinyl collectors that combines a real personal database with two complementary ways to use it:
 
-1. **Milestones 0–12** were completed and production-accepted on
-   2026-09-07, at `main` `c2037b8a09b10da796fa2435f268f316f7bb8442` (deploy
-   `6a9eaf39df3f13d430f76828`) — see "Milestone evidence" below.
-2. **Hebrew & Multilingual Record Support** — a deliberate post-M12
-   enhancement, not part of the original milestone plan (planning PR #22;
-   runtime PR #23 + correction PR #24, PR #25, PR #26 + typography
-   correction PR #27; documentation closeout PR #28) — accepted at `main`
-   `59fe823646091b6189fc1a015c7209fbe1f8105b` (deploy
-   `6aa7f8579b5591de792714f4`); see
-   [`docs/specs/0015-hebrew-multilingual-record-support.md`](docs/specs/0015-hebrew-multilingual-record-support.md).
-3. **Final Submission Alignment** — an audit-triggered post-completion
-   remediation, not a new numbered milestone (see
-   [`docs/specs/0016-final-submission-alignment.md`](docs/specs/0016-final-submission-alignment.md)):
-   planning PR #29 (merge `f3a6925714c5471416ec228baf39aca0e907e0d0`);
-   **Finding A** (Collection rating/listening browse controls) CLOSED via
-   PR #30 (merge `2430230af12e89b61ac9a54da81ef31e1ad59ad3`, deploy
-   `6aa86ad76bc83b77bc42c651`, human production acceptance PASS
-   2026-09-15); **Finding B** (duplicate-copy confirmation UX in Discover
-   and Scan) CLOSED via PR #31 (merge
-   `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy
-   `6aa8783d1835a5e433449dd4`, human production acceptance PASS
-   2026-09-15). The remaining documentation-reconciliation findings (C–H)
-   are addressed by this documentation-only change (PR D); it does not
-   alter the accepted production runtime above.
+- **Classic library mode** — search, filter, sort, and browse the collection like any well-built catalog app.
+- **AI curator mode** — describe a mood or situation in plain language and get a small set of grounded suggestions, chosen only from records the user owns.
 
-Milestones 0–10, the **Visual Experience & Product Identity pass** (a
-human-directed product-quality pass deliberately inserted between Milestone 10
-and Milestone 11; Phase 0 in PR #12, Phases A–E in **PR #13** / `49b1534`),
-**Milestone 11 (Production Deployment)**, and **Milestone 12 (Reliability,
-Security, Telemetry, Polish)** are all merged to `main`. Hosted Supabase, Auth,
-and Storage are configured; all 13 version-controlled migrations are applied
-(zero pending).
+Both modes read from the same underlying collection, ratings, and listening history, so the AI mode is never guessing at a catalog it can't see.
 
-M11 completed at `main` `55f514c` (PR #14 → #15 → #16; hosted smoke PASS; one
-curator include-genre defect fixed via PR #16); PR #18 then shipped the VIN
-recommendation-card enhancement (`ee6d695`). **M12** was a verification +
-documentation-reconciliation pass (spec
-[`0014`](docs/specs/0014-milestone-12-final-hardening.md), plan
-[`014`](docs/plans/014-milestone-12-final-hardening.md), PR #19). Its human
-acceptance surfaced two real runtime defects, each fixed on its own reviewed PR,
-merged, deployed, and re-verified on production:
-- **PR #19** — the transient VIN session was lost on `VIN → View record → back`;
-  fixed with a client-only `CuratorSessionProvider` (React-memory-only privacy
-  contract and every curator contract unchanged; merge `a74d689`).
-- **PR #20** — a shared mobile app-shell defect (`.vi-main` implicit
-  grid-column) plus mobile History-row polish; CSS only (merge `c2037b8`).
+## 💡 The Problem
 
-No Git continuous deployment, no custom domain, no SMTP — deploys are run
-manually from merged `main`, on the default `*.netlify.app` domain, with
-Supabase's built-in email sender.
+Vinyl collectors often remember a mood, a decade, or a feeling before they remember the exact album title. Traditional collection software answers *"what do I own?"* Vinyl Intelligence also answers *"given what I own, what should I play now, and why?"* — without forcing the user to translate a feeling into genre/year filters first.
 
-- **Current roadmap:** [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md)
-- **Historical roadmap snapshot (2026-08-18, unchanged for auditability):** [`docs/roadmaps/2026-08-18-complete-project-roadmap.md`](docs/roadmaps/2026-08-18-complete-project-roadmap.md)
+## ✨ Key Features
 
-### Milestone evidence
+| Feature | What it does |
+| --- | --- |
+| 🤖 AI Curator (VIN) | Natural-language mood → grounded recommendations from owned records only |
+| 💬 Conversational refinement | Bounded follow-up turns that narrow a previous recommendation |
+| 📀 Personal collection | Full CRUD, organized by artist, genre, year, decade, rating, favorites |
+| 🔎 Catalog-assisted add | MusicBrainz search → candidate confirmation → import |
+| 📸 AI cover recognition | Photograph a sleeve → vision clues → catalog match → confirm → save |
+| 🔁 Duplicate-copy handling | Owning a second physical pressing is disclosed and explicitly confirmed, never blocked or silently duplicated |
+| 🔍 Deterministic search/filter/sort | Artist, title, genre, decade, rating, listening recency — no LLM involved |
+| 🎧 Listening history | Mark a play, see derived counts and last-listened, correct or delete your own plays |
+| ⭐ Ratings, favorites, notes | Personal signals stored per collection item |
+| 🏷️ Personal genres | User-owned tags layered on top of shared catalog genres |
+| 🖼️ Custom cover art | Optional per-item cover upload, catalog artwork by default |
+| 🌍 Hebrew & multilingual records | Correct bidirectional rendering, script-aware search/sort, original-script preservation in vision recognition |
+| 🔒 Ownership-first security | RLS on every table, least-privilege grants, server-only secrets |
 
-Milestone 8 (Listening History - `listening_events` as the source of truth,
-append-only as shipped at M8, derived listening count / last-listened, and a
-reverse-chronological history) is **merged to `main`** in PR #8 (merge commit
-`9af8beec701cb108b3ed6de7bdf3962fbf938ee3`), following local automated
-verification, a focused review (0 BLOCKER / 0 MEDIUM), and human runtime
-verification (PASS, 4/4). Milestone 7 (Ratings / Favorites / Notes) is also
-merged to `main`. Milestone 9 (AI Curator - single-turn natural-language
-recommendations drawn only from owned records) is **merged to `main`** in PR #10
-(merge commit `1ad61c0c537dbed0f71f102071bda7dd5d66a444`), following automated
-verification, a focused cloud `/ultrareview` (0 BLOCKER / 0 MEDIUM), a
-runtime-discovered selection-truncation defect found and fixed during human
-runtime, and human runtime **PASS 5/5**
-(`docs/specs/0010-milestone-9-ai-curator.md`,
-`docs/plans/010-milestone-9-ai-curator.md`, ADR
-`docs/decisions/0004-openrouter-curator-text-models.md`,
-`docs/verification.md`). Milestone 10 (Conversational Refinement - bounded
-follow-up over the M9 curator via `POST /api/curator/refine`, React-memory-only
-conversation state, no migration) is **implemented and verified** on
-`claude/milestone-10-conversational-refinement` at
-`74490282b504d445753308434380747c23d7a72c` - local automated verification, a
-focused self-review plus an independent GitHub review whose one MEDIUM was fixed
-(final gate 0 BLOCKER / 0 MEDIUM), and human runtime **PASS 4/4**
-(`docs/specs/0011-milestone-10-conversational-refinement.md`,
-`docs/plans/011-milestone-10-conversational-refinement.md`,
-`docs/verification.md` "Milestone 10 Evidence"). **Merged to `main`** in PR #11
-(merge commit `bfddeb5109e61eac65b184ff4ff5d58092b3984f`).
+## 🤖 Meet VIN — AI Curator
 
-### Visual Experience & Product Identity pass (inserted pre-M11)
+<p align="center">
+  <img src="docs/assets/screenshots/13-vin.png" alt="Ask VIN page" width="760">
+</p>
 
-After Milestone 10 the application was functionally complete but its interface
-was a development shell. The human deliberately inserted a **Visual Experience &
-Product Identity pass** before Milestone 11
-(`docs/specs/0012-visual-experience-product-identity.md`,
-`docs/plans/012-visual-experience-product-identity.md`, ADRs
-`docs/decisions/0005-visual-experience-and-artwork-architecture.md` and
-`docs/decisions/0006-listening-event-mutability-and-profile-avatar.md`). This
-pass was **not part of the 2026-08-18 roadmap** — it is a documented mid-project
-evolution recorded in the current roadmap. The design is **human-approved and
-Phases A–E are human-accepted**; it adds real multi-page navigation, a brand
-system (VIN curator identity, Grooved V·I logo, dark warm hi-fi visual system),
-first-class album artwork (client-side Cover Art Archive front images + optional
-user custom covers + a branded fallback), user custom covers, an optional
-profile avatar, user-owned personal genres, an owner-scoped listening-event
-correction affordance, and a motion / responsive / accessibility / performance
-pass. **M9/M10 curator contracts, the AI boundaries, and the security model are
-unchanged.**
+**VIN (Vinyl Intelligence Navigator)** is the conversational entry point to the collection. Describe a mood — *"I had a stressful day, give me something relaxing but not sleepy"* — or use a preset ("Something relaxing," "A forgotten favorite," "Something I have not played lately," "Surprise me"), and VIN returns a small set of picks with a short, grounded reason for each.
 
-- **Phase 0** (private `collection-covers` Storage bucket +
-  `collection_items.custom_cover_path`; migration
-  `20260903120000_add_custom_cover_storage.sql`) is **merged to `main` in
-  PR #12** (merge commit `945ed3d20bf5e5e1d94d60e7d104a3351b19bc38`).
-- **Phase A** — design system + `react-router-dom` routing + the app shell +
-  transitional page hosts for every M2–M10 feature + fallback `AlbumArtwork` +
-  `CollectionDataProvider`. **COMPLETE + HUMAN ACCEPTED** (independently audited
-  and corrected). `react-router-dom` is the only new runtime dependency in the
-  whole pass.
-- **Phase B** — the full cinematic landing, the redesigned split-layout auth,
-  the real data-driven dashboard, route-level code splitting, canonical Vinny
-  assets, bronze V·I glyph. **COMPLETE + HUMAN ACCEPTED.**
-- **Phase C** — one canonical `AlbumArtwork` (custom cover → Cover Art Archive
-  release → release-group → branded fallback), the visual Collection / Discover
-  / Scan surfaces, plus a shared-shell top-bar fix. **COMPLETE + HUMAN
-  ACCEPTED.**
-- **Phase D** — History as a day-grouped journal with owner-scoped play-time
-  correction + play deletion; Album Detail as the definitive record page with
-  read-only catalog metadata + user-owned personal genres; Settings; an optional
-  private-bucket profile avatar with initials always the fallback. **COMPLETE +
-  HUMAN ACCEPTED** (ADR 0006). Three forward migrations applied locally only.
-- **Phase E** — motion vocabulary + `prefers-reduced-motion` audit, responsive
-  pass, accessibility corrections, contrast re-verification, bundle budget
-  (entry ≈ 135 kB gzip, < 200 kB), and the one reserved end-of-pass focused code
-  review: **final 0 blocker / 0 high / 0 medium** (the one MEDIUM
-  `.legacy-host button` cascade was fixed by commit `8226328` and visually
-  human-verified). **COMPLETE + HUMAN ACCEPTED.** No model-contract change.
+The non-negotiable rule: **VIN recommends only from records the user owns.** The backend builds the candidate set from the user's own RLS-scoped collection and listening history before any model call; the model receives only that bounded, allowed set and never a raw database dump; a returned suggestion whose ID isn't in that allowed set is rejected outright rather than shown. A short bounded follow-up (*"make it more energetic"*) refines the same request without starting over.
 
-The A–E visual pass is **complete, human-accepted, and merged to `main`** in
-**PR #13** (merge commit `49b1534`). Its forward migrations
-(`20260904120000`, `20260904121000`, `20260904122000`) were applied to hosted
-Supabase in Milestone 11. Full per-phase evidence is in `docs/verification.md`.
-Milestone pull-request and merge state are tracked in GitHub history.
+## 📀 Personal Collection
 
-Implemented:
+<p align="center">
+  <img src="docs/assets/screenshots/06-collection-list.png" alt="Collection list view with filters" width="820">
+</p>
 
-- Product intent copied into the repository
-- Initial engineering documentation structure
-- Codex project instructions
-- Approved initial architecture decisions, data model direction, AI/API/security constraints, verification approach, and milestone roadmap
-- Vite, React, TypeScript, Netlify Functions, linting, type-checking, testing, and build scaffold
-- Supabase local development structure
-- Supabase Auth browser client foundation
-- Email/password authentication UI
-- Local email confirmation flow using Mailpit
-- User-owned `profiles` table with RLS and least-privilege grants
-- Minimal authenticated profile workflow for editing `display_name`
-- Manual collection schema: `releases` and `collection_items`
-- Browser-authoritative Supabase RLS and least-privilege access for manual collection data
-- Authenticated manual add, view, edit, and remove workflow
-- Manual release validation and recoverable CRUD error behavior
-- Milestone 3 automated verification, spec-driven test remediation, and human runtime verification
-- MusicBrainz-first catalog search through authenticated Netlify Functions
-- Authenticated catalog add flow with server-side provider revalidation
-- Shared canonical provider-backed catalog releases with Supabase persistence
-- Least-privilege `service_role` grants for server-side catalog persistence
-- Explicit-submit catalog search with a bounded single retry on provider
-  rate-limit responses (best-effort pacing, not a distributed guarantee)
-- Browser-safe catalog UI with normalized candidates and recoverable errors
-- Milestone 4 automated/local verification and human runtime verification
-- Authenticated server-side cover-photo recognition (`POST /api/catalog/recognize`)
-  through an OpenRouter vision model, server-only API key
-- Client + server image validation (MIME allow-list, byte-size limit, magic
-  bytes); browser downscale/re-encode; no permanent image storage
-- Strict server-side validation of the model's structured JSON output;
-  model-inferred year/label/catalog number treated as search hints only
-- Deterministic clue-to-MusicBrainz-query builder; candidate lookup and
-  confirmation reuse the Milestone 4 search/add path (explicit human
-  confirmation before any collection write; the model never auto-persists)
-- `model_calls` telemetry (one row per recognition attempt), least-privilege
-  access (`authenticated` reads own rows via RLS; `service_role` INSERT only)
-- Per-user recognition rate limit (10 per 10 minutes, counted from
-  `model_calls`, enforced before the provider call), course/demo-scoped
-- Per-tab per-user `sessionStorage` persistence for the recognition
-  clues/query, the catalog search draft/results, and the manual add-form draft
-  (restore is UI-state only; no provider or database call, no auto-submit)
-- Milestone 5 automated verification, final multi-agent review, and human
-  runtime verification
-- Deterministic client-side collection browse/search/filter/sort: search owned
-  records by artist or title, filter by exact year, decade (derived), or genre
-  (where stored), combine as logical AND, clear filters, result count, and five
-  compact sorts - no LLM and no external request on a filter change (Milestone 6)
-- `releases.genres` metadata: catalog-sourced community-curated MusicBrainz
-  genre tags (best-effort paced release-group lookup on catalog Add, never
-  overwriting existing genres) plus an optional manual Genre field (Milestone 6)
-- Per owned collection item: a 1..5 rating (or unrated), a favorite flag, and a
-  plain-text personal note (<= 1000 chars); partial-patch saves on the browser
-  Supabase client with an own-row `UPDATE` policy scoped to the three signal
-  columns (Milestone 7)
-- Listening history: `listening_events` as the source of
-  truth, "Mark played" on every owned record, browser-derived play count and
-  last-listened time (no denormalized columns, no triggers), and a compact
-  collapsible reverse-chronological history; authenticated `SELECT` + `INSERT
-  (collection_item_id)` only, own-item `INSERT` RLS, both foreign keys
-  `ON DELETE CASCADE` (Milestone 8, append-only as shipped). *The Visual
-  Experience pass (merged, PR #13) adds an owner-scoped `UPDATE (listened_at)` +
-  `DELETE` grant so a collector can
-  correct or remove their own play - see ADR 0006.*
-- AI Curator: `POST /api/curator/recommend` - a single-turn natural-language
-  request produces a small set of recommendations drawn only from owned records.
-  Two-stage OpenRouter pipeline (intent extraction -> deterministic hard filter
-  + rank over the RLS-owned collection/history -> <= 12 allowed candidates ->
-  selection/explanation), strict allowed-ID validation, per-user rate limit,
-  `model_calls` telemetry; no `service_role` collection read, no new table
-  beyond a `model_calls` feature-allow-list widening (Milestone 9)
-- Conversational refinement: `POST /api/curator/refine` - a bounded follow-up
-  (max 1 initial + 3 refinements per local session) returns a new owned-only
-  recommendation set that refines the previous interpreted intent. Complete
-  revised `CuratorIntent` from the model, fresh RLS-owned reads every turn,
-  structural "something else" exclusion of prior picks, React-memory-only
-  conversation state (no table, no `sessionStorage` / `localStorage`), the
-  shared `curator_intent` rate budget, no migration (Milestone 10; merged in
-  PR #11)
-- Pre-deploy AI hardening: curator out-of-scope detection via an outer
-  `{ inScope, intent }` structured-output wrapper (`CuratorIntent` unchanged, no
-  extra model call, stops before the selection call) and a trusted `system`
-  message for vision recognition that frames all image text as untrusted data
-  (Milestone 11; merged in PR #14)
-- Production deployment: live at <https://vinyl-intelligence.netlify.app> on
-  Netlify (frontend + six Functions) + hosted Supabase (`dlkaljnywnrhzfxcfklx`),
-  all 13 migrations applied; hosted smoke PASS. M11 verified at `main` `55f514c`
-  (PR #14 → #15 → #16)
-- VIN recommendation cards: artwork + "View record" + "Played now" with live
-  listening-state refresh (post-M11 UX enhancement; PR #18)
-- VIN session survives in-app navigation (VIN → View record → back) via a
-  client-only `CuratorSessionProvider` — React-memory only, no storage, no
-  server, no transcript; cleared by refresh / user change / "Start over"
-  (Milestone 12; PR #19)
-- Reliability / security / AI-safety re-proof, dependency triage, as-built
-  documentation reconciliation, and a mobile app-shell + History-row layout fix
-  (Milestone 12; PR #19, PR #20). **M0–M12 complete; production accepted
-  2026-09-07 at `main` `c2037b8`, deploy `6a9eaf39`** — this was the
-  accepted runtime at M12 acceptance, since superseded by the Hebrew &
-  Multilingual enhancement and Final Submission Alignment; see "Project
-  Status" above for the current accepted production runtime.
+Every collection item combines shared catalog facts (artist, title, year, label, genres — sourced from MusicBrainz) with data the user fully owns: rating, favorite flag, personal notes, personal genres, custom cover, and listening history. Browse by artist, genre, year/decade, favorites, minimum rating, or listening recency ("Never played," "Not played in 30 days," "Least recently played"), in Grid or List view, on desktop or mobile — all deterministic, with no network round-trip on a filter change.
 
-## Local Setup
+## 🔎 Discover Records
+
+<p align="center">
+  <img src="docs/assets/screenshots/10-discover-results.png" alt="Discover search results with duplicate-copy handling" width="820">
+</p>
+
+Search MusicBrainz by artist and album, confirm the correct release, and add it. If a candidate is a release **already** in the collection, Discover says so honestly ("In your collection") and still offers an explicit **"Add another copy"** action for a legitimate second pressing — click it and a single confirmation dialog is the only way an extra physical copy is ever added:
+
+<p align="center">
+  <img src="docs/assets/screenshots/11-discover-duplicate-dialog.png" alt="Duplicate-copy confirmation dialog" width="520">
+</p>
+
+## 📸 Scan a Record Cover
+
+<p align="center">
+  <img src="docs/assets/screenshots/12-scan.png" alt="Scan a cover page" width="820">
+</p>
+
+Photograph or upload a cover. A vision model extracts likely clues (artist, title, label, catalog number); those clues drive a MusicBrainz search; the user picks the matching release; nothing is saved until that explicit confirm. The photo itself is used only to find the record — it is **never stored**.
+
+## 🎧 Listening History
+
+<p align="center">
+  <img src="docs/assets/screenshots/14-history.png" alt="Listening history page" width="820">
+</p>
+
+"Mark played" logs a listen; play count and last-listened date are derived from that history, not stored counters. History is append-only by design, with one narrow, owner-scoped exception: a collector can correct a mistyped time or delete their own accidental log entry — a play can never be re-pointed at a different record or another user's history.
+
+## ⭐ Ratings, Favorites, Notes & Personal Genres
+
+<p align="center">
+  <img src="docs/assets/screenshots/07-record-detail.png" alt="Album detail page" width="820">
+</p>
+
+The Album Detail page is the clearest picture of the app's metadata boundary: catalog genres are shown as read-only chips (shared data, sourced from MusicBrainz), while "Your genres," rating, favorite, notes, and cover art are all editable, owner-scoped overlays layered on top. VIN can use these signals; it never invents or overwrites them.
+
+## 🌍 Hebrew & Multilingual Records
+
+<p align="center">
+  <img src="docs/assets/screenshots/08-hebrew-record.png" alt="Hebrew record detail page" width="820">
+</p>
+
+Dynamic record content — titles, artists, labels, genres — renders correctly regardless of script, with local bidirectional-text isolation, niqqud-insensitive Hebrew search, deterministic mixed-script sorting, a shared Hebrew/English genre-alias taxonomy, and vision recognition that preserves the original sleeve script rather than translating it. The application chrome itself stays English/left-to-right by design — this is not a localization project, just a collection that doesn't break when a record isn't in English.
+
+## 🖼️ Screenshots
+
+| | |
+| --- | --- |
+| ![Dashboard](docs/assets/screenshots/03-dashboard.png) | ![Collection filters](docs/assets/screenshots/05-collection-filters.png) |
+| Dashboard — stats, Quick VIN, quick actions | Collection — minimum-rating filter applied |
+| ![Discover](docs/assets/screenshots/09-discover.png) | ![Mobile](docs/assets/screenshots/16-mobile-collection.png) |
+| Discover — catalog search entry point | Mobile — Collection on a narrow viewport |
+
+More screens are shown throughout this README and in the [User Guide](docs/USER_GUIDE.md) and [Visual Inspect](docs/INSPECT.md) guide.
+
+## 🏗️ Architecture
+
+```text
+Browser (Vite + React 19 + TypeScript SPA on Netlify static hosting)
+  | react-router-dom v7, route-level code splitting
+  | Supabase JS client, publishable key only — no privileged credential ever reaches it
+  |
+  |---- direct, RLS / Storage-policy authorized ----> Hosted Supabase
+  |       auth · collection CRUD · ratings/favorites/      Postgres + RLS, Auth,
+  |       notes · personal genres · listening history ·    Storage (private buckets)
+  |       profile · custom cover + avatar upload
+  |
+  |---- direct, plain <img> hotlink ------------------> Cover Art Archive
+  |       display-time artwork only, built client-side       (release / release-group
+  |       from a MusicBrainz id — no backend call,              front images)
+  |       no proxy, no persisted URL
+  |
+  `---- provider access + privileged catalog persistence --> Netlify Functions
+          |  /api/health             (GET)   public liveness — no auth
+          |  /api/catalog/search     (GET)   MusicBrainz release search        [auth]
+          |  /api/catalog/add        (POST)  upsert shared release + insert    [auth]
+          |                                  owned collection item
+          |  /api/catalog/recognize  (POST)  OpenRouter vision recognition     [auth]
+          |  /api/curator/recommend  (POST)  initial recommendation pipeline   [auth]
+          |  /api/curator/refine     (POST)  bounded refinement pipeline       [auth]
+          v
+      Hosted Supabase (service-role:    OpenRouter                MusicBrainz
+      catalog-add's release upsert       google/gemini-3.1-flash-lite (vision + intent)
+      AND collection-item insert,        google/gemini-3.5-flash (selection)
+      plus telemetry writes)
+```
+
+Full detail, including rejected alternatives and the reasoning behind each decision, lives in [`docs/architecture.md`](docs/architecture.md), [`docs/data-model.md`](docs/data-model.md), [`docs/ai-design.md`](docs/ai-design.md), [`docs/api-integrations.md`](docs/api-integrations.md), and [`docs/security.md`](docs/security.md).
+
+## 🧰 Tech Stack
+
+- **Frontend:** Vite 8, React 19, TypeScript, `react-router-dom` v7
+- **Backend:** Netlify Functions (`.mts`), six endpoints — five auth-gated application endpoints plus one public `/api/health` liveness endpoint
+- **Database / Auth / Storage:** hosted Supabase — Postgres with RLS on every table, Supabase Auth, two private Storage buckets
+- **AI:** OpenRouter — `google/gemini-3.1-flash-lite` (vision + curator intent), `google/gemini-3.5-flash` (curator selection); strict JSON schemas; allowed-candidate-ID validation
+- **Music metadata:** MusicBrainz; Cover Art Archive for display-time artwork
+- **Testing:** Vitest (unit/integration), pgTAP via the Supabase CLI (RLS/DB)
+- **Deliberately not used:** RAG / vector database, multi-agent orchestration, Next.js, analytics infrastructure
+
+## 🚀 Live Application
+
+**<https://vinyl-intelligence.netlify.app>**
+
+No CI, no custom domain — deploys are run manually from a reviewed, merged `main`, on the default `*.netlify.app` domain, with Supabase's built-in email sender.
+
+## 💻 Local Installation
 
 The project uses Node.js 24 and npm.
 
 ```bash
 nvm use
 npm install
-npm run dev
 ```
 
-The current Supabase-backed milestones require browser-safe Supabase settings. Copy `.env.example` to a
-local `.env` file and fill in local or hosted Supabase values. Do not commit
-`.env`.
+Copy `.env.example` to a local `.env` and fill in local or hosted Supabase values (never commit `.env`):
+
+| Variable | Scope | Secret |
+| --- | --- | --- |
+| `VITE_APP_NAME`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | browser + server | no (RLS-safe) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Netlify Functions only | **yes** |
+| `OPENROUTER_API_KEY` | Netlify Functions only | **yes** |
+| `MUSICBRAINZ_USER_AGENT`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_CURATOR_INTENT_MODEL`, `OPENROUTER_CURATOR_SELECTION_MODEL` | Netlify Functions only | no |
+| `OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE` | Netlify Functions only | no (optional attribution headers) |
+
+Browser code uses only `VITE_*` values. Running the photo-recognition or curator flows locally makes real, paid OpenRouter calls.
 
 For the local Supabase stack:
 
@@ -331,31 +233,15 @@ npx supabase test db
 npx supabase db lint
 ```
 
-After `npx supabase start`, run:
+## ▶️ Running Locally
 
 ```bash
-npx supabase status
+npm run dev
 ```
 
-Use the local `API URL` as `VITE_SUPABASE_URL`. Use the local browser-safe
-`anon key` as the local value for `VITE_SUPABASE_PUBLISHABLE_KEY`. Do not copy
-the service-role key, JWT secret, database URL/password, or any other privileged
-credential into a `VITE_` variable.
+Local email confirmation uses Mailpit at `http://127.0.0.1:54324`. With the Netlify Vite integration active, the health function is available at `http://127.0.0.1:5173/api/health`.
 
-Local email confirmation is intentionally enabled. Mailpit is available at:
-
-```text
-http://127.0.0.1:54324
-```
-
-The local Vite development server exposes the application shell. With the
-Netlify Vite integration active, the scaffold health function is available at:
-
-```text
-http://127.0.0.1:5173/api/health
-```
-
-Useful verification commands:
+## 🧪 Verification
 
 ```bash
 npm run typecheck
@@ -365,75 +251,59 @@ npm run build
 npm run preview
 ```
 
-Environment variables (all names, and which are secret, are in
-[`.env.example`](.env.example)):
+The full verification history — every milestone's automated gate, independent review, and human runtime acceptance — is recorded in [`docs/verification.md`](docs/verification.md).
 
-| Variable | Scope | Secret |
-| --- | --- | --- |
-| `VITE_APP_NAME`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | browser + server | no (RLS-safe) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Netlify Functions only | **yes** |
-| `OPENROUTER_API_KEY` | Netlify Functions only | **yes** |
-| `MUSICBRAINZ_USER_AGENT`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_CURATOR_INTENT_MODEL`, `OPENROUTER_CURATOR_SELECTION_MODEL` | Netlify Functions only | no |
-| `OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE` | Netlify Functions only | no (optional attribution headers) |
+## 📚 Documentation
 
-Browser code uses only the `VITE_*` values. `SUPABASE_SERVICE_ROLE_KEY` is used
-server-side only, with explicit least-privilege SQL grants, after the browser
-user token is verified. `OPENROUTER_API_KEY` is used only inside the recognition
-and curator Functions and is never sent to the browser, logged, or written to a
-row. Running the photo-recognition or curator flows makes paid OpenRouter calls.
+| Document | Purpose |
+| --- | --- |
+| [Product Intent](intent.txt) | The original, still-authoritative product-intent document |
+| [Specification](SPEC.md) | Consolidated final product contract |
+| [User Guide](docs/USER_GUIDE.md) | How to use the application, screen by screen |
+| [Visual Inspect](docs/INSPECT.md) | A fast reviewer walkthrough of the strongest evidence |
+| [Architecture](docs/architecture.md) | As-built system design |
+| [Data Model](docs/data-model.md) | Schema, RLS, and Storage |
+| [AI Design](docs/ai-design.md) | Model choices, prompts, cost/latency posture |
+| [API Integrations](docs/api-integrations.md) | MusicBrainz, Cover Art Archive, OpenRouter, Supabase, Netlify |
+| [Security](docs/security.md) | Secrets, RLS, upload validation, retention |
+| [Verification](docs/verification.md) | Every milestone's evidence, findings, and human acceptance |
+| [Current Roadmap](docs/roadmaps/2026-09-02-complete-project-roadmap.md) | Actual project evolution, current status |
+| [Historical Roadmap Snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) | The original plan, preserved unchanged for auditability |
+| [Feature Specs](docs/specs/README.md) · [Decision Records](docs/decisions/README.md) | Milestone-by-milestone specifications and ADRs |
 
-In production these are set in the Netlify dashboard (the two secrets marked
-"contains secret values"); no `.env` file is deployed.
+## 🔒 Security & Privacy
 
-Never commit `.env` or local credentials. This repository tracks only a safe
-`.env.example` documenting the names.
+- Server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) never reach the browser, are never logged, and are never written to a row.
+- Row-Level Security is enabled on every table; a user can never read or write another user's collection, ratings, notes, or listening history.
+- Shared catalog (`releases`) metadata is browser-read-only; user control is expressed through owned overlays (rating, favorite, notes, personal genres, custom cover) and manual-entry editability, never by rewriting another collector's shared facts.
+- A cover-recognition input photo is checked server-side (MIME allow-list, size cap, and magic-byte content sniffing) before it ever reaches the vision model, then discarded — never written to storage. A custom cover or avatar is checked client-side (accepted MIME, size cap, decode/re-encode to WebP) and is the one kind of upload that's intentionally persisted, in a private, owner-scoped Storage bucket. The recognition prompt treats all in-image text as untrusted data.
+- All AI output is treated as untrusted: recognition results are clues, not persisted facts, until a human confirms them; curator recommendations are hard-rejected if their ID isn't in the server-built allowed candidate set.
+- Cover recognition and the curator each have their own independent per-user rate limit (10 requests per rolling 10-minute window); a VIN refinement turn counts against the same budget as the initial recommendation.
 
-## Known limitations
+Full detail: [`docs/security.md`](docs/security.md).
+
+## ⚠️ Known Limitations
 
 - No custom domain — the app runs on the default `*.netlify.app` domain.
-- No Git continuous deployment / CI — deploys are run manually from merged
-  `main`; verification is the local gate + human production runtime.
+- No Git continuous deployment / CI — deploys are run manually from merged `main`; verification is the local automated gate plus human production runtime.
 - Supabase's built-in email sender is used (no custom SMTP).
-- No daily/global AI spend cap (per-user rate limits, `max_tokens`, an 800-char
-  curator input limit, and ≤ 3 recommendations are the cost guards).
-- `npm audit` reports dev-only findings in build/QA tooling
-  (`@netlify/vite-plugin`, `puppeteer-core`); `npm audit --omit=dev` is 0 —
-  nothing ships to production.
+- No daily/global AI spend cap — per-user rate limits, `max_tokens`, an 800-character curator input limit, and a maximum of 3 recommendations per request are the cost guards.
 - Production has been exercised primarily with a single human test account.
-- An unmounted legacy panel subtree (`CollectionPanel`, `CatalogPanel`,
-  `CatalogPhotoPanel`, `CollectionItemCard`, and related files) is retained as
-  optional future cleanup; it is not reachable from any route.
-- The application UI is **not** fully localized into Hebrew or any other
-  language — it is not a bilingual application. Only user- and record-owned
-  dynamic content (titles, artists, genres, notes, VIN reasons) is
-  multilingual-aware; the app chrome, navigation, and static copy remain
-  English/LTR by design (`docs/specs/0015-hebrew-multilingual-record-support.md`).
-  No transliteration and no cross-script artist/title aliasing (e.g.
-  `Shalom Hanoch` is not treated as equivalent to `שלום חנוך`).
+- The application UI is **not** fully localized — only user- and record-owned dynamic content is multilingual-aware; app chrome and navigation remain English/LTR by design. No transliteration, no cross-script artist/title aliasing.
+- `model_calls` telemetry retention duration is a genuinely open, non-blocking policy decision (see [`docs/decisions/README.md`](docs/decisions/README.md)).
 
-## Documentation
+## 📜 Project Status & History
 
-- [Product Intent](intent.txt)
-- **Current project roadmap:** [Complete Project Roadmap - 2026-09-02
-  (current)](docs/roadmaps/2026-09-02-complete-project-roadmap.md) - reflects the
-  actual project evolution, including the Visual Experience & Product Identity
-  pass deliberately inserted between Milestone 10 and Milestone 11.
-- **Historical roadmap snapshot:** [Complete Project Roadmap - 2026-08-18
-  historical snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) -
-  the original planning document, preserved unchanged and intentionally
-  historical. Every milestone status inside it reflects what was known or planned
-  on 2026-08-18, **not** current state, and it does **not** mention the inserted
-  visual pass. Current implementation status is tracked by the current roadmap,
-  this README, the feature specs, the verification evidence, the pull requests,
-  and Git history - not by that file.
-- [Architecture](docs/architecture.md)
-- [Data Model](docs/data-model.md)
-- [AI Design](docs/ai-design.md)
-- [API Integrations](docs/api-integrations.md)
-- [Security](docs/security.md)
-- [Verification](docs/verification.md)
-- [Initial Project Plan](docs/plans/001-initial-project-plan.md)
-- [Approved Initial Architecture Decision](docs/decisions/0001-approved-initial-architecture.md)
-- [Music Catalog API Spike](docs/specs/0001-music-catalog-api-spike.md)
-- [Decision Records](docs/decisions/README.md)
-- [Feature Specs](docs/specs/README.md)
+The application is **live and human production-accepted**, built from the accepted production runtime recorded in [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md#post-m12-evolution) and evidenced in [`docs/verification.md`](docs/verification.md).
+
+The project was not designed once and generated — it evolved through a disciplined, auditable agentic engineering process, in three phases:
+
+1. **Milestones 0–12** — foundation, auth, manual collection CRUD, catalog integration, AI photo recognition, browse/search/filter, ratings/favorites/notes, listening history, the AI curator, conversational refinement, a dedicated Visual Experience & Product Identity pass, production deployment, and final hardening.
+2. **Hebrew & Multilingual Record Support** — a deliberate post-M12 enhancement, not part of the original plan.
+3. **Final Submission Alignment** — an independent audit-triggered remediation that closed two real gaps (Collection rating/listening browse completion; Discover/Scan duplicate-copy handling) and reconciled the living documentation.
+
+Every phase followed the same loop: specification → human-approved plan → implementation → automated verification → independent review → correction where needed → merge → deployment → human production acceptance. See the [current roadmap](docs/roadmaps/2026-09-02-complete-project-roadmap.md) for the full chronology and exact commit/deploy evidence, and the [historical roadmap snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) (preserved unchanged) for what was originally planned before implementation began.
+
+## 🎓 ASE-26 Course Context
+
+This project was built for Agentic Software Engineering (ASE-26) as a demonstration of human-directed, LLM-augmented engineering: intent and specification as primary artifacts, human approval gates before implementation, independent review and correction as a normal part of the workflow, and an auditable Git/PR history a reviewer can reconstruct without needing access to the original development conversations. See [`SPEC.md`](SPEC.md) for the consolidated final product contract and [`docs/verification.md`](docs/verification.md) for the complete evidence trail.
