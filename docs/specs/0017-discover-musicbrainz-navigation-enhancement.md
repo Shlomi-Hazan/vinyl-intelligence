@@ -298,25 +298,65 @@ operator — and because MusicBrainz's underlying full-text index normalizes
 case during analysis (as it already does for every other word in the
 query), lowercasing a token does not change what it matches; a search for
 `and` retrieves the same indexed occurrences of "AND"/"And"/"and" that a
-search for `AND` would have, had it not been a reserved keyword. Let
-`literalize(s)` be: split `s` **only** at the exact case-sensitive
-whole-word occurrences of `AND`, `OR`, or `NOT` — matched with word
-boundaries (`\bAND\b`, `\bOR\b`, `\bNOT\b`; a "word boundary" is a
-transition between a letter/digit/underscore and anything else, so this
-matches a standalone token but never a substring inside a longer word) —
-and replace each such occurrence with its lowercase form (`and`, `or`,
-`not`), leaving every other character, and all whitespace, untouched. This
-is a **whole-token** match: `NOTHING` contains the letters `N-O-T` but is
-never matched, because there is no word boundary between `T` and the `H`
-that follows it inside `NOTHING` — `NOTHING BUT THIEVES` therefore requires
-**zero** transformation. `AND` typed as data in `LOVE AND WAR` **is**
-matched (surrounded by spaces, i.e. word boundaries on both sides); only
-the matched keyword token itself is lowercased, and the surrounding words
-are untouched, so `LOVE AND WAR` becomes `LOVE and WAR`. This preserves
-what the user is searching for (case-folded matching is unaffected) while
-deterministically preventing the token from being parsed as a Boolean
+search for `AND` would have, had it not been a reserved keyword.
+
+**Correction — the token-boundary test must be Unicode-aware, not
+JavaScript's plain `\b`:** an earlier draft of this spec defined the
+standalone-token test as `\bAND\b`/`\bOR\b`/`\bNOT\b`, describing `\b` as
+"a transition between a letter/digit/underscore and anything else." That
+description does not hold for JavaScript: `\b` is defined only in terms of
+the ASCII `\w` class (`[A-Za-z0-9_]`) — it does **not** treat a Hebrew
+letter, an accented Latin letter, or any other general Unicode letter as a
+word character. Under plain `\b`, a Hebrew letter immediately followed by
+`AND` (e.g. `שלוםANDעולם`, one contiguous mixed-script token with no
+whitespace) **is** a boundary transition (Hebrew letter → ASCII `A` counts
+as non-word → word under `\w`'s ASCII-only definition), so `\bAND\b` would
+incorrectly match and lowercase the embedded `AND`, corrupting a token this
+spec's own whole-token and Hebrew/non-Latin-preservation contracts (§6.4)
+both require to be left untouched. The same failure applies to any other
+script and to accented Latin letters (`éANDé`).
+
+Let `literalize(s)` instead use a Unicode-aware boundary, expressed with
+native JavaScript Unicode property escapes (the `u` regex flag plus
+`\p{L}`/`\p{N}`, standard since ES2018, requiring no dependency) and
+lookaround assertions rather than `\b`:
+
+```
+/(?<![\p{L}\p{N}_])(AND|OR|NOT)(?![\p{L}\p{N}_])/gu
+```
+
+i.e. match `AND`, `OR`, or `NOT` (case-sensitive) only where the character
+immediately before and the character immediately after — if either
+exists — is **not** a Unicode letter (`\p{L}`, any script), a Unicode
+number (`\p{N}`), or `_`. Replace each match with its lowercase form
+(`and`, `or`, `not`); every other character, and all whitespace, is left
+byte-for-byte untouched. A reserved word is literalized **only** when it is
+a standalone token — immediately adjacent to a Unicode letter, number, or
+underscore on either side disqualifies the match, regardless of script.
+
+This correctly resolves every required case:
+
+| Input | Adjacent character(s) | Result |
+| --- | --- | --- |
+| `AND` | none (string boundary) | literalized → `and` |
+| `OR` | none | literalized → `or` |
+| `NOT` | none | literalized → `not` |
+| `LOVE AND WAR` | spaces on both sides | literalized → `LOVE and WAR` |
+| `שלום AND עולם` | spaces on both sides | literalized → `שלום and עולם` |
+| `(AND)` | `(` before, `)` after — neither is `\p{L}`/`\p{N}`/`_` | literalized → `(and)` |
+| `AND/OR` | `/` separates them, string boundaries elsewhere | literalized → `and/or` |
+| `NOTHING` | `NOT` is followed by `H`, a letter | **not** matched — untouched |
+| `CANDY` | `AND` is preceded by `C` and followed by `Y`, both letters | **not** matched — untouched |
+| `שלוםANDעולם` | `AND` is preceded by `ם` and followed by `ע` — Hebrew letters are `\p{L}` | **not** matched — untouched (the exact case the old `\b`-based rule got wrong) |
+| `éANDé` | `AND` is preceded and followed by `é`, an accented Latin letter (`\p{L}`) | **not** matched — untouched |
+
+This preserves what the user is searching for (case-folded matching is
+unaffected by lowercasing a genuinely standalone token) while
+deterministically preventing that token from being parsed as a Boolean
 operator, using only the one mechanism the official documentation actually
-states (the ALL-CAPS requirement), not an invented escape syntax.
+states (the ALL-CAPS requirement), not an invented escape syntax, and
+without adding a dependency — `\p{L}`/`\p{N}` Unicode property escapes and
+lookaround assertions are native `RegExp` features.
 
 Let `escape(s)` be: replace every occurrence of any character in
 `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /` with a backslash followed by that
@@ -648,7 +688,21 @@ existing `releases`-is-an-array check, the handler validates:
 - the response's own `offset` equals the effective offset Vinyl
   Intelligence actually requested for that page (defense against a
   well-typed but semantically inconsistent response — e.g. a provider
-  answering a different page than the one requested).
+  answering a different page than the one requested);
+- **(added) relational invariants between `rawPageCount`, the requested
+  limit, and `providerCount`** — individually well-typed values can still
+  be mutually inconsistent:
+  - `rawPageCount` (the number of entries actually present in the
+    `releases` array, §7.2) must never **exceed** the effective limit
+    requested for that page — a provider returning more rows than asked
+    for is malformed, not a bonus;
+  - whenever `rawPageCount > 0`, `providerCount` must be **at least**
+    `offset + rawPageCount` — the provider cannot simultaneously return
+    rows past a given position and declare a total smaller than that
+    position implies; this is exactly the relational fact §7.2's
+    `hasMore` formula already assumes holds, so validating it here closes
+    the gap between "individually well-typed" and "safe to feed into that
+    formula."
 
 **If any of these checks fails, the entire response is mapped to the
 existing `provider_bad_response` error category** (§10.4 already defines
@@ -666,8 +720,11 @@ not a new category). This spec explicitly does **not**:
   existing first-page `phase === 'error'` state (page 1), never a
   partial/best-effort success.
 
-`hasMore` is never computed from unvalidated `count`/`offset` — this
-validation runs, and must pass, **before** §7.2's formula is evaluated.
+`hasMore` is never computed from unvalidated `count`/`offset`, nor from a
+page whose `rawPageCount`/limit/`providerCount` relationship fails the
+invariants above — this full validation runs, and must pass, **before**
+§7.2's formula is evaluated. The already-correct `hasMore` formula and its
+three worked examples (§7.2) are unchanged by this addition.
 
 ## 9. Existing Search-Draft State — Compatibility
 
@@ -1138,12 +1195,16 @@ dependency, or migration change.
   tab with `rel="noreferrer"` (matching the existing idiom). **Final,
   consistent accessibility contract (§28, resolved — not an implementation
   choice):** each carries a visually-hidden text node reading "(opens in a
-  new tab)" inside its accessible name, using the project's own existing
-  `.vi-visually-hidden` utility class (`src/styles/base.css` — already used
-  for exactly this purpose across the app, e.g.
+  new tab)" inside its accessible name, using the project's existing
+  `.vi-visually-hidden` utility (`src/styles/base.css`), already used
+  across the application for screen-reader-only text generally (e.g.
   `src/ui/primitives.tsx`, `src/collection/CollectionBrowser.tsx`,
-  `src/brand/Logo.tsx`; grep-verified, not a new dependency or a new CSS
-  rule). This is a genuine, minor enhancement to the existing per-candidate
+  `src/brand/Logo.tsx` — each for its own, different hidden text, not for
+  this specific "(opens in a new tab)" string; grep-verified, not a new
+  dependency or a new CSS rule). Applying it to this new string is the
+  correct reuse of an existing general-purpose utility for its documented
+  purpose, not a claim that the string itself already exists anywhere.
+  This is a genuine, minor enhancement to the existing per-candidate
   link — it previously carried no such note — applied uniformly so all
   three link types announce identically to assistive technology.
 - No keyboard focus trap anywhere in this enhancement — every new control
@@ -1227,27 +1288,46 @@ enforcement identical across modes.
 function, unit-testable without a network mock), minimum required cases,
 in every mode:
 
+**Must literalize** (standalone token, lowercased):
+
 - `AND` alone → `and`;
 - `OR` alone → `or`;
 - `NOT` alone → `not`;
 - `LOVE AND WAR` → `LOVE and WAR` (surrounding words untouched);
 - `ROCK OR ROLL` → `ROCK or ROLL`;
+- `שלום AND עולם` (Hebrew words separated from the keyword by ordinary
+  spaces) → `שלום and עולם` — the Hebrew words themselves are byte-for-byte
+  untouched (§6.4); only the space-delimited `AND` token is lowercased;
+- `(AND)` → `(and)` — punctuation on both sides is not a Unicode
+  letter/number/underscore, so the token is still standalone;
+- `AND/OR` → `and/or` — `/` separates the two keywords, each independently
+  standalone.
+
+**Must NOT treat as standalone** (regression guards for the Unicode-aware
+boundary — §6.2's correction):
+
 - `NOTHING BUT THIEVES` → unchanged (`NOT` is a substring of `NOTHING`, not
-  a standalone token — must **not** be matched or altered; this is the
-  regression guard for the whole-word-boundary requirement);
+  a standalone token);
+- `CANDY` → unchanged (`AND` is preceded by `C` and followed by `Y`, both
+  ordinary letters);
+- `שלוםANDעולם` (one contiguous mixed-script token, **no** separating
+  whitespace) → unchanged — `AND` is directly adjacent to Hebrew letters on
+  both sides, which are Unicode letters (`\p{L}`) even though they are not
+  ASCII `\w`; this is the exact case a plain JavaScript `\b` gets wrong
+  (§6.2) and the primary regression guard this correction exists for;
+- `éANDé` → unchanged — `AND` is directly adjacent to an accented Latin
+  letter (`é`, also `\p{L}`) on both sides.
+
+Additional cases:
+
 - a lowercase `and`/`or`/`not` typed by the user → already not an operator
   per the documented ALL-CAPS requirement (§5.1) and must pass through
   `literalize` unchanged (it is not re-uppercased, and the function is
   idempotent on already-lowercase input);
-- a punctuation-and-keyword combination, e.g. `AND/OR` or `(AND)` →
-  `literalize` neutralizes the standalone `AND` token first (`and/or`,
-  `(and)`), **then** `escape` applies its own punctuation escaping on top
-  (verifying the two steps compose correctly and neither undoes the
-  other's work);
-- a keyword token adjacent to Hebrew text (e.g. a mixed query) → the
-  keyword token is still matched and lowercased on its own word boundary;
-  the Hebrew text is untouched by `literalize` (it never matches the
-  ASCII-only `AND`/`OR`/`NOT` pattern) and unaffected by `escape` (§6.4);
+- a punctuation-and-keyword combination, e.g. `AND/OR` or `(AND)` (above)
+  → `literalize` neutralizes the standalone token(s) first, **then**
+  `escape` applies its own punctuation escaping on top (verifying the two
+  steps compose correctly and neither undoes the other's work);
 - the trusted, application-generated `OR` that `All` mode inserts between
   its two field clauses is **never** passed through `literalize` — it is
   spliced in after `literalize`/`escape` run on the user's own text, and a
@@ -1272,10 +1352,13 @@ pagination continued: `count` missing; `count` a string; `count` negative;
 `count` fractional; `offset` missing; `offset` a string; `offset`
 negative; `offset` fractional; the provider's returned `offset` different
 from the offset actually requested; `releases` missing or not an array
-(regression re-check of the existing check, now alongside the new ones).
-Each case additionally asserts `providerCount` is never derived from
-`candidates.length`/`rawPageCount` as a fallback, and that `hasMore` is
-never computed when validation fails.
+(regression re-check of the existing check, now alongside the new ones);
+**(added)** `rawPageCount` greater than the effective requested limit
+(e.g. `limit=5` but 6 entries returned); `rawPageCount > 0` with
+`providerCount` less than `offset + rawPageCount` (e.g. `offset=0`,
+`rawPageCount=5`, but `providerCount=3`). Each case additionally asserts
+`providerCount` is never derived from `candidates.length`/`rawPageCount` as
+a fallback, and that `hasMore` is never computed when validation fails.
 
 **Server contract** (`catalog-handlers.mts`): an unrecognized `mode` value
 is **rejected** as `invalid_query` (an omitted `mode` still defaults to
@@ -1536,18 +1619,22 @@ choice, not a data-safety, security, ownership, or trust-boundary decision.
    positioned alongside candidate metadata in Discover/Scan, not attached
    to the candidate's artwork.
 3. **Accessible external-link indication technique:** a visually-hidden
-   text node using the project's **own existing** `.vi-visually-hidden`
-   utility class (`src/styles/base.css`; grep-verified already applied for
-   exactly this purpose in `src/ui/primitives.tsx`, `src/ui/feedback.tsx`,
+   text node using the project's existing `.vi-visually-hidden` utility
+   (`src/styles/base.css`), already used across the application for
+   screen-reader-only text generally — grep-verified in
+   `src/ui/primitives.tsx`, `src/ui/feedback.tsx`,
    `src/collection/CollectionBrowser.tsx`, `src/app/AppShell.tsx`,
    `src/collection/CustomCoverControl.tsx`, `src/catalog/ScanPanel.tsx`,
-   `src/profile/AvatarControl.tsx`, and `src/brand/Logo.tsx` — not a
-   fabricated or hypothetical helper, and not a new dependency), reading
-   "(opens in a new tab)", appended inside the accessible name of every
-   external link this spec touches — the existing per-candidate
-   MusicBrainz link, "Search on MusicBrainz," and "View on MusicBrainz"
-   alike (§19). Rationale: reuses an already-shipped, already-tested
-   utility with zero new CSS or dependency, works uniformly regardless of
+   `src/profile/AvatarControl.tsx`, and `src/brand/Logo.tsx`, each for its
+   own different hidden text (not for this specific "(opens in a new tab)"
+   string, which is new) — not a fabricated or hypothetical helper, and not
+   a new dependency. Applied to read "(opens in a new tab)", appended
+   inside the accessible name of every external link this spec touches —
+   the existing per-candidate MusicBrainz link, "Search on MusicBrainz,"
+   and "View on MusicBrainz" alike (§19). Rationale: reuses an
+   already-shipped, already-tested general-purpose utility for its
+   documented purpose, with zero new CSS or dependency, works uniformly
+   regardless of
    whatever icon design implementation-time styling chooses, and matches
    the common accessible-link practice §19 already points to.
 
