@@ -176,6 +176,21 @@ The user must be able to: - Add/edit/delete records manually. - Search
 manually. - Filter manually. - Correct AI recognition. - Override
 metadata. - choose a record without using chat.
 
+Clarification (final submission alignment, 2026-09-15): shared
+provider-backed catalog `releases` metadata (artist, title, year, label,
+genres, etc. as sourced from MusicBrainz) is shared across collectors and
+browser-read-only - a user does not directly overwrite another collector's
+shared catalog facts. "Override metadata" above is expressed instead
+through: (a) rejecting or correcting the selected catalog candidate before
+it is ever saved, with manual entry available whenever catalog lookup is
+unsuitable; (b) manually-created (`source = 'manual'`) release rows, which
+remain fully user-editable under the existing manual-record rules; and (c)
+collection-item-level overlays the user controls regardless of catalog
+source - rating, favourite, personal notes, personal genres, custom cover
+artwork, and listening history (`docs/decisions/0006`). This preserves the
+principle above: AI is never the only interface, and the user retains
+meaningful manual control over their own collection.
+
 4.4 Uncertainty must be visible
 
 The system must not pretend that uncertain album recognition is certain.

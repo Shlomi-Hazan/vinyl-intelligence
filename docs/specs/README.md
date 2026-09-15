@@ -30,21 +30,7 @@ Existing specs/spikes:
 - [0010 Milestone 9 AI Curator](0010-milestone-9-ai-curator.md) - implemented and verified (human runtime PASS 5/5); merged in PR #10
 - [0011 Milestone 10 Conversational Refinement](0011-milestone-10-conversational-refinement.md) - implemented and verified (human runtime PASS 4/4); merged in PR #11
 - [0012 Visual Experience & Product Identity Pass](0012-visual-experience-product-identity.md) - inserted product-quality pass before Milestone 11. **Phases A-E complete + human-accepted; merged to `main` in PR #13** (Phase 0 was merged earlier in PR #12).
-- [0013 Milestone 11 Production Deployment](0013-milestone-11-production-deployment.md) - **PLANNING ONLY** (not started). Netlify + hosted Supabase deployment; two small pre-deploy AI-hardening items (curator out-of-scope, vision prompt-injection). Plan: `docs/plans/013-milestone-11-production-deployment.md`.
+- [0013 Milestone 11 Production Deployment](0013-milestone-11-production-deployment.md) - **COMPLETE** - implemented and production-deployed. Netlify + hosted Supabase deployment; two small pre-deploy AI-hardening items (curator out-of-scope, vision prompt-injection) shipped. M11 completed at `main` `55f514c20be15b9f2656aa1d534598b9938e7396` (PR #14 → #15 → #16). Plan: `docs/plans/013-milestone-11-production-deployment.md`.
+- [0014 Milestone 12 Final Hardening](0014-milestone-12-final-hardening.md) - **COMPLETE** - implemented, human-accepted, in production. Verification + documentation-reconciliation pass; human production acceptance (2026-09-07) surfaced two real runtime defects, each fixed on its own reviewed PR (PR #19, PR #20), merged, deployed, and re-verified. Final accepted `main` `c2037b8a09b10da796fa2435f268f316f7bb8442`. Plan: `docs/plans/014-milestone-12-final-hardening.md`.
 - [0015 Hebrew & Multilingual Record Support](0015-hebrew-multilingual-record-support.md) - **COMPLETE**, human-accepted in production. Post-M12 enhancement: local BiDi handling, Hebrew-aware search/sort, canonical Hebrew/English genre taxonomy shared by Collection/Dashboard/VIN, Vision original-script preservation, Hebrew-readable small-card typography. Implemented across PR #23, #24, #25, #26, #27; final accepted `main` `59fe823646091b6189fc1a015c7209fbe1f8105b`. Plan: `docs/plans/015-hebrew-multilingual-record-support.md`. Decision: `docs/decisions/0007-hebrew-multilingual-record-support.md`.
-- [0016 Final Submission Alignment](0016-final-submission-alignment.md) - **APPROVED — implementation not started** (the seven scoped UX decisions in §21 are human-approved 2026-09-14; Findings A-H are not yet fixed). Narrowly-scoped post-completion remediation triggered by an independent final audit: Collection rating/listening-recency browse completion, Discover+Scan duplicate-copy UX restoration, and a documentation reconciliation pass (living intent, README, current roadmap, this index, decision index, verification log). Not a new milestone. Plan: `docs/plans/016-final-submission-alignment.md`.
-
-Likely milestone specs:
-
-- `0002-vite-react-netlify-scaffold.md`
-- `0003-supabase-auth-profile-rls.md`
-- `0004-manual-collection-crud.md`
-- `0005-music-catalog-integration.md`
-- `0006-ai-photo-recognition.md`
-- `0007-browse-search-filter.md`
-- `0008-ratings-favorites-notes.md`
-- `0009-listening-history.md`
-- `0010-ai-curator.md`
-- `0011-conversational-refinement.md`
-- `0012-production-deployment.md`
-- `0013-reliability-security-telemetry-polish.md`
+- [0016 Final Submission Alignment](0016-final-submission-alignment.md) - PR A (planning, PR #29) merged; **Finding A merged, deployed, and human-accepted** (PR #30, `main` `2430230af12e89b61ac9a54da81ef31e1ad59ad3`, deploy `6aa86ad76bc83b77bc42c651`, acceptance PASS 2026-09-15); **Finding B merged, deployed, and human-accepted** (PR #31, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy `6aa8783d1835a5e433449dd4`, acceptance PASS 2026-09-15); Findings C-H (documentation reconciliation) are addressed by the PR D documentation-only change represented in current repository/Git history. Narrowly-scoped post-completion remediation triggered by an independent final audit; not a new milestone. Plan: `docs/plans/016-final-submission-alignment.md`.

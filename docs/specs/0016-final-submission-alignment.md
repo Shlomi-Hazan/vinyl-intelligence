@@ -1,8 +1,18 @@
 # 0016 Final Submission Alignment (Specification)
 
-Status: **APPROVED FOR IMPLEMENTATION (2026-09-14) — implementation not
-started.** The seven decisions in §21 are human-approved; Findings A–H are
-not yet fixed. Post-closeout remediation. Plan:
+Status: **FINAL DOCUMENTATION CLOSEOUT (PR D) — current as of 2026-09-15.**
+PR A (planning, PR #29) is merged. **Finding A is implemented, independently
+reviewed, merged, deployed, and human-accepted** (PR #30, `main`
+`2430230af12e89b61ac9a54da81ef31e1ad59ad3`, deploy
+`6aa86ad76bc83b77bc42c651`, acceptance PASS 2026-09-15). **Finding B is
+implemented, independently reviewed, merged, deployed, and human-accepted**
+(PR #31, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy
+`6aa8783d1835a5e433449dd4`, acceptance PASS 2026-09-15). This documentation-
+only reconciliation (PR D) addresses Findings C–H; it changes no runtime,
+test, schema, or configuration file, and does not alter the accepted
+production runtime above. See §22 for the closeout evidence record. Findings
+A–H below remain unmodified as permanent audit provenance; §21's decision
+contract remains recorded as the pre-implementation approval it was. Plan:
 `docs/plans/016-final-submission-alignment.md`. No decision record — this is
 narrow remediation, not a new architecture/product decision (§3).
 
@@ -641,6 +651,31 @@ approval is auditable, not just asserted.
    shared state machine, a shared stateful hook, a shared confirmation-flow
    component, or shared `Dialog` state. Confirmation/dialog state remains
    **local** to `DiscoverPanel` and `ScanPanel` independently.
+
+## 22. Closeout evidence (PR D, documentation-only)
+
+Recorded 2026-09-15. Full evidence is in `docs/verification.md` → "Final
+Submission Alignment Evidence"; this is a pointer summary, not a duplicate.
+
+- **PR #29 (PR A, planning)** — merge `f3a6925714c5471416ec228baf39aca0e907e0d0`.
+  No runtime change. Human approval of the seven §21 decisions, 2026-09-14.
+- **PR #30 (PR B, Finding A)** — merge `2430230af12e89b61ac9a54da81ef31e1ad59ad3`,
+  deploy `6aa86ad76bc83b77bc42c651`. Independently reviewed (two correction
+  rounds; final 0 BLOCKER/HIGH/MEDIUM/LOW), merged, deployed, **human
+  production acceptance PASS 2026-09-15**.
+- **PR #31 (PR C, Finding B)** — merge `81812c1f52d56bea84e142d828dd1e1427a0ec4b`,
+  deploy `6aa8783d1835a5e433449dd4`. Independently reviewed (one correction
+  round for a HIGH ownership-authoritativeness gap and a LOW in-flight-button
+  gap; final 0 BLOCKER/HIGH/MEDIUM/LOW), merged, deployed, **human production
+  acceptance PASS 2026-09-15**.
+- **Finding A: CLOSED.** **Finding B: CLOSED.**
+- **Findings C–H** (living-intent wording, this spec's own status, README,
+  the current roadmap, the spec/decision indexes, and the verification log)
+  are reconciled by this PR D documentation-only change.
+- The **accepted production runtime remains the PR #31 merge**,
+  `81812c1f52d56bea84e142d828dd1e1427a0ec4b` (deploy
+  `6aa8783d1835a5e433449dd4`) — PR D changes documentation only and does not
+  alter it.
 
 ## References (do not duplicate)
 
