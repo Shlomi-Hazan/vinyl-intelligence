@@ -373,6 +373,73 @@ describe('DiscoverPanel', () => {
     expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull()
     expect(searchCatalogPage).not.toHaveBeenCalled()
   })
+
+  it.each([
+    {
+      name: 'a malformed top-level mode ("bogus")',
+      draft: { draftQuery: 'portishead', mode: 'bogus', result: null },
+    },
+    {
+      name: 'a malformed result.offset (-1, negative)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          offset: -1,
+        },
+      },
+    },
+    {
+      name: 'a malformed result.offset (1.5, fractional)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          offset: 1.5,
+        },
+      },
+    },
+    {
+      name: 'a malformed result.offset ("5", a string)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          offset: '5',
+        },
+      },
+    },
+    {
+      name: 'a malformed result.hasMore ("true", a string)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          hasMore: 'true',
+        },
+      },
+    },
+  ])(
+    'a present-but-malformed draft field ($name) invalidates the stored draft rather than being silently defaulted (spec 0017 §9)',
+    ({ draft }) => {
+      sessionStorage.setItem(
+        buildUserSessionKey('catalog-search', 'uid'),
+        JSON.stringify(draft),
+      )
+      renderPanel()
+
+      // the whole draft is ignored - back to the ordinary initial state,
+      // not a half-restored query/mode/result
+      expect(screen.getByText(/Search MusicBrainz for a release/i)).toBeInTheDocument()
+      expect(screen.getByRole('searchbox')).toHaveValue('')
+      expect(screen.queryByRole('article')).toBeNull()
+      expect(searchCatalogPage).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe('DiscoverPanel - search modes (spec 0017 §6/§19)', () => {
@@ -525,6 +592,108 @@ describe('DiscoverPanel - Load More (spec 0017 §7)', () => {
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
     await screen.findByRole('article')
     expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull()
+  })
+
+  it('a new first-page search while Load More is unresolved supersedes it and leaves the new Load More usable (not stuck loading)', async () => {
+    searchCatalogPage.mockResolvedValueOnce(page([candidate()], { hasMore: true }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    let resolveStaleLoadMore: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementationOnce(
+      () => new Promise((r) => (resolveStaleLoadMore = r)),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+    // the stale Load More request is now pending/unresolved
+
+    // a brand-new first-page search supersedes it
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'newer', title: 'Newer Search Result' })], {
+        hasMore: true,
+      }),
+    )
+    await user.clear(screen.getByRole('searchbox'))
+    await user.type(screen.getByRole('searchbox'), 'radiohead{enter}')
+
+    await screen.findByText('Newer Search Result')
+    // the new search's own Load More is enabled/usable, not stuck disabled
+    // from the stale request's loadingMore
+    const newLoadMoreButton = screen.getByRole('button', { name: 'Load more results' })
+    expect(newLoadMoreButton).toBeEnabled()
+
+    // the stale Load More page finally resolves - it must never appear
+    resolveStaleLoadMore(
+      page([candidate({ providerReleaseId: 'stale-page', title: 'Stale Page Result' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await waitFor(() => expect(searchCatalogPage).toHaveBeenCalledTimes(3))
+    expect(screen.queryByText('Stale Page Result')).toBeNull()
+    expect(screen.getByText('Newer Search Result')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load more results' })).toBeEnabled()
+
+    // and that Load More button genuinely still works
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'page-2', title: 'Page Two Result' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+    await screen.findByText('Page Two Result')
+  })
+
+  it('a mode change while Load More is unresolved discards the stale page and leaves the new mode free to paginate normally', async () => {
+    searchCatalogPage.mockResolvedValueOnce(page([candidate()], { hasMore: true }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    let resolveStaleLoadMore: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementationOnce(
+      () => new Promise((r) => (resolveStaleLoadMore = r)),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+
+    // mode change supersedes the pending Load More
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
+    expect(screen.queryByRole('article')).toBeNull()
+
+    // a later search under the new mode can paginate normally
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'artist-1', title: 'Artist Mode Result' })], {
+        hasMore: true,
+      }),
+    )
+    await user.click(screen.getByRole('searchbox'))
+    await user.keyboard('{Enter}')
+    await screen.findByText('Artist Mode Result')
+
+    const loadMoreButton = screen.getByRole('button', { name: 'Load more results' })
+    expect(loadMoreButton).toBeEnabled()
+
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'artist-2', title: 'Artist Mode Page Two' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await user.click(loadMoreButton)
+    await screen.findByText('Artist Mode Page Two')
+
+    // the stale pre-mode-change Load More page must never appear
+    resolveStaleLoadMore(
+      page([candidate({ providerReleaseId: 'stale', title: 'Stale All-Mode Page' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await waitFor(() => expect(searchCatalogPage).toHaveBeenCalledTimes(4))
+    expect(screen.queryByText('Stale All-Mode Page')).toBeNull()
   })
 })
 

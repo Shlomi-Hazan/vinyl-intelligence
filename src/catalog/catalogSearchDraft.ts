@@ -51,18 +51,38 @@ function isSearchMode(value: unknown): value is SearchMode {
   return typeof value === 'string' && (VALID_MODES as readonly string[]).includes(value)
 }
 
-/** Absent or malformed on an already-stored draft defaults to `'all'`
- * rather than invalidating the whole draft (spec 0017 §9). */
-function parseMode(value: unknown): SearchMode {
-  return isSearchMode(value) ? value : 'all'
+/**
+ * Spec 0017 §9 draws a hard line between two different situations for each
+ * new field: **absent** (an already-stored old-shaped draft, which is
+ * still valid and defaults) versus **present but malformed** (a corrupt
+ * value, which must invalidate the containing draft/result - never
+ * silently coerced into a valid-looking default). `INVALID` is the
+ * sentinel each `parseOptional*` helper below returns for the second case;
+ * `undefined` means "the key was absent - apply the default."
+ */
+const INVALID = Symbol('invalid')
+
+function parseOptionalMode(value: unknown): SearchMode | undefined | typeof INVALID {
+  if (value === undefined) {
+    return undefined
+  }
+  return isSearchMode(value) ? value : INVALID
 }
 
-function parseOffset(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+function parseOptionalOffset(value: unknown): number | undefined | typeof INVALID {
+  if (value === undefined) {
+    return undefined
+  }
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : INVALID
 }
 
-function parseHasMore(value: unknown): boolean {
-  return typeof value === 'boolean' ? value : false
+function parseOptionalHasMore(value: unknown): boolean | undefined | typeof INVALID {
+  if (value === undefined) {
+    return undefined
+  }
+  return typeof value === 'boolean' ? value : INVALID
 }
 
 function parseCandidate(value: unknown): CatalogCandidate | null {
@@ -137,12 +157,33 @@ function parseResult(value: unknown): CatalogSearchResult | null {
     candidates.push(parsed)
   }
 
+  // Each new field is optional on read (absent -> default), but a
+  // *present-and-malformed* value invalidates the whole result rather than
+  // being silently coerced (spec 0017 §9) - never half-restored.
+  const mode = parseOptionalMode(candidate.mode)
+
+  if (mode === INVALID) {
+    return null
+  }
+
+  const offset = parseOptionalOffset(candidate.offset)
+
+  if (offset === INVALID) {
+    return null
+  }
+
+  const hasMore = parseOptionalHasMore(candidate.hasMore)
+
+  if (hasMore === INVALID) {
+    return null
+  }
+
   return {
     submittedQuery: candidate.submittedQuery,
-    mode: parseMode(candidate.mode),
+    mode: mode ?? 'all',
     candidates,
-    offset: parseOffset(candidate.offset),
-    hasMore: parseHasMore(candidate.hasMore),
+    offset: offset ?? 0,
+    hasMore: hasMore ?? false,
   }
 }
 
@@ -157,7 +198,15 @@ function parseDraft(value: unknown): CatalogSearchDraft | null {
     return null
   }
 
-  const mode = parseMode(candidate.mode)
+  // Absent -> default; present-and-malformed -> invalidate the whole draft
+  // (spec 0017 §9), same rule as every new field inside `result` below.
+  const modeResult = parseOptionalMode(candidate.mode)
+
+  if (modeResult === INVALID) {
+    return null
+  }
+
+  const mode = modeResult ?? 'all'
 
   // `result` is optional; an invalid result object invalidates the whole draft
   // so a partially corrupt value is dropped rather than half-restored. The

@@ -148,12 +148,25 @@ export function DiscoverPanel({
   const [exactCandidate, setExactCandidate] = useState<CatalogCandidate | null>(null)
   const exactUrlInProgress = useRef(false)
 
-  const resetSearch = useCallback(() => {
-    requestSeq.current += 1
-    // Release the in-flight guard: any still-pending search is now
-    // superseded (its own eventual resolution is separately guarded by the
-    // `seq` check above) and must not block the user's next submission.
+  // Bumps the request-generation counter and releases every in-flight guard
+  // that bump makes stale - search's own `inProgress` guard AND Load More's
+  // own `loadingMore` guard alike. Without this, a Load More request
+  // superseded by a new search/mode-change/reset would correctly have its
+  // eventual result discarded (via the `seq` check each async operation
+  // already performs) but would leave `loadingMore` stuck `true` forever,
+  // since only that same request's own `finally` block ever cleared it -
+  // and it now never will, having failed the `seq` check itself. Returns
+  // the new seq for the caller's own subsequent async operation, if any,
+  // to capture.
+  const invalidatePendingWork = useCallback((): number => {
+    const seq = ++requestSeq.current
     inProgress.current = false
+    setLoadingMore(false)
+    return seq
+  }, [])
+
+  const resetSearch = useCallback(() => {
+    invalidatePendingWork()
     setQuery('')
     setCandidates([])
     setSubmittedQuery('')
@@ -170,7 +183,7 @@ export function DiscoverPanel({
     clearCatalogSearchDraft(userId)
     // focus the input so the user can type immediately
     window.setTimeout(() => searchRef.current?.focus(), 0)
-  }, [userId])
+  }, [invalidatePendingWork, userId])
 
   const handleModeChange = useCallback(
     (next: SearchMode) => {
@@ -179,10 +192,9 @@ export function DiscoverPanel({
       }
       // Invalidate any in-flight request under the previous mode (spec
       // 0017 §6.6/concurrency) before clearing the results it would have
-      // populated, and release the in-flight guard so it cannot block the
-      // next submission under the new mode.
-      requestSeq.current += 1
-      inProgress.current = false
+      // populated, and release every in-flight guard so neither a stale
+      // search nor a stale Load More can block or leak into the new mode.
+      invalidatePendingWork()
       setMode(next)
       setCandidates([])
       setSubmittedQuery('')
@@ -194,11 +206,15 @@ export function DiscoverPanel({
       lastResult.current = null
       saveCatalogSearchDraft(userId, { draftQuery: query, mode: next, result: null })
     },
-    [mode, query, userId],
+    [invalidatePendingWork, mode, query, userId],
   )
 
   const runSearch = useCallback(
     async (raw?: string) => {
+      // This guard is runSearch's own rapid-resubmit dedup (e.g. mashing
+      // Enter) - unrelated to, and evaluated before, the invalidation
+      // below, which releases guards belonging to *other*, now-superseded
+      // operations (a stale Load More in particular).
       if (inProgress.current) {
         return
       }
@@ -210,8 +226,11 @@ export function DiscoverPanel({
         setSearchError('Enter at least 2 characters.')
         return
       }
+      // A new search supersedes any in-flight Load More under the previous
+      // query/mode - release its guard so a later hasMore:true here isn't
+      // shadowed by a stale, stuck-true loadingMore.
+      const seq = invalidatePendingWork()
       inProgress.current = true
-      const seq = ++requestSeq.current
       setPhase('loading')
       try {
         const page = await searchCatalogPage(client, {
@@ -251,7 +270,7 @@ export function DiscoverPanel({
         }
       }
     },
-    [client, mode, query, userId],
+    [client, invalidatePendingWork, mode, query, userId],
   )
 
   const loadMore = useCallback(async () => {
