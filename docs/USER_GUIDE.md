@@ -97,13 +97,32 @@ From Collection, click **Add record** (or **Add a record** in the top bar). Fill
 
 ## 🔎 7. Discovering a Record through MusicBrainz
 
-<p align="center"><img src="assets/screenshots/09-discover.png" alt="Discover — initial state" width="820"></p>
+<p align="center"><img src="assets/screenshots/09-discover.png" alt="Discover — initial state with search modes and exact-URL lookup" width="820"></p>
 
-Type an artist and album (the example chips — "Alice Coltrane," "Bowie Low," "Radiohead OK Computer" — show the expected format) and press Enter or the search icon.
+Type an artist and album (the example chips — "Alice Coltrane," "Bowie Low," "Radiohead OK Computer" — show the expected format) and press Enter or the search icon. Three modes sit above the results, mutually exclusive and single-select:
+
+| Mode | Searches | When to use it |
+| --- | --- | --- |
+| **All** (default) | artist name *or* release title | you're not sure which one you typed |
+| **Artist** | artist name only | a common word in the artist name is drowning in unrelated release-title matches |
+| **Album** | release title only | you know the exact title and want to skip artist noise |
+
+Switching modes clears the current results (they were fetched under the old mode's meaning) but keeps whatever you've typed — no retyping needed.
 
 <p align="center"><img src="assets/screenshots/10-discover-results.png" alt="Discover — search results" width="820"></p>
 
-Each result shows the release's year, label, catalog number, country, and format, plus a link to view it on MusicBrainz. Click **Add to collection** on the correct edition to import it. If none match, use **Can't find it? Add it manually** at the bottom of the page.
+Each result shows the release's year, label, catalog number, country, and format, plus a link to view it on MusicBrainz. Click **Add to collection** on the correct edition to import it. Results come five at a time; if more exist, a **Load more** button appends the next five (up to 20 total per search) without losing what's already on screen. If a later page fails to load, the ones already showing stay put and a **Retry** re-fetches just that page.
+
+Still not finding it? Two escape hatches, in order:
+
+- **Search on MusicBrainz** — opens MusicBrainz's own full search site in a new tab, for when Vinyl Intelligence's bounded result window isn't enough.
+- **Know the exact release?** — if you've found the release on MusicBrainz yourself, paste its release URL (e.g. `https://musicbrainz.org/release/...`) and click **Find exact release**. Vinyl Intelligence extracts the release ID from the URL itself — you never have to copy just the ID — and looks up that exact release. The pasted URL is validated in your browser before anything is sent, and only the extracted ID ever reaches the server; an invalid link (wrong site, wrong MusicBrainz page type, malformed ID) is rejected locally with no network request at all.
+
+<p align="center"><img src="assets/screenshots/17-discover-exact-lookup.png" alt="Discover — exact MusicBrainz release URL lookup result" width="820"></p>
+
+An exact-URL result appears in the same candidate card as any other result, with the same **Add to collection** confirmation and the same duplicate-copy handling below — pasting a URL never adds anything by itself.
+
+If none of that matches, use **Can't find it? Add it manually** at the bottom of the page.
 
 ## 🔁 8. Duplicate-Copy Confirmation
 
@@ -143,6 +162,7 @@ If the photo is unclear, you'll be offered "Search by text instead" (hands the c
 | Genres | No | Catalog-sourced tags |
 | Your genres | Yes | Type a tag and click **Add**; these are yours alone and combine with catalog genres for filtering |
 | Cover art | Yes | **Use my own cover** uploads a replacement; catalog artwork is the default |
+| MusicBrainz | No | A catalog-backed release shows **View on MusicBrainz**, linking to its exact release page on musicbrainz.org (opens in a new tab); a manually-created record shows no such link, since it has no MusicBrainz identity to point to |
 | Listening | Yes (log only) | **Mark played** logs a play now; see §11 for corrections |
 
 Personal notes (not shown in the screenshot above) are available on the same page for a private, free-text note per record — never shared, never sent to any AI model.

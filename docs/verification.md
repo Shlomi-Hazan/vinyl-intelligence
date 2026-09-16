@@ -5617,3 +5617,281 @@ H). No runtime, test, schema, or configuration file changed; the accepted
 production runtime remains the PR C merge above
 (`81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy
 `6aa8783d1835a5e433449dd4`).
+
+## Discover & MusicBrainz Navigation Enhancement Evidence
+
+A further deliberate, human-requested post-freeze usability enhancement,
+discovered during real hands-on product use after the Final Submission
+Alignment closeout: explicit All/Artist/Album search modes with corrected
+MusicBrainz query semantics, bounded "Load more" pagination, a deterministic
+exact-release-URL lookup, an outbound "Search on MusicBrainz" link, and a
+Record Detail "View on MusicBrainz" provenance link. Full contract:
+`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md`; plan:
+`docs/plans/017-discover-musicbrainz-navigation-enhancement.md`. Not a new
+numbered milestone, not an AI feature; no schema/dependency change.
+
+Same evidence-provenance convention as the section above: **AUTOMATED /
+AGENT-RUN LOCAL EVIDENCE** means commands actually executed by the
+implementation agent from a local checkout; this repository has no CI, so
+these are not GitHub status checks. **HUMAN-OBSERVED PRODUCTION EVIDENCE**
+means the human exercised the deployed production application directly and
+reported the observed result.
+
+### PR #34 — Spec
+
+Independently corrected across three audit rounds before merge (query
+semantics, pagination exhaustion formula, Unicode-aware Boolean-keyword
+literalization, mutual-exclusivity of `releaseId` against every other
+search parameter — each documented as a correction from an earlier draft
+inside the spec text itself, not silently rewritten). Merged to `main` as
+PR #34. Planning only — no runtime change.
+
+### PR #35 — Implementation Plan
+
+Operational plan derived from direct source inspection at the PR #34
+baseline (not assumed from the spec alone): the exact file list, the chosen
+designs (a new browser-safe `musicbrainzIdentity.ts` module so browser code
+never imports the provider-fetching half of `musicbrainz.ts`; the
+`computeHasMore` three-condition pagination formula, verified against its
+worked examples at planning time; a monotonic `requestSeq` stale-response
+guard instead of `AbortController`; a new `SegmentedRadioGroup` primitive
+so the mode selector uses correct `role="radio"`/`aria-checked` semantics
+without touching the existing `SegmentedControl`), and the full test plan.
+Merged to `main` as PR #35. Planning only — no runtime change.
+
+### PR #36 — Runtime Implementation + Correction
+
+**Starting HEAD:** `d919737d83e3ec804d27428e6ffa774b8373d72b` (PR #35
+merge). Five commits: `0efa37c` (MusicBrainz identity helpers and query
+semantics), `627f827` (catalog-search pagination and exact-lookup
+contract), `d44cca0` (Discover search modes, Load More, exact lookup),
+`56b500c` (Record Detail provenance link and external-link accessibility
+CSS), `7d65038` (correction — see below).
+
+**AUTOMATED / AGENT-RUN LOCAL EVIDENCE (final head
+`7d6503850c686ad8e9c48dc430dba166b0bf9dc3`):**
+
+- `git diff --check` clean; `npm run typecheck` clean; `npm run lint` 0
+  warnings.
+- `npm run test:run`: **72 test files / 983 tests**, all passing.
+- `npm run build` clean.
+- `npx supabase test db`: **10 files / 507 assertions PASS** (no
+  migration).
+- `npx supabase db lint`: no errors.
+- `npm audit --omit=dev`: **0 vulnerabilities**.
+- 21 files changed (2,644 insertions / 219 deletions) — verified by
+  diffing against the PR #35 baseline. 19 files matched the plan's own
+  "Exact likely files" list exactly. **2 files fell outside that list**
+  (`src/catalog/CatalogPanel.tsx`, `src/pages/ScanPage.tsx`): both call
+  `saveCatalogSearchDraft`, and the additively-widened
+  `CatalogSearchDraft`/`CatalogSearchResult` types (a new required `mode`
+  field) made their existing calls fail to compile; each was fixed with the
+  minimal addition of `mode: 'all'`, with no other line changed in either
+  file and no behavior/scope expansion — `CatalogPanel.tsx` is confirmed
+  unmounted (grep found no importer), and `ScanPage.tsx`'s change sets the
+  exact same `mode: 'all'` default the plan already mandates for Scan
+  compatibility (§"Scan compatibility decision"). Disclosed in PR #36's own
+  "Deviations from Plan 017" section, not discovered after the fact.
+- Zero real MusicBrainz calls anywhere in implementation or automated
+  verification (all `searchMusicBrainzReleases`/`lookupReleaseWithRateLimitRetry`
+  fixtures mocked, confirmed by grepping the new/changed test files for any
+  non-mocked `fetch`).
+
+**Independent-review correction chronology:**
+
+1. Original implementation (commits `0efa37c`–`56b500c`). Independent
+   review found **0 BLOCKER / 0 HIGH / 2 MEDIUM**:
+   - MEDIUM — a "Load more" request superseded by a new search, a mode
+     change, or "New search" left `loadingMore` stuck `true` forever,
+     because the async operation's own `finally` block was the only code
+     path that ever cleared it, and a `requestSeq` bump that correctly
+     discards the *stale result* also makes that same `finally` branch
+     never fire.
+   - MEDIUM — the search-draft parser (`catalogSearchDraft.ts`) treated a
+     *present-but-malformed* `mode`/`offset`/`hasMore` field the same as an
+     *absent* one, silently defaulting both instead of invalidating the
+     whole stored draft for the malformed case, as spec §9 requires.
+2. Both fixed in correction commit `7d65038`: a new shared
+   `invalidatePendingWork()` helper bumps `requestSeq` **and** releases
+   both the `inProgress` and `loadingMore` guards together, called from
+   `resetSearch`, `handleModeChange`, and `runSearch`; the draft parser was
+   redesigned around a `Symbol('invalid')` sentinel so
+   `parseOptionalMode`/`Offset`/`HasMore` can distinguish "absent" from
+   "present and malformed," invalidating the containing draft/result only
+   for the latter. Named regression tests added for both: two concurrency
+   cases (a new search, and a mode change, each superseding an unresolved
+   Load More) and five malformed-field cases (`mode: "bogus"`,
+   `offset: -1`, `offset: 1.5`, `offset: "5"`, `hasMore: "true"`), plus the
+   existing old-shaped-draft compatibility test re-verified passing
+   unmodified.
+3. Final independent review at head `7d6503850c686ad8e9c48dc430dba166b0bf9dc3`:
+   **0 BLOCKER / 0 HIGH / 0 MEDIUM — APPROVED FOR MERGE.**
+
+**Merge and deploy:** normal merge commit
+`abff1e86cbc36c754e8645179fa5bbee9ec27afe` (parents:
+`d919737d83e3ec804d27428e6ffa774b8373d72b`,
+`7d6503850c686ad8e9c48dc430dba166b0bf9dc3`) — merged by the human directly
+via GitHub. Production deploy `6aaa63fe2829c87037fd2cd0` at
+`https://vinyl-intelligence.netlify.app`, performed manually by the human
+(`netlify deploy --prod`; Vite production build succeeded, 162 modules
+transformed, six existing Netlify Functions packaged).
+
+**HUMAN-OBSERVED PRODUCTION EVIDENCE — 8-step production smoke, 8/8 PASS,
+2026-09-16** (a deliberately bounded first acceptance pass, not the full
+spec §23 contract — see the evidence matrix immediately below):
+
+1. `/api/health` → `{"status":"ok"}`.
+2. Discover — All mode: a real search returns results.
+3. Artist mode: the same ambiguous/non-Latin query produces
+   artist-focused results, distinct from All mode.
+4. Load More: appends further results correctly; prior results remain.
+5. Album mode: album/title-focused search works.
+6. Exact MusicBrainz release URL: resolves to exactly one release
+   candidate.
+7. Add to collection: works successfully from a live result.
+8. Record Detail: a MusicBrainz-backed record displays "View on
+   MusicBrainz".
+
+A transient Draft Deploy catalog-add configuration error observed
+pre-production did not reproduce in production and is not a current
+product defect; PR #36 was not reopened and no runtime was modified because
+of it.
+
+**This 8-step smoke was a subset of spec 0017 §23's full 22-item human
+production acceptance contract, not a substitute for it** — it remains
+recorded above exactly as originally observed, as the first evidence
+gathered, not rewritten to imply it covered everything from the start. A
+second completion round (below) closed every item this smoke did not
+reach. The matrix after that round classifies every §23 item against the
+combined evidence from both rounds.
+
+#### Completion round — remaining human-only checks (2026-09-16)
+
+Performed after the 8-step smoke above, closing every item the smoke did
+not cover. Two batches, all human-observed, all PASS:
+
+**Batch 1 (5/5 PASS):**
+
+- **A** — artist-name-only query in All mode. Query: "טונה" (Hebrew, the
+  artist name alone, no title words). All mode returned that artist's
+  releases; Hebrew text remained intact end-to-end. Satisfies item 1.
+- **B** — same-term All-vs-Album comparison. Query: "גם זה יעבור" (the
+  same exact term), tested in both All and Album mode. Album mode's
+  results were visibly more release/title-focused than All mode's for the
+  identical term. Satisfies item 3's restored comparative criterion.
+- **C** — Hebrew/non-Latin intact in All and Album mode. Same terms as A/B
+  above; Hebrew remained intact in both. Combined with the original
+  smoke's already-observed Artist-mode non-Latin case (smoke item 3), all
+  three modes are now covered. Satisfies item 4.
+- **D** — rapid repeated "Load more" activation. No duplicate candidates
+  and no duplicate visible pagination behavior. Satisfies item 7.
+- **E** — result exhaustion. A narrow result set correctly removed/omitted
+  "Load more." Satisfies item 9.
+
+**Batch 2 (6/6 PASS):**
+
+- **F** — exact identity + zero-write lookup. A valid exact MusicBrainz
+  release URL resolved to the expected release; the displayed
+  artist/title/release identity matched the pasted URL's actual release
+  (the specific gap flagged after the first correction round); the
+  collection count was unchanged after the lookup, before any Add.
+  Satisfies items 10 and 12.
+- **G** — invalid URL local rejection. An invalid MusicBrainz URL was
+  rejected locally as required, with no catalog lookup/network request
+  made by the invalid submission. Satisfies item 11.
+- **H** — already-owned exact lookup + Cancel zero-write. An already-owned
+  exact release showed the duplicate-copy affordance; the approved
+  confirmation dialog appeared; Cancel performed no write and the
+  collection count was unchanged. Satisfies items 13 and 14.
+- **I** — all three MusicBrainz navigation links. "Search on MusicBrainz"
+  opened the correct provider search destination; the existing
+  candidate-card "MusicBrainz" link opened the exact release; Record
+  Detail's "View on MusicBrainz" opened the exact release page, not a
+  release-group page. Satisfies items 15, 16, and 18.
+- **J** — manual add + no provenance link. The manual Add path still
+  works; a manually-created record's Record Detail correctly shows no
+  "View on MusicBrainz" link. Satisfies items 19 and 21.
+- **K** — mobile (~390px). Discover remained fully usable: search modes,
+  search input, "Search on MusicBrainz," the exact-URL input, and the
+  result/pagination UI were all usable with no horizontal overflow.
+  Satisfies item 20.
+
+**All 16 items the original 8-step smoke did not cover (1, 3, 4, 7, 9, 10,
+11, 12, 13, 14, 15, 16, 18, 19, 20, 21) are now human-observed and PASS.**
+Zero real MusicBrainz/OpenRouter/Vision/VIN calls and zero DB/Storage
+writes were made by the agent to produce this record — it transcribes the
+human's own reported observations, exactly as reported, with no detail
+assumed beyond what was stated.
+
+#### Spec 0017 §23 evidence matrix (items 1–22) — final
+
+Categories: **HUMAN-OBSERVED** — directly covered by the original 8-step
+smoke or the completion round above; **AUTOMATED BY CONTRACT** — §23's own
+text states automated evidence is sufficient for this item; **AUTOMATED BY
+CONTRACT + HISTORICAL/EXISTING ACCEPTED EVIDENCE** — Plan 017's own
+explicit acceptance design names automated evidence plus already-accepted
+historical production evidence as sufficient.
+
+| # | §23 item (summary) | Classification | Evidence |
+| --- | --- | --- | --- |
+| 1 | All-mode search matches by artist name alone, via an artist-only query | HUMAN-OBSERVED | Completion round, check A. |
+| 2 | Artist mode produces artist-focused results on a deliberately ambiguous query | HUMAN-OBSERVED | Smoke item 3: "the same ambiguous/non-Latin query produces artist-focused results, distinct from All mode." |
+| 3 | Album mode produces title/release-focused results, comparatively improved over All mode for the same term | HUMAN-OBSERVED | Completion round, check B (same-term "גם זה יעבור" comparison). |
+| 4 | A Hebrew/non-Latin query remains intact end-to-end in every mode | HUMAN-OBSERVED | Smoke item 3 (Artist mode) + completion round check C (All and Album modes) — all three modes now covered. |
+| 5 | Initial page renders correctly (5 results, or fewer with no error) | HUMAN-OBSERVED | Reasonably implied by smoke item 2. |
+| 6 | "Load more" appends without replacing/losing prior results | HUMAN-OBSERVED | Smoke item 4: "appends further results correctly; prior results remain." |
+| 7 | Rapid repeated "Load more" clicks do not produce parallel/duplicate requests or duplicate candidates | HUMAN-OBSERVED | Completion round, check D. |
+| 8 | Load-More-failure-preserves-prior-results | AUTOMATED BY CONTRACT | §23 item 8 explicitly states this is proven by the automated tests in §22, not human acceptance. |
+| 9 | Result exhaustion (partial page, or the 20-result window) correctly removes/disables "Load more" | HUMAN-OBSERVED | Completion round, check E. |
+| 10 | A real, valid MusicBrainz release URL resolves to the exact expected release | HUMAN-OBSERVED | Completion round, check F — displayed candidate identity confirmed to match the pasted URL's release. |
+| 11 | An invalid release-group/artist/wrong-domain URL fails locally, zero network request | HUMAN-OBSERVED | Completion round, check G. |
+| 12 | The exact lookup itself makes no database write (collection count unchanged before an explicit Add) | HUMAN-OBSERVED | Completion round, check F. |
+| 13 | An already-owned exact-lookup result shows the duplicate-copy affordance and exact approved dialog copy | HUMAN-OBSERVED | Completion round, check H. |
+| 14 | Cancel on that dialog writes nothing (collection count unchanged) | HUMAN-OBSERVED | Completion round, check H. |
+| 15 | "Search on MusicBrainz" opens the correct external destination in a new tab | HUMAN-OBSERVED | Completion round, check I. |
+| 16 | Existing per-candidate MusicBrainz links still work exactly as before | HUMAN-OBSERVED | Completion round, check I. |
+| 17 | A MusicBrainz-backed Record Detail page shows "View on MusicBrainz" | HUMAN-OBSERVED | Smoke item 8: "a MusicBrainz-backed record displays 'View on MusicBrainz'." |
+| 18 | That link opens the exact release page, not the release-group page | HUMAN-OBSERVED | Completion round, check I. |
+| 19 | A manually-created record's Record Detail shows no MusicBrainz link | HUMAN-OBSERVED | Completion round, check J. |
+| 20 | Mobile Discover (modes, Load More, exact-URL input) has no horizontal overflow and remains usable | HUMAN-OBSERVED | Completion round, check K. |
+| 21 | Existing manual-add path still works, unchanged | HUMAN-OBSERVED | Completion round, check J. |
+| 22 | Existing Scan flow (recognition → candidates → confirm, including duplicate-copy) remains fully intact | AUTOMATED BY CONTRACT + HISTORICAL/EXISTING ACCEPTED EVIDENCE (Plan 017's own explicit acceptance design — not resolved here on new authority) | Plan 017 §"Human production acceptance (spec §23, operationalized)," item 22, states this explicitly and unconditionally: proven by (a) the automated mocked `ScanPanel.test.tsx` regression suite (state machine, add, duplicate-copy, unmodified in intent), (b) the `client.test.ts` compatibility assertion for the shared catalog-search contract Scan depends on, and (c) already-existing, previously-accepted production Scan evidence (specs 0006/0016's own acceptance record), cited as historical evidence that Scan's recognition→candidate→confirm flow works in production. Plan 017 is explicit that this enhancement's acceptance round performs **zero** OpenRouter/Vision/VIN/curator calls, with **no conditional exception**, specifically citing item 22 — a new Vision call is not required, and none was made. |
+
+**Final tally: 20 HUMAN-OBSERVED, 1 AUTOMATED BY CONTRACT (item 8), 1
+AUTOMATED BY CONTRACT + HISTORICAL/EXISTING ACCEPTED EVIDENCE (item 22).
+All 22 §23 items now have sufficient evidence. Spec 0017 §23 human
+production acceptance is COMPLETE / PASS.**
+
+**This does not, by itself, mean spec §27's Definition of Done is fully
+complete.** Per §27: the runtime is implemented, independently reviewed,
+merged, and deployed (items 1–9); §23 human production acceptance is now
+complete (item 10); but the documentation/screenshot closeout (§24/§25,
+items 11–12) is still open as PR #37 (not yet merged); a final independent
+submission audit (item 14) has not yet occurred; and a new post-enhancement
+final-submission tag (item 15) has not yet been created. Current state:
+runtime COMPLETE/MERGED/DEPLOYED; §23 human production acceptance
+COMPLETE/PASS; PR C documentation closeout IN PROGRESS/OPEN; final
+independent audit PENDING; new final-submission tag PENDING.
+
+### Documentation Closeout (PR C, PR #37 — in progress)
+
+Documentation-only closeout represented by the current repository/Git
+history: README (Discover feature description, screenshots), root `SPEC.md`
+(§13, §33, §40), `docs/USER_GUIDE.md` (§7, §10), `docs/api-integrations.md`
+(MusicBrainz row), this roadmap's "Discover & MusicBrainz Navigation
+Enhancement" subsection, the spec/plan status headers (0017/017), the spec
+index, `docs/INSPECT.md`, and this verification-evidence section (including
+the §23 evidence matrix, now final, and the completion round that closed
+it above). Screenshots refreshed: Discover initial state and results (now
+showing the mode selector), a new exact-release-URL lookup screenshot,
+Record Detail (now showing "View on MusicBrainz"), and the Hebrew record
+detail screenshot (also catalog-backed, confirmed via existing production
+state — no new MusicBrainz/model call — and now visibly stale without the
+new link; refreshed for the same reason). No runtime, test, schema, or
+configuration file changed; the accepted production runtime remains the
+PR #36 merge above (`abff1e86cbc36c754e8645179fa5bbee9ec27afe`, deploy
+`6aaa63fe2829c87037fd2cd0`). **Spec 0017 §23 human production acceptance is
+now complete; this closeout PR itself remains open/unmerged** — it does not
+claim a completion this PR's own scope cannot prove (see the §27 status
+breakdown above: PR C is still IN PROGRESS/OPEN, a final independent audit
+and a new final-submission tag both remain PENDING).

@@ -12,11 +12,12 @@ Live application: **<https://vinyl-intelligence.netlify.app>**
 2. [🎚️ Collection Controls — Finding A Evidence](#-2-collection-controls--finding-a-evidence)
 3. [💿 Record Detail — The Metadata Boundary](#-3-record-detail--the-metadata-boundary)
 4. [🔁 Duplicate-Copy Handling — Finding B Evidence](#-4-duplicate-copy-handling--finding-b-evidence)
-5. [📸 Scan — Vision Privacy & Confirm-Before-Save](#-5-scan--vision-privacy--confirm-before-save)
-6. [🤖 VIN — The Recommendation Boundary](#-6-vin--the-recommendation-boundary)
-7. [🎧 History — Hebrew Rendering & Owner-Scoped Correction](#-7-history--hebrew-rendering--owner-scoped-correction)
-8. [📱 Mobile — Responsive, No Overflow](#-8-mobile--responsive-no-overflow)
-9. [📚 Where to Go Deeper](#-9-where-to-go-deeper)
+5. [🔎 Discover — Search Modes & Exact MusicBrainz Lookup](#-5-discover--search-modes--exact-musicbrainz-lookup)
+6. [📸 Scan — Vision Privacy & Confirm-Before-Save](#-6-scan--vision-privacy--confirm-before-save)
+7. [🤖 VIN — The Recommendation Boundary](#-7-vin--the-recommendation-boundary)
+8. [🎧 History — Hebrew Rendering & Owner-Scoped Correction](#-8-history--hebrew-rendering--owner-scoped-correction)
+9. [📱 Mobile — Responsive, No Overflow](#-9-mobile--responsive-no-overflow)
+10. [📚 Where to Go Deeper](#-10-where-to-go-deeper)
 
 ---
 
@@ -44,31 +45,37 @@ Live application: **<https://vinyl-intelligence.netlify.app>**
 
 **🔍 What to inspect:** the exact approved confirmation copy, captured live against a real already-owned MusicBrainz release. This is Finding B's restored contract — an already-owned release is disclosed honestly, never blocked, and a second physical copy requires exactly one intentional confirmation. Cancel makes zero writes; Confirm creates exactly one row. Identical behavior exists in Scan. Full independent-review chronology (including the corrected post-add stale-ownership race) is in `verification.md`.
 
-## 📸 5. Scan — Vision Privacy & Confirm-Before-Save
+## 🔎 5. Discover — Search Modes & Exact MusicBrainz Lookup
+
+<p align="center"><img src="assets/inspect/09-discover-modes-exact-lookup.png" alt="Annotated Discover search modes and exact-URL lookup" width="820"></p>
+
+**🔍 What to inspect:** the explicit, mutually-exclusive **All / Artist / Album** radio group (correct `role="radio"`/`aria-checked` semantics, not a toggle-button group) above the results, and — lower on the page — a real MusicBrainz release URL pasted into **"Know the exact release?"** resolving to exactly one candidate. This is the Discover & MusicBrainz Navigation Enhancement's core contract made visible: the server never fetches the pasted URL itself — only a locally-extracted, pattern-validated release ID crosses the boundary, re-validated again server-side (`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md` §10–§15). Full evidence in `verification.md`'s "Discover & MusicBrainz Navigation Enhancement Evidence" section.
+
+## 📸 6. Scan — Vision Privacy & Confirm-Before-Save
 
 <p align="center"><img src="assets/inspect/05-scan-vision-privacy.png" alt="Annotated Scan page" width="820"></p>
 
 **🔍 What to inspect:** the four-step progress indicator (Photo → Analyse → Catalogue → **Confirm**) makes the "never auto-added" contract visible in the UI itself, and the privacy note under the drop zone states the photo is never saved. This screenshot is deliberately captured **before** any analysis is triggered — no Vision API call was made to produce this documentation.
 
-## 🤖 6. VIN — The Recommendation Boundary
+## 🤖 7. VIN — The Recommendation Boundary
 
 <p align="center"><img src="assets/inspect/06-vin-owned-only.png" alt="Annotated Ask VIN page" width="820"></p>
 
 **🔍 What to inspect:** the explicit on-screen guarantee ("VIN recommends only from records you own") and the bounded input (800-character cap, live counter). The enforcement itself is server-side, not just a UI promise — see [`../SPEC.md`](../SPEC.md) §25 and the candidate-validation code referenced in `verification.md`'s AI/curator evidence. This screenshot is captured **before** any request is sent — no OpenRouter call was made to produce this documentation.
 
-## 🎧 7. History — Hebrew Rendering & Owner-Scoped Correction
+## 🎧 8. History — Hebrew Rendering & Owner-Scoped Correction
 
 <p align="center"><img src="assets/inspect/07-history-hebrew.png" alt="Annotated listening history" width="820"></p>
 
 **🔍 What to inspect:** a real Hebrew-titled play logged alongside English ones, rendering correctly without breaking the row layout, next to the owner-scoped **Edit time** / **Delete** controls that ADR 0006 deliberately and minimally added on top of the originally-append-only listening log.
 
-## 📱 8. Mobile — Responsive, No Overflow
+## 📱 9. Mobile — Responsive, No Overflow
 
 <p align="center"><img src="assets/inspect/08-mobile-responsive.png" alt="Annotated mobile Collection view" width="420"></p>
 
 **🔍 What to inspect:** the same Collection filters stack vertically with no horizontal overflow, and primary navigation collapses into a bottom tab bar — evidence for the Visual Experience & Product Identity pass's responsive requirement.
 
-## 📚 9. Where to Go Deeper
+## 📚 10. Where to Go Deeper
 
 | Question | Where to look |
 | --- | --- |

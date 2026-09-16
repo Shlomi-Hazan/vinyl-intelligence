@@ -101,10 +101,16 @@ Every collection item combines shared catalog facts (artist, title, year, label,
 ## 🔎 Discover Records
 
 <p align="center">
-  <img src="docs/assets/screenshots/10-discover-results.png" alt="Discover search results with duplicate-copy handling" width="820">
+  <img src="docs/assets/screenshots/10-discover-results.png" alt="Discover search results with mode selector" width="820">
 </p>
 
-Search MusicBrainz by artist and album, confirm the correct release, and add it. If a candidate is a release **already** in the collection, Discover says so honestly ("In your collection") and still offers an explicit **"Add another copy"** action for a legitimate second pressing — click it and a single confirmation dialog is the only way an extra physical copy is ever added:
+Search MusicBrainz in one of three explicit modes — **All** (artist or release title, the default), **Artist**, or **Album** — confirm the correct release, and add it. Results page five at a time with **Load more** (up to 20 per query), and a **"Search on MusicBrainz"** link opens the provider's own full search UI when the bounded in-app result set isn't enough. Already know the exact pressing? Paste its MusicBrainz release URL under **"Know the exact release?"** and Vinyl Intelligence extracts and validates the release ID itself — no manual copying, and the pasted URL is never fetched by the server, only the validated ID crosses the boundary:
+
+<p align="center">
+  <img src="docs/assets/screenshots/17-discover-exact-lookup.png" alt="Exact MusicBrainz release URL lookup returning one candidate" width="820">
+</p>
+
+If a candidate is a release **already** in the collection, Discover says so honestly ("In your collection") and still offers an explicit **"Add another copy"** action for a legitimate second pressing — click it and a single confirmation dialog is the only way an extra physical copy is ever added:
 
 <p align="center">
   <img src="docs/assets/screenshots/11-discover-duplicate-dialog.png" alt="Duplicate-copy confirmation dialog" width="520">
@@ -132,7 +138,7 @@ Photograph or upload a cover. A vision model extracts likely clues (artist, titl
   <img src="docs/assets/screenshots/07-record-detail.png" alt="Album detail page" width="820">
 </p>
 
-The Album Detail page is the clearest picture of the app's metadata boundary: catalog genres are shown as read-only chips (shared data, sourced from MusicBrainz), while "Your genres," rating, favorite, notes, and cover art are all editable, owner-scoped overlays layered on top. VIN can use these signals; it never invents or overwrites them.
+The Album Detail page is the clearest picture of the app's metadata boundary: catalog genres are shown as read-only chips (shared data, sourced from MusicBrainz), while "Your genres," rating, favorite, notes, and cover art are all editable, owner-scoped overlays layered on top. A MusicBrainz-backed record also carries a **"View on MusicBrainz"** link back to its exact release page — pure outbound provenance, no new server call. VIN can use these signals; it never invents or overwrites them.
 
 ## 🌍 Hebrew & Multilingual Records
 
@@ -149,7 +155,7 @@ Dynamic record content — titles, artists, labels, genres — renders correctly
 | ![Dashboard](docs/assets/screenshots/03-dashboard.png) | ![Collection filters](docs/assets/screenshots/05-collection-filters.png) |
 | Dashboard — stats, Quick VIN, quick actions | Collection — minimum-rating filter applied |
 | ![Discover](docs/assets/screenshots/09-discover.png) | ![Mobile](docs/assets/screenshots/16-mobile-collection.png) |
-| Discover — catalog search entry point | Mobile — Collection on a narrow viewport |
+| Discover — search modes, Load more, and exact-URL lookup | Mobile — Collection on a narrow viewport |
 
 More screens are shown throughout this README and in the [User Guide](docs/USER_GUIDE.md) and [Visual Inspect](docs/INSPECT.md) guide.
 
@@ -301,6 +307,7 @@ The project was not designed once and generated — it evolved through a discipl
 1. **Milestones 0–12** — foundation, auth, manual collection CRUD, catalog integration, AI photo recognition, browse/search/filter, ratings/favorites/notes, listening history, the AI curator, conversational refinement, a dedicated Visual Experience & Product Identity pass, production deployment, and final hardening.
 2. **Hebrew & Multilingual Record Support** — a deliberate post-M12 enhancement, not part of the original plan.
 3. **Final Submission Alignment** — an independent audit-triggered remediation that closed two real gaps (Collection rating/listening browse completion; Discover/Scan duplicate-copy handling) and reconciled the living documentation.
+4. **Discover & MusicBrainz Navigation Enhancement** — a further deliberate, human-requested post-freeze usability enhancement discovered during real hands-on product use: explicit All/Artist/Album search modes with corrected MusicBrainz query semantics, bounded "Load more" pagination, a deterministic exact-release-URL lookup (extract-and-validate the MBID; the pasted URL itself is never fetched server-side), an outbound "Search on MusicBrainz" link, and a Record Detail "View on MusicBrainz" provenance link — all routed through the existing `/api/catalog/search` endpoint and the existing confirm-before-add/duplicate-copy contract, with no schema, dependency, or AI-model change.
 
 Every phase followed the same loop: specification → human-approved plan → implementation → automated verification → independent review → correction where needed → merge → deployment → human production acceptance. See the [current roadmap](docs/roadmaps/2026-09-02-complete-project-roadmap.md) for the full chronology and exact commit/deploy evidence, and the [historical roadmap snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) (preserved unchanged) for what was originally planned before implementation began.
 

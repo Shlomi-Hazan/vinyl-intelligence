@@ -1,6 +1,30 @@
 # 017 Discover & MusicBrainz Navigation Enhancement (Implementation Plan)
 
-Status: **PLANNING ONLY — implementation not started.**
+Status: **RUNTIME COMPLETE, MERGED, DEPLOYED; §23 HUMAN PRODUCTION
+ACCEPTANCE COMPLETE — PR C (this document's own documentation closeout,
+PR #37) still IN PROGRESS/OPEN.** The spec (PR #34) is merged; it precedes
+this plan's own PR A/B/C execution sequence. PR A (this plan, PR #35) is
+merged. PR B (runtime implementation, PR #36) is complete: implemented,
+independently reviewed (one correction round — 0 BLOCKER / 0 HIGH /
+2 MEDIUM found and fixed in the same PR before merge — see
+`docs/verification.md` → "Discover & MusicBrainz Navigation Enhancement
+Evidence" for the full chronology), merged
+(`abff1e86cbc36c754e8645179fa5bbee9ec27afe`), and deployed
+(`6aaa63fe2829c87037fd2cd0`). An 8-step human production smoke passed
+2026-09-16, and the remaining §23 checks were completed in a second round
+(also 2026-09-16) — **all 22 of spec §23's human production acceptance
+items now have sufficient evidence; §23 acceptance is COMPLETE**, per the
+full record in the same verification section. This does not by itself mean
+spec §27's full Definition of Done is complete: this PR C documentation
+closeout remains open/unmerged, a final independent submission audit has
+not yet occurred, and a new final-submission tag has not yet been created.
+The original PR A/B/C
+operational plan below is preserved unchanged as the plan that was
+executed; two minimal files outside its original file list
+(`src/catalog/CatalogPanel.tsx`, `src/pages/ScanPage.tsx`) needed a
+type-compliance-only fix during PR B — disclosed in PR #36's own
+"Deviations from Plan 017" section and in `docs/verification.md`, not
+retroactively folded into this plan's file list below.
 
 Spec: `docs/specs/0017-discover-musicbrainz-navigation-enhancement.md` (the
 primary behavioral contract; this plan does not restate its rationale, only
