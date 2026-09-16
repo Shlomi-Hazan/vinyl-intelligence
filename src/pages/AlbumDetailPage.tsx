@@ -11,6 +11,7 @@ import { Dialog } from '../ui/Dialog.tsx'
 import { Button } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
+import { musicBrainzReleaseUrl } from '../lib/catalog/musicbrainzIdentity.ts'
 import { useClient } from '../app/useClient.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
@@ -112,6 +113,17 @@ export function AlbumDetailPage() {
     release.format ? { k: 'Format', v: release.format } : null,
   ].filter((entry): entry is { k: string; v: string } => entry !== null)
 
+  // MusicBrainz provenance link (spec 0017 §13.2): shown iff the release is
+  // catalog-backed (the same `isEditableRelease` boundary already used
+  // above - `!editable`) AND `provider_release_id` is present and valid.
+  // `musicBrainzReleaseUrl` itself returns null for a malformed id, so a
+  // manually-created release or an unexpectedly malformed/absent provider
+  // id both collapse to `null` here - never a fabricated or malformed link.
+  const musicBrainzUrl =
+    !editable && release.provider_release_id
+      ? musicBrainzReleaseUrl(release.provider_release_id)
+      : null
+
   async function removeRecord() {
     try {
       await deleteCollectionItem(client, item!.id)
@@ -163,7 +175,7 @@ export function AlbumDetailPage() {
         </div>
 
         <div className="vi-album__ident">
-          {meta.length > 0 ? (
+          {meta.length > 0 || musicBrainzUrl ? (
             <dl className="vi-album__meta">
               {meta.map((entry) => (
                 <div key={entry.k}>
@@ -173,6 +185,22 @@ export function AlbumDetailPage() {
                   </dd>
                 </div>
               ))}
+              {musicBrainzUrl ? (
+                <div>
+                  <dt>MusicBrainz</dt>
+                  <dd>
+                    <a
+                      className="vi-btn vi-btn--ghost vi-btn--sm"
+                      href={musicBrainzUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View on MusicBrainz
+                      <span className="vi-visually-hidden"> (opens in a new tab)</span>
+                    </a>
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           ) : (
             <p className="vi-hint">No catalog details recorded.</p>

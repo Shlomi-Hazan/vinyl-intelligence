@@ -217,6 +217,18 @@ describe('ScanPanel', () => {
     expect(await screen.findByText('Added to your collection.')).toBeInTheDocument()
   })
 
+  it('the existing per-candidate MusicBrainz link announces "(opens in a new tab)" (spec 0017 §19)', async () => {
+    recognizeCover.mockResolvedValue(recognition())
+    searchCatalog.mockResolvedValue([candidate()])
+    setup()
+    await selectFileAndAnalyse()
+
+    const link = await screen.findByRole('link', { name: /^MusicBrainz.*opens in a new tab/ })
+    expect(link).toHaveAttribute('href', candidate().derivedProviderPageUrl)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
   it('no catalogue match is shown as no-match with fallbacks', async () => {
     recognizeCover.mockResolvedValue(recognition())
     searchCatalog.mockResolvedValue([])

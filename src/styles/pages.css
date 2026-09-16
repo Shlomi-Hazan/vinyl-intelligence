@@ -1034,6 +1034,36 @@
 .vi-discover__current {
   margin-top: calc(var(--space-4) * -1 + var(--space-1));
 }
+/* --- search mode (spec 0017) - wraps at the existing mobile breakpoint,
+   matching the Collection filter-bar wrap behavior (spec 0016 Finding A) --- */
+.vi-discover__modes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+/* --- Load More (spec 0017) --- */
+.vi-discover__loadmore {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-3);
+}
+/* --- exact MusicBrainz release URL lookup (spec 0017) --- */
+.vi-discover__exacturl {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.vi-discover__exacturl-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.vi-discover__exacturl-row .vi-input {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
 /* the results list keeps clear air below the search row */
 .vi-discover .vi-candidate__list,
 .vi-discover__empty,

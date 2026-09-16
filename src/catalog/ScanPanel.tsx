@@ -571,6 +571,7 @@ export function ScanPanel({
                             rel="noreferrer"
                           >
                             MusicBrainz
+                            <span className="vi-visually-hidden"> (opens in a new tab)</span>
                           </a>
                         </div>
                       </div>
