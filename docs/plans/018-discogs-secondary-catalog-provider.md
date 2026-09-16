@@ -67,8 +67,10 @@ coherent commits inside it (§15), avoids that.
   `provider: 'discogs'` under this spec).
 - No change to the duplicate-copy contract's *decision rule* (exact
   `(provider, provider_release_id)` equality) — only widening its identity
-  tuple to be provider-qualified (§11), and reusing the existing dialog for
-  the Discogs case (§6).
+  tuple to be provider-qualified (§11). The existing MusicBrainz
+  duplicate-copy dialog itself is completely unchanged and is never used
+  for a Discogs candidate — Discogs uses its own confirmation dialog for
+  both the not-owned and already-owned cases (§6).
 - No change to manual-add semantics.
 - Every automated gate green from a clean checkout before PR B opens; an
   independent review before merge; a human production acceptance before
@@ -385,7 +387,7 @@ that should never have one) — every existing MusicBrainz-path test's
 expected payload assertion needs a mechanical (not behavioral) update for
 this one new key (§16).
 
-## 6. Discogs fallback UI and confirmation flow (HIGH 4, resolved)
+## 6. Discogs fallback UI and confirmation flow (prior-round HIGH 4 foundation; this round's MEDIUM 4, resolved)
 
 Per §1's corrected finding, this plan does **not** assume MusicBrainz's
 existing dialog does anything beyond duplicate-copy confirmation — the
@@ -400,27 +402,44 @@ Discogs flow defines its **own**, spec-compatible sequence:
 2. User submits a free-text query → `GET
    /api/catalog/search?provider=discogs&q=...` (§5.1) → renders a small,
    distinctly-labeled ("Discogs") list of `DiscogsSearchResultItem`s (its
-   own minimal renderer, §3.2 — title/year/country/format-summary/label,
-   plus a Discogs attribution line, §7). An "already owned" badge is shown
-   directly on a result whose `providerReleaseId` matches an owned
-   `(discogs, id)` pair (checked with the already-known `providerReleaseId`
-   — no need to wait for the exact lookup for this check).
+   own minimal renderer, §3.2 — title/year/country/format-summary/label).
+   An "already owned" badge is shown directly on a result whose
+   `providerReleaseId` matches an owned `(discogs, id)` pair (checked with
+   the already-known `providerReleaseId` — no need to wait for the exact
+   lookup for this check). **No attribution line is required on the raw
+   search-result row itself** — `DiscogsSearchResultItem` is
+   display/selection data, and the one confirmation dialog every result
+   must pass through before anything is added (step 4, below) is where
+   attribution is required (§7); this is a placement choice, not a scope
+   reduction — every result still passes through the attributed dialog
+   before it can be added.
 3. User clicks "Review & Add" on one result → client calls `GET
    /api/catalog/search?provider=discogs&releaseId=<id>` (§5.2) — a
    loading/"Finding…" state shown meanwhile.
-4. On success (a real, fully-normalized `CatalogCandidate`):
-   - if **not** already owned: a **new** confirmation dialog (extends the
-     existing `Dialog` component, a sibling of — not a replacement for —
-     the existing duplicate-copy dialog) renders the full candidate
-     metadata + Discogs attribution (§7) + "Confirm & Add" / "Cancel";
-   - if **already owned**: the **existing, unmodified** "Add another
-     copy?" `confirmingCandidate`/`Dialog` flow is reused directly with
-     this candidate — no new dialog, no regression to the existing
-     duplicate-copy contract.
+4. **[corrected, MEDIUM residual]** On success (a real, fully-normalized
+   `CatalogCandidate` + genres, §4.1): **one** new confirmation dialog
+   (extends the existing `Dialog` component; a genuinely new component for
+   Discogs, not a reuse of the existing MusicBrainz-era duplicate-copy
+   dialog) renders in **both** the not-owned and already-owned cases,
+   always showing the same full, server-verified candidate metadata +
+   `DiscogsAttribution` (full variant, §7):
+   - **not already owned:** CTA = **"Confirm & Add"**.
+   - **already owned:** an additional sentence — the existing approved
+     duplicate-copy copy, "You already own this release. Add another
+     physical copy to your collection?" — plus CTA = **"Add another
+     copy"**.
+   Both buttons call the **same** `add(candidate)` path (below). This
+   ensures a Discogs "add another copy" confirmation always shows the
+   real, exact, server-verified release identity and its required
+   attribution — never the generic MusicBrainz-era dialog's copy, which
+   has no candidate-metadata display at all (§1's corrected finding: that
+   dialog only ever showed static confirmation text, never the release
+   itself). **The existing MusicBrainz duplicate-copy dialog is completely
+   unchanged and is never used for a Discogs candidate.**
 5. On failure (not found / not Vinyl / rate-limited / timeout /
    unavailable): an honest, scoped error shown in the panel — the
    candidate list is unaffected, retry is user-triggered.
-6. Confirming either dialog calls the **existing**, unmodified
+6. Confirming the dialog (either CTA) calls the **existing**, unmodified
    `add(candidate)` → `addCatalogReleaseToCollection(client, candidate)` →
    `POST /api/catalog/add` (§5.3) — the **second**, persisting exact
    lookup happens here, server-side, exactly as spec 0018 §9 requires;
@@ -430,16 +449,16 @@ Discogs flow defines its **own**, spec-compatible sequence:
 This adds a genuinely-live request to the acceptance/local-smoke budgets
 beyond the original plan's count (§18).
 
-## 7. Attribution — corrected, full enumeration (HIGH 6, resolved)
+## 7. Attribution — final enumeration, aggregate rule corrected (HIGH 3 residual, resolved)
 
-**Every plan-level exemption from the original draft is removed.**
-Attribution renders wherever Discogs-sourced data is directly presented,
-full stop — "not enough layout room" and "preview surface" are not Terms
-exceptions, per the audit's explicit correction.
+**Every plan-level exemption is removed**, including the previously-drafted
+"pure aggregate is not Discogs Content" exemption. Attribution renders
+wherever Discogs-sourced data is directly presented or used to compute a
+visible aggregate, full stop.
 
-Re-enumerated surfaces, using one shared, compact component (two small
-variants — a full line for primary surfaces, a compact inline mark for
-tight card layouts):
+One shared component, two variants (full line for primary surfaces,
+compact inline mark for tight card layouts) — unchanged in shape from the
+prior correction round:
 
 ```tsx
 // src/catalog/DiscogsAttribution.tsx
@@ -463,52 +482,146 @@ export function DiscogsAttribution({
 
 | Surface | File | Attribution | Variant |
 | --- | --- | --- | --- |
-| Discogs search result | `DiscogsSearchPanel.tsx` | **Yes** | full |
-| Exact-preview confirmation dialog | new dialog, §6 | **Yes** | full |
-| Already-owned "Add another copy?" dialog, when the candidate is Discogs-sourced | existing `Dialog` in `DiscoverPanel.tsx` | **Yes** | full — the dialog gains one conditional line when `confirmingCandidate.provider === 'discogs'` |
-| Album Detail (Discogs-backed) | `AlbumDetailPage.tsx` | **Yes** | full, beside "View on Discogs" |
-| **[corrected] `CollectionBrowser.tsx` grid card (`AlbumCard`)** | `CollectionBrowser.tsx` | **Yes** | compact — a small inline mark added to the existing meta line for a Discogs-backed item only |
-| **[corrected] `CollectionBrowser.tsx` list row (`AlbumRow`)** | `CollectionBrowser.tsx` | **Yes** | compact — same treatment in the row's meta cell |
-| **[corrected] Dashboard `AlbumMini`** | `DashboardPage.tsx` | **Yes** | compact — a small inline mark, only when the tile's item is Discogs-backed |
-| **[corrected] Dashboard genre-based insight block, if it visibly surfaces a genre value traceable to a specific Discogs-backed release** | `src/lib/dashboard/insights.ts`, `DashboardPage.tsx` | **Conditional** — inspected at implementation time: if an insight (e.g. "top genre") names/links a specific record, that record's own compact mark (already required above, on `AlbumMini`) satisfies this; if an insight is a pure aggregate (a count/percentage with no single traceable record), no per-value attribution is needed since no single piece of Discogs data is "displayed" as such — a purely statistical aggregate is not itself Discogs Content. This distinction, not a blanket exemption, is the resolved rule. | compact where applicable |
-| **[corrected] `HistoryPage.tsx` row** | `HistoryPage.tsx` | **Yes** | compact — a small inline mark beside the artist/title for a Discogs-backed entry |
+| The Discogs exact-preview confirmation dialog (§6 step 4, both CTA cases) | new dialog, `DiscogsSearchPanel.tsx` or `DiscoverPanel.tsx` | **Yes** | full |
+| Album Detail (Discogs-backed, fresh) | `AlbumDetailPage.tsx` | **Yes** | full, beside "View on Discogs" |
+| `CollectionBrowser.tsx` grid card (`AlbumCard`), fresh | `CollectionBrowser.tsx` | **Yes** | compact |
+| `CollectionBrowser.tsx` list row (`AlbumRow`), fresh | `CollectionBrowser.tsx` | **Yes** | compact |
+| Dashboard `AlbumMini`, fresh | `DashboardPage.tsx` | **Yes** | compact |
+| **[corrected] Dashboard genre/decade insight block** | `src/lib/dashboard/insights.ts`, `DashboardPage.tsx` | **Resolved rule (no aggregate exemption):** if the rendered insight's computation included **at least one currently-fresh** Discogs-backed item's provider-derived value (e.g. its catalog genre or release year contributed to the shown breakdown), the insight block carries one compact attribution mark. Per §8.4's masking rule, a **stale/unavailable** Discogs item's provider-derived fields are already excluded from these computations entirely (not merely unattributed) — so this rule only ever fires for a block that genuinely used live Discogs data, never a block that happens to include an unavailable item's absent value. | compact where applicable |
+| `HistoryPage.tsx` row, fresh | `HistoryPage.tsx` | **Yes** | compact |
 | VIN recommendation card | `CuratorRecommendationCard.tsx` | **Yes** | full |
 
-**Artwork provider-gating extended to the two newly-confirmed surfaces**
-(§1): `CollectionBrowser.tsx`'s `artProps()` and `HistoryPage.tsx`'s
-`AlbumArtwork` call both gate `releaseMbid`/`releaseGroupMbid` on
-`provider === 'musicbrainz'` explicitly, exactly like the other three
-callers (§1's full list of five).
+**No attribution on purely user-owned values** — rating, favourite, notes,
+personal genres, listening timestamp/count — these are never Discogs
+Content regardless of the item's provider (explicit, per the audit's
+instruction, not merely an omission).
 
-App-level, one-time notice — unchanged from the original plan — placed in
-`SettingsPage.tsx` (confirmed to exist and to already host other one-time
-informational copy); not a new route.
+**A `discogsUnavailable` item shows no attribution mark for the fields it
+is currently masking** (§8.4) — there is nothing Discogs-sourced being
+displayed for those fields in that state, so nothing to attribute; the
+"View on Discogs" link (safe, identity-only, §8.4) may still carry its own
+attribution independent of field freshness, since that link itself is
+always Discogs-sourced data (the release's own page).
 
-## 8. Six-hour freshness — architecture, expiry, and both integration points (BLOCKER 2, resolved)
+**Artwork provider-gating** extends to all five confirmed
+`AlbumArtwork` callers (§1): `CollectionBrowser.tsx`'s `artProps()`,
+`HistoryPage.tsx`, `DashboardPage.tsx`'s `AlbumMini`,
+`CuratorRecommendationCard.tsx`, and `DiscoverPanel.tsx`'s
+`renderCandidate`, all gate `releaseMbid`/`releaseGroupMbid` on
+`provider === 'musicbrainz'` explicitly. Artwork rendering itself is
+**never** affected by freshness — a Discogs item's artwork is always
+either the user's own custom cover (user-owned, safe) or the generic
+branded fallback (Vinyl Intelligence's own SVG, not provider data at all)
+— so artwork is outside the `discogsUnavailable` masking rule entirely,
+fresh or stale.
 
-### 8.1 Shared pure helper — unchanged in shape from the original plan
+App-level, one-time notice — unchanged — placed in `SettingsPage.tsx`; not
+a new route.
+
+## 8. Six-hour freshness — complete data flow, no-stale-window, exact expiry (BLOCKER 1 + BLOCKER 2, resolved)
+
+### 8.0 `provider_fetched_at` — exact client/server data flow (BLOCKER 2, resolved)
+
+**Type contract:**
+
+```ts
+// src/lib/supabase/collection.ts
+export type CollectionItemWithRelease = Pick<
+  CollectionItem,
+  'id' | 'added_at' | 'created_at' | 'rating' | 'is_favorite' | 'notes'
+> & {
+  custom_cover_path?: string | null
+  custom_cover_updated_at?: string | null
+  personal_genres?: string[]
+  /**
+   * Set (never persisted) by CollectionDataProvider's freshness pass
+   * (S8.2) when this item's Discogs provider metadata could not be
+   * confirmed fresh at classification time. Absent/false for every
+   * non-Discogs item and every successfully-revalidated Discogs item.
+   */
+  discogsUnavailable?: boolean
+  release: Pick<
+    Release,
+    | 'id' | 'artist' | 'title' | 'release_year' | 'label'
+    | 'catalog_number' | 'country' | 'format' | 'genres' | 'updated_at'
+  > & {
+    provider?: CatalogProvider | null            // NEW
+    provider_release_id?: string | null
+    provider_release_group_id?: string | null
+    provider_fetched_at?: string | null          // NEW
+    source?: 'manual' | 'catalog' | null
+  }
+}
+```
+
+**`loadCollection`'s Supabase `select`** (`collection.ts`) gains `provider`
+and `provider_fetched_at` alongside its existing
+`provider_release_id`/`provider_release_group_id`/`source` — every
+existing selector call site in this file (the initial `loadCollection`
+query and, if any post-mutation collection-item re-select exists in the
+same file, confirmed at implementation time) is updated identically, so no
+code path can read a `CollectionItemWithRelease` missing these two fields.
+
+**`loadOwnedCollection`'s `release` sub-select**
+(`curator-handlers.mts:352`) gains `provider, provider_release_id,
+provider_fetched_at` — the minimum needed to make the freshness decision
+(§8.3) before any candidate-fact construction. `CuratorCollectionRow`'s
+type gains these three fields on its `release` shape (server-internal only
+— **not** added to `CuratorCollectionItem`, the type actually sent onward
+to candidate-selection/prompt construction, which stays completely
+unchanged, per the existing "no model/prompt/schema change" constraint).
+
+**The refresh operation's exact response contract** (§8.2's server-side
+counterpart, `handleCatalogRefresh`):
+
+```ts
+// netlify/functions/_shared/catalog-handlers.mts
+export type DiscogsRefreshResponse = {
+  candidate: CatalogCandidate
+  genres: string[]
+  providerFetchedAt: string   // the exact ISO timestamp the server persisted
+}
+```
+
+The server generates **one** timestamp,
+`const providerFetchedAt = new Date().toISOString()`, immediately after a
+successful `lookupDiscogsRelease` call, inside `handleCatalogRefresh` (and,
+identically, inside `handleCatalogAdd`'s Discogs branch, §5.3). That exact
+string value is both **persisted** (as `provider_fetched_at`, via the
+shared persistence helper, §8.3) and **returned** to the caller in the
+response body. **The browser uses this returned value — never
+`Date.now()` — when updating its in-memory `provider_fetched_at` and
+recomputing the next expiry deadline (§8.2)**, so the client's freshness
+clock is always anchored to the exact value actually stored in the
+database, never to an approximation drifting from network latency between
+the server's timestamp generation and the client's receipt of the
+response.
+
+### 8.1 Shared pure helper — unchanged from the prior correction round
 
 ```ts
 // src/lib/catalog/discogsFreshness.ts
 export const DISCOGS_FRESHNESS_WINDOW_MS = 6 * 60 * 60 * 1000   // exactly 6 hours
 
-// age <= 6h -> fresh; age > 6h -> stale (the boundary itself, "= 6h", is
-// treated as still fresh - an open interval on the stale side - since the
-// Terms' own wording ("more than six (6) hours older") is itself a strict
-// inequality on the stale condition).
+// age <= 6h -> fresh; age > 6h -> stale.
 export function isDiscogsRowFresh(
   provider: string | null,
   providerFetchedAt: string | null,
   now: number = Date.now(),
 ): boolean {
   if (provider !== 'discogs') return true
-  if (!providerFetchedAt) return false   // NULL is defensively stale, never fresh
+  if (!providerFetchedAt) return false
   const fetchedAtMs = Date.parse(providerFetchedAt)
   if (!Number.isFinite(fetchedAtMs)) return false
   return now - fetchedAtMs <= DISCOGS_FRESHNESS_WINDOW_MS
 }
 
-/** Milliseconds until a currently-fresh row becomes stale; 0 if already stale/non-Discogs. */
+/**
+ * Exact milliseconds until a currently-fresh row crosses the six-hour
+ * boundary and becomes stale - NOT floored/rounded to any minimum delay
+ * (S8.2's corrected timer relies on this being exact, not padded).
+ * 0 for an already-stale or non-Discogs row.
+ */
 export function msUntilStale(
   provider: string | null,
   providerFetchedAt: string | null,
@@ -520,112 +633,220 @@ export function msUntilStale(
 }
 ```
 
-### 8.2 Client-side: `CollectionDataProvider` — reconciliation pass + one-shot expiry timer
+### 8.2 Client-side: `CollectionDataProvider` — mask-first, then revalidate; exact one-shot expiry
 
-**[corrected — the original plan checked freshness only once, at load;
-this left a hole for a tab that stays mounted past the 6-hour boundary.]**
+**[corrected — the prior draft did not guarantee stale metadata could
+never render even transiently before an async refresh resolved, and its
+timer had an arbitrary floor that could leave a stale-display window past
+the six-hour boundary. Both gaps are closed below.]**
 
-A new internal function, `reconcileDiscogsFreshness(items)`, run:
+A new pure function, `maskStaleDiscogsItems(items, now)`, run
+**synchronously**:
 
-1. **Once, immediately after every `loadCollection` resolution** (mount
-   and every `reload()`/`invalidate()`), exactly as originally planned:
-   partition into fresh-or-non-Discogs (pass through) and stale-Discogs;
-   if none are stale, skip straight to `setItems`. Otherwise, revalidate
-   the stale items **sequentially, one at a time** (`for...of` with
-   `await`, **not** `Promise.allSettled` fan-out — **[corrected, MEDIUM
-   7]**: a personal collection's stale-Discogs subset is realistically
-   tiny, and sequential requests are the honest match for a
-   best-effort, in-process, non-guaranteed pacer, §12) via
-   `refreshDiscogsCollectionItem(client, providerReleaseId)` (§8.4). Each
-   result updates that item's release fields (success) or sets
-   `discogsUnavailable: true` (failure) — the item is never removed from
-   the array.
-2. **On a one-shot timer, scheduled for the earliest upcoming staleness
-   deadline among the currently-fresh Discogs items** — computed via
-   `msUntilStale` over the current `items`, `Math.min` across all
-   Discogs-provider entries, `setTimeout` for that duration (a sensible
-   floor, e.g. 1000ms, guards against a pathological near-zero delay). When
-   the timer fires, it re-runs the **same** reconciliation pass (step 1's
-   logic, not a duplicate) over the current `items` in state, then
-   re-schedules the next timer based on the new minimum. This is a single
-   scheduled deadline per relevant state change — **not polling** (no
-   repeating interval; the timer is cleared and freshly recomputed on
-   every `items` update via the `useEffect`'s own cleanup function).
-3. **On the browser's `visibilitychange` event becoming `'visible'`**
-   (**[new, resolving the "reload failure/visibility-resume" requirement]**):
-   immediately re-run the same reconciliation pass once. This closes the
-   gap where a backgrounded/suspended tab's `setTimeout` may have been
-   throttled or the JS execution paused by the OS for longer than the
-   scheduled delay — on resume, freshness is authoritatively re-checked
-   rather than trusting a possibly-late timer. This is event-driven, not
-   interval-driven, and fires at most once per visibility transition — not
-   polling.
-4. A full page reload/remount naturally re-runs step 1 from scratch via
-   the existing `loadCollection` effect, providing a third, independent
-   safety net for the "long suspension" case even if the OS fully tore
-   down the tab's JS.
+```ts
+function maskStaleDiscogsItems(
+  items: CollectionItemWithRelease[],
+  now: number,
+): CollectionItemWithRelease[] {
+  return items.map((item) =>
+    isDiscogsRowFresh(item.release.provider ?? null, item.release.provider_fetched_at ?? null, now)
+      ? item
+      : { ...item, discogsUnavailable: true },
+  )
+}
+```
+
+**Load-time sequence (no stale-display window):**
+
+1. `loadCollection(client)` resolves with the raw `items`.
+2. **Before `setItems` is ever called**, synchronously compute
+   `masked = maskStaleDiscogsItems(items, Date.now())`.
+3. `setItems(masked)`; `setStatus('ready')`. **This is the only state a
+   `ready`-status consumer ever observes for a Discogs item that was not
+   already fresh** — a stale row's provider-derived fields are never
+   published even for one render before the async refresh below resolves.
+4. Only *after* the masked state is published, asynchronously and
+   **sequentially** (§12's corrected pacer scope), attempt
+   `refreshDiscogsCollectionItem` (§8.2.1) for each item that was masked in
+   step 2. On success: replace that item's release fields with the
+   refreshed values, set `provider_fetched_at` to the response's own
+   `providerFetchedAt` (§8.0 — never `Date.now()`), and clear
+   `discogsUnavailable`. On failure: the item stays exactly as masked in
+   step 2 (no change needed — it is already correctly marked).
+
+**Exact one-shot expiry timer (no floor, no stale window):**
+
+After every `items` update, compute
+`Math.min` of `msUntilStale(item.release.provider, item.release.provider_fetched_at)`
+over every **currently-fresh** (not already masked) Discogs item in
+`items`. If none are fresh-with-a-Discogs-provider, no timer is scheduled.
+Otherwise, `setTimeout(reconcile, delay)` where `delay` is that **exact**
+computed value — **no artificial floor is applied**; a delay of `0` (or
+any small value) fires immediately/soon, which is correct, not a bug, for
+an item whose deadline has already effectively arrived. `reconcile`, when
+it fires:
+
+1. Reads the **current** `items` from state (via a ref or functional
+   `setState`, not a closed-over stale value from when the timer was
+   scheduled).
+2. Applies `maskStaleDiscogsItems` again — **synchronously masking any
+   item that just crossed the boundary before anything else happens** —
+   and calls `setItems` with the newly-masked array immediately (the same
+   mask-first discipline as the load-time sequence, applied here too, per
+   the audit's explicit requirement that this rule apply "when an expiry
+   timer or visibility-resume check discovers newly stale rows").
+3. Only then, asynchronously and sequentially, attempts revalidation for
+   the newly-masked items (identical to step 4 above).
+4. Schedules the next timer based on the new minimum.
+
+This guarantees a fresh row is re-evaluated and masked **at the instant**
+it crosses the six-hour boundary (bounded only by ordinary JS
+event-loop/timer-scheduling precision, not by any deliberately-added
+floor) — never left displaying stale metadata past its deadline while the
+tab remains mounted.
+
+**Visibility-resume:** on the browser's `visibilitychange` event becoming
+`'visible'`, immediately run the **same** mask-then-revalidate sequence
+once (steps 2–4 above) over the current `items`. This closes the gap where
+a backgrounded/suspended tab's `setTimeout` may have been throttled or
+paused by the OS for longer than its scheduled delay — on resume, freshness
+is authoritatively re-checked and re-masked rather than trusting a
+possibly-late timer. Event-driven, not interval-driven — fires at most
+once per visibility transition, never polling.
+
+A full page reload/remount re-runs the load-time sequence from scratch,
+providing a third, independent safety net for a suspension long enough
+that the OS fully tore down the tab's JS.
 
 `status`/`error` (the collection's own load phase) are **not** gated on
-this reconciliation pass completing — exactly as originally planned,
-preserving Milestone 8's "a failure of one thing never blanks something
-else" principle.
+the asynchronous revalidation step completing — only on the **synchronous
+masking** having already been applied before `setItems`/`'ready'`, per the
+sequence above.
 
-### 8.3 Server-side: `loadOwnedCollection` — sequential, in-process
+#### 8.2.1 `refreshDiscogsCollectionItem` — client wrapper
 
-**[corrected, MEDIUM 7]**: revalidation of stale Discogs items within one
-`loadOwnedCollection` call is **sequential**, not parallel — matching the
-client-side correction above, and matching the honest characterization of
-the shared pacer (§12) as an in-process, best-effort throttle, not a
-verified global limiter. On success: best-effort `upsertCatalogRelease`
-with the refreshed data (benefiting the client's next load too) and use
-the refreshed facts for that item's `CuratorCollectionItem`. On failure:
-**that item is filtered out of `items` entirely for this one request**
-(unchanged from the original plan) — `CuratorCollectionItem`'s required
-fields have no partial-presence shape, and silently sending stale values is
-exactly what spec 0018 §12 forbids. No prompt/schema/model change.
+A thin `client.ts` wrapper posting `{ action: 'refresh', provider:
+'discogs', providerReleaseId }` to the **existing** `/api/catalog/add`
+endpoint, returning the `DiscogsRefreshResponse` shape (§8.0).
 
-### 8.4 `refreshDiscogsCollectionItem` — client wrapper for the internal refresh operation
+### 8.3 Server-side: `loadOwnedCollection` — sequential, shared persistence helper
 
-Unchanged in shape from the original plan: a thin `client.ts` wrapper
-posting `{ action: 'refresh', provider: 'discogs', providerReleaseId }` to
-the **existing** `/api/catalog/add` endpoint. Server-side
-(`handleCatalogRefresh`, in `catalog-handlers.mts`, invoked from
-`handleCatalogAdd`'s existing entrypoint when `action === 'refresh'` is
-present — the thin `netlify/functions/catalog-add.mts` entrypoint file
-itself stays byte-identical): authenticate → validate ID → **verify the
-authenticated user actually owns a collection item referencing a
-`(discogs, id)` releases row** (the guard that keeps this "revalidate
-something I own," never a general-purpose lookup) → paced
-`lookupDiscogsRelease()` → `upsertCatalogRelease` with a fresh
-`provider_fetched_at` → **no** `createCatalogCollectionItem` call →
-return the refreshed pairing.
+**[corrected — the prior draft's "best-effort `upsertCatalogRelease`"
+referred to a private function in a different module with no defined
+import boundary. Resolved below.]**
 
-### 8.5 UI treatment of `discogsUnavailable` — unchanged in shape, surfaces expanded
+`upsertCatalogRelease` (currently a private function inside
+`catalog-handlers.mts`) is **extracted** into a new shared module,
+`netlify/functions/_shared/catalogPersistence.mts`, and **exported**:
 
-Per the corrected surface list (§1, §7), every one of the five confirmed
-`AlbumArtwork`/metadata-displaying callers checks the new optional
-`discogsUnavailable` flag and substitutes an honest "Catalog details
-unavailable — Retry" treatment **for the provider-derived fields only**
-(never the whole item, never a full-page error):
+```ts
+// netlify/functions/_shared/catalogPersistence.mts
+export async function upsertCatalogRelease(
+  env: Environment,
+  createClientImpl: SupabaseFactory,
+  candidate: CatalogCandidate,
+  genres: string[],
+  providerFetchedAt: string | null,
+): Promise<CatalogReleaseRow>
+```
 
-- `CollectionBrowser.tsx`'s `AlbumCard`/`AlbumRow` meta line —
-  **[corrected]**, not `CollectionItemCard.tsx` (legacy/unmounted, §1).
-- `AlbumDetailPage.tsx`'s metadata block — unchanged from the original
-  plan; the "View on Discogs" link still renders (a valid ID is still a
-  valid ID regardless of metadata freshness).
-- `DashboardPage.tsx`'s `AlbumMini` — **[corrected]**: title/artist remain
-  shown (identity fields, not "current provider facts" in the sense spec
-  0018 §12 targets — the user already confirmed them at add time and they
-  are not re-derived from a live API field the way year/label/catalog/
-  country/format are); year/label/catalog/country/format-level facts,
-  wherever `AlbumMini`/insights actually surface them, are gated.
-- `HistoryPage.tsx`'s row — **[new, §1]**: title/artist likewise shown
-  (identity, same reasoning); no other provider-derived field is displayed
-  there (confirmed by inspection, §1), so no further gating is needed on
-  this surface beyond the artwork gate (§7).
-- `CuratorRecommendationCard.tsx` — cannot recommend an item VIN's own
-  server-side pass (§8.3) already excluded for staleness, so no additional
-  gating logic is needed there beyond the artwork gate.
+Both `catalog-handlers.mts` (its add and refresh paths, §5.3, §8.2.1's
+server side) and `curator-handlers.mts` (`loadOwnedCollection`'s
+best-effort refresh, below) import this **same** function — there is
+exactly one persistence implementation, with a real, named module boundary
+between the two Netlify Function handler files, not an informal
+cross-module reference to a private symbol.
+
+`loadOwnedCollection`'s freshness pass, using the corrected §8.0 select
+fields: partition into fresh-or-non-Discogs (pass through unchanged) and
+stale-Discogs (via `isDiscogsRowFresh`); revalidate stale items
+**sequentially** (§12); on success, call the shared
+`upsertCatalogRelease` (best-effort — its own failure does not fail the
+VIN request; the refreshed facts are still used for this request's
+candidate construction even if the persistence write itself fails, since
+persistence is a convenience for the *next* load, not a precondition for
+*this* request's correctness) and use the refreshed facts for that item's
+`CuratorCollectionItem`; on failure, **that item is filtered out of
+`items` entirely for this one request** — unchanged from the original
+plan. No prompt/schema/model change.
+
+### 8.4 UI/derived-data treatment of `discogsUnavailable` — identity-field exception fully removed (BLOCKER 1, resolved)
+
+**[corrected — the prior draft's "identity fields (title/artist) may still
+be shown" exception directly contradicted spec 0018 §12, which names
+`artist`/`title`/`release_year`/`genres` explicitly as gated fields. That
+exception is removed in full, everywhere, including Album Detail and
+Collection.]**
+
+**When `discogsUnavailable === true`, no provider-derived value may be
+displayed or used in any visible derived computation** — this includes
+`artist`, `title`, `release_year`, `label`, `catalog_number`, `country`,
+`format`, and catalog `genres`. The **only** data that may remain visible
+for such an item is: its ownership/collection-item existence; the user's
+own `rating`/`is_favorite`/`notes`/`personal_genres`; listening
+timestamp/count; the user's own custom artwork; and the "View on Discogs"
+link/exact provider identity (safe — derived only from the already-
+validated `provider_release_id`, never from fetched metadata).
+
+Per-surface treatment:
+
+- **`CollectionBrowser.tsx`'s `AlbumCard`/`AlbumRow`:** the title
+  position shows a fixed placeholder ("Catalog details unavailable") in
+  place of `item.release.title`; the artist/meta line is replaced with a
+  "Retry" action (calling `refreshDiscogsCollectionItem` for just this
+  item); the item **remains** in the grid/list (not removed), remains
+  navigable to Album Detail, and its rating/favourite/quick-actions
+  controls remain fully functional (all user-owned, safe). Artwork is
+  unaffected (§7).
+- **`AlbumDetailPage.tsx`:** the page's own `<h1>` title and artist byline
+  — **[corrected, no longer exempted]** — are replaced with a placeholder
+  ("Record details unavailable") plus a page-level "Retry" action, exactly
+  like the existing metadata `<dl>` block's year/label/catalog/country/
+  format fields (already gated in the prior round, unchanged here); the
+  "View on Discogs" link still renders (safe, above); rating, favourite,
+  notes, personal genres, listening controls, and custom-cover-upload all
+  remain fully functional and visible (all user-owned/identity-safe).
+- **`DashboardPage.tsx`'s `AlbumMini`:** **[corrected, no longer
+  exempted]** — title/artist text replaced with a short placeholder
+  ("Unavailable"); the tile still links through to Album Detail (where the
+  full Retry affordance lives); artwork unaffected.
+- **`HistoryPage.tsx`'s row:** **[corrected, no longer exempted]** —
+  artist/title replaced with "Record details unavailable"; the listen
+  timestamp and play count remain shown (not provider-derived); artwork
+  unaffected.
+- **`CuratorRecommendationCard.tsx`:** cannot recommend an item VIN's own
+  server-side pass (§8.3) already excluded for staleness — no additional
+  gating logic needed here beyond the artwork gate (§7).
+
+**Filtering, sorting, and search must not use a masked item's
+provider-derived fields** (`CollectionBrowser.tsx`'s `applyCollectionQuery`,
+`availableDecades`, `availableGenres`): for a `discogsUnavailable` item,
+its `artist`/`title`/`release_year`/catalog `genres` are treated as
+**absent** (not matched by a text search targeting them, not counted
+toward a decade/genre filter's available options derived from them, not
+used as a sort key — falling back to whatever this codebase's existing
+convention already is for a missing/null value in each of those cases, not
+a new convention invented here) for exactly as long as the item stays
+masked. The item's **personal** genres, rating, favourite, and listening
+recency remain fully usable in filtering/sorting, since those are never
+provider-derived. The item itself is never removed from `items.length`/"N
+of M records" counts.
+
+**Dashboard insight computations** (`src/lib/dashboard/insights.ts`) —
+genre and decade breakdowns specifically — **exclude** a masked item's
+provider-derived `genres`/`release_year` from their computation entirely
+until it is unmasked (this is also what makes §7's attribution rule for
+these blocks correct: a masked item can never cause an insight block to
+require attribution, since its data was never included in the first
+place). Non-provider-derived aggregate stats (total record count,
+favourites count, listening-based stats) are **unaffected** by masking —
+those never depended on provider data.
+
+**VIN behavior is unchanged from the prior round**: an unrevalidatable
+stale Discogs item is excluded from that curator request's candidate pool
+entirely (§8.3) — this is a stronger guarantee than masking (exclusion,
+not display substitution), already fully compliant with spec 0018 §12,
+and is not modified by this correction.
 
 The application never crashes or shows a full-page error because one
 Discogs record is stale/unavailable; every other item in the same view is
@@ -789,7 +1010,11 @@ value.
 - `src/lib/catalog/catalogFieldLimits.ts` (extracted shared constants).
 - `src/catalog/DiscogsAttribution.tsx` (full + compact variants).
 - `src/catalog/DiscogsSearchPanel.tsx` (search results + "Review & Add" +
-  the new confirmation dialog logic, §6) + `.test.ts`.
+  the new confirmation dialog logic, §6, used for both the not-owned and
+  already-owned Discogs cases) + `.test.ts`.
+- `netlify/functions/_shared/catalogPersistence.mts` — the extracted,
+  exported `upsertCatalogRelease` (§8.3), imported by both
+  `catalog-handlers.mts` and `curator-handlers.mts`.
 - `supabase/migrations/<timestamp>_add_discogs_catalog_provider.sql`
   (described here, created during PR B only).
 
@@ -810,49 +1035,65 @@ value.
 - `src/lib/supabase/collection.test.ts`.
 - `src/lib/catalog/ownedRelease.ts` + `.test.ts` — provider-qualified
   signature.
-- `src/app/CollectionDataProvider.tsx` — reconciliation pass, one-shot
-  expiry timer, `visibilitychange` listener (§8.2).
-- `src/app/CollectionDataProvider.test.tsx`.
+- `src/app/CollectionDataProvider.tsx` — mask-then-revalidate load
+  sequence, exact one-shot expiry timer, `visibilitychange` listener
+  (§8.2).
+- `src/app/CollectionDataProvider.test.tsx` — including fake-timer tests
+  for the exact six-hour boundary (§16).
 - `netlify/functions/_shared/catalog-handlers.mts` — `provider` param on
   both search branches (§5.1, §5.2), widened add validation, Discogs add
-  branch (§5.3), new `handleCatalogRefresh` (§8.4), `catalogReleasePayload`
-  gains `providerFetchedAt`.
+  branch (§5.3), new `handleCatalogRefresh` returning
+  `DiscogsRefreshResponse` (§8.0, §8.2.1); `upsertCatalogRelease` **moved
+  out** to `catalogPersistence.mts` (§8.3), imported back in;
+  `catalogReleasePayload` gains `providerFetchedAt`.
 - `netlify/tests/catalog-functions.test.ts` — extended for all of the
   above; existing MusicBrainz-path payload assertions updated only for the
   new key (mechanical).
-- `netlify/functions/_shared/curator-handlers.mts` — `loadOwnedCollection`
-  sequential freshness pass (§8.3).
+- `netlify/functions/_shared/curator-handlers.mts` — `provider`/
+  `provider_release_id`/`provider_fetched_at` added to the release
+  sub-select; `loadOwnedCollection` sequential freshness pass importing
+  the shared `catalogPersistence.mts::upsertCatalogRelease` (§8.3).
 - the existing curator handler test file covering `loadOwnedCollection`
   (confirmed exact filename at implementation time) — extended, zero real
   model/provider calls.
 - `src/pages/AlbumDetailPage.tsx` — provider-aware provenance block,
-  provider-gated artwork, `discogsUnavailable` state, attribution.
+  provider-gated artwork, full `discogsUnavailable` treatment (title,
+  artist, and every metadata field masked — §8.4), attribution.
 - `src/pages/AlbumDetailPage.test.tsx`.
-- **`src/collection/CollectionBrowser.tsx`** — **[corrected, replaces
+- **`src/collection/CollectionBrowser.tsx`** — **[replaces
   `CollectionItemCard.tsx` as the primary Collection-surface change]**:
-  `artProps()` provider-gated; `AlbumCard`/`AlbumRow` meta lines gain
-  compact attribution and the `discogsUnavailable` treatment.
+  `artProps()` provider-gated; `AlbumCard`/`AlbumRow` gain compact
+  attribution and the full `discogsUnavailable` placeholder treatment
+  (§8.4); `applyCollectionQuery`/`availableDecades`/`availableGenres`
+  treat a masked item's provider-derived fields as absent for
+  search/filter/sort (§8.4).
+- **`src/collection/collectionQuery.ts`** (or the exact file(s) backing
+  `applyCollectionQuery`/`availableDecades`/`availableGenres`, confirmed at
+  implementation time) — the same absent-for-filtering treatment.
 - **`src/collection/CollectionBrowser.test.tsx`** (confirmed exact
-  filename at implementation time).
-- **`src/pages/HistoryPage.tsx`** — **[new]** provider-gated artwork,
-  compact attribution, `discogsUnavailable`-aware display for any
-  provider-derived field it shows (confirmed at implementation time to be
-  title/artist only, §1, which are not gated per §8.5's identity-field
-  reasoning — so this file's change may reduce to the artwork gate +
-  attribution mark alone; confirmed, not assumed, when the file is
-  actually opened for implementation).
+  filename at implementation time) — including a masked-item
+  filter/sort-exclusion test.
+- **`src/pages/HistoryPage.tsx`** — provider-gated artwork, compact
+  attribution, full `discogsUnavailable` treatment (artist/title replaced
+  with "Record details unavailable"; listen timestamp/count unaffected,
+  §8.4).
 - **`src/pages/HistoryPage.test.tsx`**.
-- `src/pages/DashboardPage.tsx` — provider-gated artwork (`AlbumMini`),
-  compact attribution, insight-block treatment per §7's conditional rule.
-- `src/pages/DashboardPage.test.tsx`.
+- `src/pages/DashboardPage.tsx` — provider-gated artwork (`AlbumMini`,
+  title/artist masked per §8.4), compact attribution.
+- **`src/lib/dashboard/insights.ts`** — genre/decade breakdown functions
+  exclude a masked item's provider-derived `genres`/`release_year` from
+  their computation (§8.4); non-provider-derived aggregates unaffected.
+- `src/pages/DashboardPage.test.tsx` — including an insight-exclusion test
+  for a masked item and the attribution-on-fresh-contribution test (§7).
 - `src/curator/CuratorRecommendationCard.tsx` — provider-gated artwork,
   full attribution.
 - the existing test file covering `CuratorRecommendationCard` (confirmed
   exact filename at implementation time).
 - `src/catalog/DiscoverPanel.tsx` — mounts `DiscogsSearchPanel.tsx`'s entry
   point (§6); provider-gated artwork; `isExactCatalogReleaseOwned` call
-  site updated; the existing duplicate-copy `Dialog` gains one conditional
-  Discogs-attribution line.
+  site updated. **The existing MusicBrainz duplicate-copy `Dialog` is not
+  modified** — Discogs's own new dialog (in `DiscogsSearchPanel.tsx`)
+  handles both the not-owned and already-owned Discogs cases (§6).
 - `src/catalog/DiscoverPanel.test.tsx`.
 - `src/pages/SettingsPage.tsx` + `.test.tsx` — app-level notice.
 - `supabase/tests/database/catalog_releases_rls.test.sql` — Discogs
@@ -886,33 +1127,50 @@ a silent scope expansion.
 4. `discogsFreshness.ts` + tests (`isDiscogsRowFresh`, `msUntilStale`,
    including the NULL/malformed-timestamp/exact-6h-boundary cases).
 5. `types.ts`: widen `CatalogProvider`.
-6. `catalog-handlers.mts`: `provider` on both search branches,
-   `handleCatalogRefresh`, widened add validation + Discogs branch,
-   `catalogReleasePayload` change. Get `catalog-functions.test.ts` green.
-7. `client.ts`: preview-lookup wrapper, `refreshDiscogsCollectionItem`.
-8. `ownedRelease.ts`: provider-qualified signature; update both call sites.
-9. `collection.ts`: load/type `provider`; re-export `RELEASE_FIELD_LIMITS`.
-10. `CollectionDataProvider.tsx`: reconciliation pass, expiry timer,
-    `visibilitychange` listener.
-11. `curator-handlers.mts`: `loadOwnedCollection` sequential freshness
-    pass — after step 10, for the same reason as the original plan (shared
-    primitives finalized first, client-side integration proven before
-    duplicating server-side).
-12. `DiscogsAttribution.tsx`.
-13. `DiscoverPanel.tsx` + `DiscogsSearchPanel.tsx`: fallback UI, the new
-    confirmation dialog, the existing duplicate-copy dialog's one new
-    conditional line, artwork gating, `isExactCatalogReleaseOwned` call
-    site.
-14. `AlbumDetailPage.tsx`: provenance block, artwork gating,
-    `discogsUnavailable`, attribution.
-15. `CollectionBrowser.tsx`, `HistoryPage.tsx`, `DashboardPage.tsx`,
-    `CuratorRecommendationCard.tsx`: artwork gating, attribution,
-    `discogsUnavailable` where applicable (§8.5/§7's per-surface rules).
-16. `SettingsPage.tsx`: app-level notice.
-17. The migration file + pgTAP additions — written now, applied only per
+6. `catalogPersistence.mts`: extract `upsertCatalogRelease` out of
+   `catalog-handlers.mts` (mechanical move, gains the `providerFetchedAt`
+   parameter), confirm `catalog-functions.test.ts` still passes with only
+   the import path changed — proves the extraction itself is behavior-neutral
+   before any Discogs logic is added on top.
+7. `catalog-handlers.mts`: `provider` on both search branches,
+   `handleCatalogRefresh` (returning `DiscogsRefreshResponse`), widened add
+   validation + Discogs branch, `catalogReleasePayload` change. Get
+   `catalog-functions.test.ts` green.
+8. `client.ts`: preview-lookup wrapper, `refreshDiscogsCollectionItem`.
+9. `ownedRelease.ts`: provider-qualified signature; update both call sites.
+10. `collection.ts`: load/type `provider` + `provider_fetched_at`;
+    re-export `RELEASE_FIELD_LIMITS`.
+11. `discogsFreshness.ts` fake-timer-tested boundary cases finalized here
+    if not already exhaustive from step 4 (just-below/exactly/just-after
+    six hours).
+12. `CollectionDataProvider.tsx`: the mask-then-revalidate load sequence,
+    the exact one-shot expiry timer, the `visibilitychange` listener. Get
+    its test green, including the fake-timer boundary tests (§16), before
+    touching any consuming UI component — every downstream component only
+    ever needs to read `discogsUnavailable`, never compute freshness
+    itself.
+13. `curator-handlers.mts`: `provider`/`provider_release_id`/
+    `provider_fetched_at` in the release sub-select; `loadOwnedCollection`
+    sequential freshness pass importing the shared
+    `catalogPersistence.mts::upsertCatalogRelease` — after step 12, for the
+    same reason as before (client-side integration proven first).
+14. `DiscogsAttribution.tsx`.
+15. `DiscoverPanel.tsx` + `DiscogsSearchPanel.tsx`: fallback UI, the new
+    confirmation dialog (used for both the not-owned and already-owned
+    Discogs cases — the existing MusicBrainz dialog is not touched),
+    artwork gating, `isExactCatalogReleaseOwned` call site.
+16. `AlbumDetailPage.tsx`: provenance block, artwork gating, the full
+    `discogsUnavailable` treatment (title/artist included), attribution.
+17. `CollectionBrowser.tsx` (+ its filter/sort helper file), `HistoryPage.tsx`,
+    `DashboardPage.tsx` (+ `insights.ts`), `CuratorRecommendationCard.tsx`:
+    artwork gating, attribution, the full `discogsUnavailable` placeholder
+    treatment and filter/insight-exclusion rules (§8.4/§7's per-surface
+    rules).
+18. `SettingsPage.tsx`: app-level notice.
+19. The migration file + pgTAP additions — written now, applied only per
     §17's deploy-order gate.
-18. Full automated gate from a clean checkout.
-19. Local manual smoke (§16) — no deploy yet.
+20. Full automated gate from a clean checkout.
+21. Local manual smoke (§16) — no deploy yet.
 
 ## 16. Local manual smoke and independent review gate
 
@@ -927,16 +1185,47 @@ add-lookup, one refresh-path exercise, two in reserve) and 0 real
 MusicBrainz requests, for this local-smoke round specifically (distinct
 from the human-acceptance budget, §18).
 
+**Required fake-timer test cases for `CollectionDataProvider`/
+`discogsFreshness.ts`** (§8, mandatory, not optional coverage):
+
+- `provider_fetched_at` just below six hours old → classified fresh, no
+  mask, no revalidation call.
+- exactly six hours old → still classified fresh (the boundary itself is
+  inclusive of fresh, per §8.1's "age <= 6h = fresh").
+- one millisecond past six hours old → classified stale;
+  `discogsUnavailable` is `true` in the **very same** `setItems` call that
+  first publishes the item as `ready` — never a later render.
+- the one-shot expiry timer fires at (or immediately after) the exact
+  computed deadline and masks the affected item **before** its
+  revalidation request is even issued (assert the masked state is set
+  first, via a synchronous check, before resolving the mocked revalidation
+  promise).
+- a `visibilitychange` → `'visible'` event triggers the identical
+  mask-then-revalidate sequence for an item that became stale while the
+  tab was hidden.
+- a successful revalidation updates `provider_fetched_at` to the **exact**
+  `providerFetchedAt` string the mocked server response returned — not a
+  value derived from `Date.now()` at the client.
+- a failed revalidation leaves `discogsUnavailable: true` and does not
+  restore any provider-derived field.
+
 **Independent review gate** — unchanged bar (0 BLOCKER/HIGH/MEDIUM),
 additionally confirming: the search-result and exact-release normalizers
 are genuinely distinct functions, never conflated; the NULL-safe migration
 constraint is exactly as specified; `CollectionBrowser.tsx`/`HistoryPage.tsx`
 (not `CollectionItemCard.tsx`) carry the production freshness/attribution
-treatment; attribution renders on every surface §7 lists, with no silent
-re-introduction of a "preview surface" exemption; the Discogs pacer/
-User-Agent are genuinely independent from MusicBrainz's; stale-refresh
-reconciliation is sequential, not parallel, on both the client and server
-paths.
+treatment; **no surface displays a masked item's title, artist, release
+year, label, catalog number, country, format, or catalog genres** — the
+identity-field exception is fully absent from the implementation, not just
+the plan text; attribution renders on every surface §7 lists, with no
+silent re-introduction of a "preview surface" or "pure aggregate" exemption;
+the Discogs pacer/User-Agent are genuinely independent from MusicBrainz's;
+stale-refresh reconciliation is sequential, not parallel, on both the
+client and server paths; the Discogs duplicate-copy case renders the new
+exact-metadata dialog, never the generic MusicBrainz-era dialog; the
+`upsertCatalogRelease` persistence helper is a single, shared, exported
+function imported by both `catalog-handlers.mts` and
+`curator-handlers.mts`, not two independent implementations.
 
 ## 17. Database / deploy order
 
@@ -1021,25 +1310,37 @@ correction's specific decisions):
 ## 21. Timebox — updated
 
 The additional confirmation-dialog step, the two normalizer functions, the
-expiry-timer/visibility-resume mechanism, and the two newly-confirmed
-Collection/History surfaces add real, non-trivial scope beyond the
-original draft's estimate:
+mask-first/exact-expiry freshness mechanism, the shared persistence-helper
+extraction, and the full (no-exception) masking/filtering/insight
+treatment across five display surfaces add real, non-trivial scope beyond
+the original draft's estimate:
 
-- PR B runtime implementation: **14–18 hours** (up from 10–14 — the search/
-  exact-release shape split, the second confirmation dialog, and two
-  additional mounted-surface updates are the main drivers).
+- PR B runtime implementation: **17–22 hours** (up from 14–18 — this
+  round's corrections replace a single-dialog reuse with a genuinely new
+  dialog used twice, add a `catalogPersistence.mts` extraction step, and
+  extend masking from "gate five metadata fields on four surfaces" to
+  "gate all seven provider-derived fields, including title/artist, on
+  five surfaces plus filtering/sorting/insights logic").
 - Independent review + one correction round: **3–5 hours** (unchanged).
 - Deploy + bounded human acceptance: **1–2 hours** (unchanged).
 - Documentation closeout (PR C): **2–3 hours** (unchanged).
 
-**Total: roughly 20–28 hours**, still within a 3–4 day window if each day
-yields several focused hours, with the same slack-budgeting caveat as
-before. **Features that must not be sacrificed under time pressure**
-(unchanged, restated): provider-qualified identity; server-only secret;
-exact server lookup before persistence (now twice, by design); Vinyl-only
-validation; freshness compliance (including the expiry mechanism, not just
-load-time checking); attribution on every confirmed surface; RLS/security;
-Hebrew correctness; MusicBrainz regression safety.
+**Total: roughly 23–32 hours**, still plausible within a 3–4 day window
+only if each day yields several focused hours; this is now close enough to
+the upper edge of that window that the slack-budgeting caveat from earlier
+rounds becomes a firmer scheduling risk, not just a caveat — if actual
+implementation time tracks toward the top of this range, that is itself
+useful signal to flag to the human early, not a reason to quietly cut
+scope from the MUST-HAVE list below. **Features that must not be
+sacrificed under time pressure** (unchanged, restated, now including this
+round's corrections explicitly): provider-qualified identity; server-only
+secret; exact server lookup before persistence (twice, by design); Vinyl-only
+validation; **complete** freshness compliance (the exact expiry mechanism,
+the mask-before-publish sequencing, and the full field list — title/artist
+included, no identity-field exception); attribution on every confirmed
+surface with no aggregate exemption; the Discogs-specific confirmation
+dialog for both add cases; RLS/security; Hebrew correctness; MusicBrainz
+regression safety.
 
 ## 22. Traceability (spec 0018 → this plan) — updated
 
@@ -1050,9 +1351,9 @@ Hebrew correctness; MusicBrainz regression safety.
 | §8 search | §3 | `discogs.test.ts` (search-result normalizer, no artist/title split) |
 | §9 exact lookup/trust | §4, §5.2, §5.3, §6, §10 | `discogs.test.ts`, `catalog-functions.test.ts` (two-lookup flow) |
 | §10 normalization | §4.2 | `discogs.test.ts` (incl. §10.1 fixture) |
-| §12 freshness | §8 | `discogsFreshness.test.ts`, `CollectionDataProvider.test.tsx` (incl. expiry timer + visibility), curator handler test |
-| §13 attribution | §7 | every listed surface's test file, incl. `CollectionBrowser.test.tsx`, `HistoryPage.test.tsx` |
-| §14 artwork | §7, §8.5 | each of the five callers' test files |
+| §12 freshness | §8.0–§8.4 | `discogsFreshness.test.ts` (exact 6h boundary), `CollectionDataProvider.test.tsx` (mask-before-publish, expiry timer, visibility resume, server-timestamp usage), curator handler test, `CollectionBrowser`/`DashboardPage`/`insights.ts` masked-exclusion tests |
+| §13 attribution | §7 | every listed surface's test file, incl. `CollectionBrowser.test.tsx`, `HistoryPage.test.tsx`, `DashboardPage.test.tsx` (insight-attribution rule) |
+| §14 artwork | §7, §8.4 | each of the five callers' test files |
 | §15 API contract | §5 | `catalog-functions.test.ts` |
 | §16 security | §5.2, §5.3, §10, §13 | `catalog-functions.test.ts` |
 | §17 resilience | §12 | `discogs.test.ts` (pacer, no-retry, sequential reconciliation) |
@@ -1062,15 +1363,29 @@ Hebrew correctness; MusicBrainz regression safety.
 
 ## 23. Unresolved behavior-defining questions
 
-**None.** Every BLOCKER/HIGH/MEDIUM finding from this correction round is
-resolved above with an exact design, not deferred to implementation time:
-the search-result/exact-release normalizer split (§3/§4); the freshness
-expiry + visibility-resume mechanism and the corrected mounted-surface list
-(§8, §1); the NULL-safe migration constraint (§9); the two-lookup
-confirm-before-persist flow (§6); the genre side-channel type contract and
-the single shared field-limits source (§2.3, §4.1); the full,
-un-exempted attribution surface enumeration (§7); the corrected pacer
-scope claim, pacing margin, and dedicated `DISCOGS_USER_AGENT` (§12); the
+**None.** Every finding from both correction rounds is resolved above with
+an exact design, not deferred to implementation time. From this final
+round specifically: the identity-field display exception is removed in
+full — no provider-derived field (artist, title, release year, label,
+catalog number, country, format, catalog genres) is ever displayed or used
+in a visible derived computation for a masked Discogs item, on any surface
+(§8.4); the exact `provider_fetched_at` client/server data flow, including
+the `CollectionItemWithRelease`/`loadCollection`/`loadOwnedCollection`
+select fields and the `DiscogsRefreshResponse` type carrying the
+server-generated timestamp back to the client (§8.0); the mask-before-publish
+sequencing that guarantees no stale-display window, on load, on timer
+expiry, and on visibility resume (§8.2); the exact, floor-free six-hour
+expiry timer (§8.1/§8.2); the shared, exported `catalogPersistence.mts`
+persistence-helper boundary between `catalog-handlers.mts` and
+`curator-handlers.mts` (§8.3); the corrected attribution rule for
+derived/aggregate blocks — traceable-to-a-fresh-value requires attribution,
+no blanket aggregate exemption (§7); and the single, Discogs-specific
+confirmation dialog used for both the not-owned and already-owned cases
+(§6). From the prior round, still in force and not reopened: the
+search-result/exact-release normalizer split (§3/§4); the NULL-safe
+migration constraint (§9); the genre side-channel type contract and the
+single shared field-limits source (§2.3, §4.1); the corrected pacer scope
+claim, pacing margin, and dedicated `DISCOGS_USER_AGENT` (§12); the
 narrowed, accurate re-verification gate (§20). The one remaining item —
 independent human re-verification of the Discogs developer/API-reference
 page's technical details (§20) — is a precondition-gate for starting PR B,
