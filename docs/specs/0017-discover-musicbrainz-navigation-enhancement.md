@@ -1,8 +1,9 @@
 # 0017 Discover & MusicBrainz Navigation Enhancement (Specification)
 
 Status: **RUNTIME COMPLETE, MERGED, DEPLOYED — documentation closeout (PR C)
-in progress; full §23 human acceptance not yet complete.** PR A (this spec,
-PR #34; the companion plan, PR #35) is merged. PR B (runtime implementation
+in progress; full §23 human acceptance not yet complete.** This spec
+(PR #34) is merged; it precedes Plan 017's own PR A/B/C execution sequence.
+PR A (the companion plan, PR #35) is merged. PR B (runtime implementation
 + one independent-review correction round — 0 BLOCKER / 0 HIGH / 2 MEDIUM
 found and fixed in the same PR before merge, PR #36) is implemented, merged
 (`abff1e86cbc36c754e8645179fa5bbee9ec27afe`), and deployed
