@@ -13,12 +13,18 @@ import type {
   CatalogErrorCode,
   CatalogProvider,
   CatalogSearchResponse,
+  SearchMode,
 } from '../../../src/lib/catalog/types.ts'
 
 const DEFAULT_SEARCH_LIMIT = 5
 const MAX_SEARCH_LIMIT = 10
 const SEARCH_QUERY_MIN_LENGTH = 2
 const SEARCH_QUERY_MAX_LENGTH = 120
+// The Vinyl Intelligence product bound on total exposed results per query
+// (spec 0017 §7.1/§5.2) - well inside MusicBrainz's own 1-100 `limit`
+// allowance, not a provider limitation.
+const MAX_EXPOSED_RESULTS = 20
+const SEARCH_MODES: readonly SearchMode[] = ['all', 'artist', 'album']
 const MUSICBRAINZ_PACING_MS = 1_000
 const MUSICBRAINZ_RATE_LIMIT_RETRY_DELAY_MS = 1_200
 const CATALOG_ITEM_SELECT = `
@@ -180,9 +186,96 @@ function parseLimit(value: string | null): number {
   return Math.min(Math.max(Math.trunc(parsed), 1), MAX_SEARCH_LIMIT)
 }
 
-function parseSearchRequest(request: Request): { limit: number; query: string } {
+function isSearchMode(value: string): value is SearchMode {
+  return (SEARCH_MODES as readonly string[]).includes(value)
+}
+
+/** Omitted `mode` defaults to `all`; a present-but-unrecognized value is
+ * rejected, never silently coerced (spec 0017 §8.1). */
+function parseMode(value: string | null): SearchMode {
+  if (value === null) {
+    return 'all'
+  }
+
+  if (!isSearchMode(value)) {
+    throw new CatalogFunctionError('invalid_query', 'Search mode is invalid.')
+  }
+
+  return value
+}
+
+/** Omitted `offset` defaults to 0; anything else must be a non-negative
+ * integer (spec 0017 §8.1). */
+function parseOffset(value: string | null): number {
+  if (value === null) {
+    return 0
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new CatalogFunctionError('invalid_query', 'Search offset is invalid.')
+  }
+
+  return parsed
+}
+
+type SearchPageRequest = {
+  kind: 'search'
+  limit: number
+  mode: SearchMode
+  offset: number
+  query: string
+}
+
+type ExactLookupRequest = {
+  kind: 'exact'
+  releaseId: string
+}
+
+type CatalogSearchRequest = SearchPageRequest | ExactLookupRequest
+
+/**
+ * `GET /api/catalog/search` accepts either a normal search request
+ * (`q` + optional `mode`/`offset`/`limit`) or an exact-lookup request
+ * (`releaseId` alone) - never both, never neither (spec 0017 §11.1). This
+ * is the one place that branches between the two; `handleCatalogSearch`
+ * itself just dispatches on `.kind`.
+ */
+function parseCatalogSearchRequest(request: Request): CatalogSearchRequest {
   const url = new URL(request.url)
-  const query = url.searchParams.get('q')?.trim() ?? ''
+  const rawQuery = url.searchParams.get('q')
+  const rawMode = url.searchParams.get('mode')
+  const rawOffset = url.searchParams.get('offset')
+  const rawLimit = url.searchParams.get('limit')
+  const releaseId = url.searchParams.get('releaseId')
+
+  if (releaseId !== null) {
+    if (rawQuery !== null || rawMode !== null || rawOffset !== null || rawLimit !== null) {
+      throw new CatalogFunctionError(
+        'invalid_query',
+        'releaseId cannot be combined with q, mode, offset, or limit.',
+      )
+    }
+
+    if (!MUSICBRAINZ_RELEASE_ID_PATTERN.test(releaseId)) {
+      throw new CatalogFunctionError(
+        'invalid_query',
+        'Catalog release identifier is invalid.',
+      )
+    }
+
+    return { kind: 'exact', releaseId }
+  }
+
+  if (rawQuery === null) {
+    throw new CatalogFunctionError(
+      'invalid_query',
+      'Provide either a search query or an exact release identifier.',
+    )
+  }
+
+  const query = rawQuery.trim()
 
   if (
     query.length < SEARCH_QUERY_MIN_LENGTH
@@ -194,10 +287,42 @@ function parseSearchRequest(request: Request): { limit: number; query: string } 
     )
   }
 
-  return {
-    limit: parseLimit(url.searchParams.get('limit')),
-    query,
+  const mode = parseMode(rawMode)
+  const offset = parseOffset(rawOffset)
+  const limit = parseLimit(rawLimit)
+
+  // Defense in depth (spec 0017 §8.1): validating `offset` in isolation is
+  // not enough, because `limit` can independently be as large as 10 - an
+  // `offset=15&limit=10` request would otherwise extend five rows past the
+  // 20-result window even though each parameter is individually valid.
+  if (offset + limit > MAX_EXPOSED_RESULTS) {
+    throw new CatalogFunctionError(
+      'invalid_query',
+      `offset + limit must not exceed ${MAX_EXPOSED_RESULTS}.`,
+    )
   }
+
+  return { kind: 'search', limit, mode, offset, query }
+}
+
+/**
+ * Spec 0017 §7.2's exact three-condition `hasMore` formula, exported for
+ * direct unit testing against its worked examples. Never inferred from
+ * `candidates.length` (normalization can reject entries from a full raw
+ * page) and never from raw page size alone (a full raw page can be the
+ * entire result set).
+ */
+export function computeHasMore(page: {
+  limit: number
+  offset: number
+  providerCount: number
+  rawCount: number
+}): boolean {
+  return (
+    page.rawCount === page.limit
+    && page.offset + page.limit < MAX_EXPOSED_RESULTS
+    && page.offset + page.rawCount < page.providerCount
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -465,18 +590,48 @@ export async function handleCatalogSearch(
 ): Promise<Response> {
   try {
     await authenticateRequest(request, env, dependencies.createClient)
-    const { limit, query } = parseSearchRequest(request)
+    const parsed = parseCatalogSearchRequest(request)
     const userAgent = requiredEnv(env, 'MUSICBRAINZ_USER_AGENT')
+
+    if (parsed.kind === 'exact') {
+      // Read-only exact release lookup (spec 0017 §10.3/§11.1): reuses the
+      // exact same paced, rate-limit-retried function `handleCatalogAdd`
+      // already calls - no genre enrichment, no database write of any
+      // kind. Same response shape as a normal search, so the browser needs
+      // zero new branches to render it.
+      await dependencies.paceProviderRequest()
+
+      const candidate = await lookupReleaseWithRateLimitRetry(
+        dependencies,
+        parsed.releaseId,
+        userAgent,
+      )
+
+      return jsonResponse({ candidates: [candidate], hasMore: false, offset: 0 })
+    }
 
     await dependencies.paceProviderRequest()
 
-    const candidates = await dependencies.searchReleases({
-      limit,
-      query,
+    // Pacing is shared with every other MusicBrainz call path (above); this
+    // normal search path has no retry policy of its own, unchanged from
+    // today, and this enhancement does not add one (spec 0017 §14) - only
+    // the exact-lookup branch above reuses the existing bounded retry.
+    const page = await dependencies.searchReleases({
+      limit: parsed.limit,
+      mode: parsed.mode,
+      offset: parsed.offset,
+      query: parsed.query,
       userAgent,
     })
 
-    return jsonResponse({ candidates })
+    const hasMore = computeHasMore({
+      limit: parsed.limit,
+      offset: parsed.offset,
+      providerCount: page.providerCount,
+      rawCount: page.rawCount,
+    })
+
+    return jsonResponse({ candidates: page.candidates, hasMore, offset: parsed.offset })
   } catch (error) {
     return mapThrownError(error)
   }
