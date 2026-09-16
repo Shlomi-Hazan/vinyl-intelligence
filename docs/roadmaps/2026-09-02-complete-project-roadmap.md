@@ -8,7 +8,7 @@
 **Supersedes:** `docs/roadmaps/2026-08-18-complete-project-roadmap.md` — preserved unchanged as the historical snapshot
 **Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10, including three post-M12 evolutions (Hebrew & Multilingual Record Support; Final Submission Alignment; Discover & MusicBrainz Navigation Enhancement)
 
-**Project status (2026-09-16): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled (PR D) — Discover & MusicBrainz Navigation Enhancement COMPLETE, human-accepted in production.** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `abff1e86cbc36c754e8645179fa5bbee9ec27afe` (Netlify deploy `6aaa63fe2829c87037fd2cd0`). Human production acceptance passed 2026-09-16 (8/8 checks). See "Post-M12 evolution" below for the full chronology; the pre-enhancement accepted state (2026-09-15, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy `6aa8783d1835a5e433449dd4`) and M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) are preserved as history below and in section 22, and are no longer the current accepted runtime.
+**Project status (2026-09-16): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled (PR D) — Discover & MusicBrainz Navigation Enhancement runtime COMPLETE, merged, deployed; documentation closeout (PR C) in progress; full spec §23 human acceptance not yet complete.** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `abff1e86cbc36c754e8645179fa5bbee9ec27afe` (Netlify deploy `6aaa63fe2829c87037fd2cd0`). An 8-step human production smoke test passed 2026-09-16 — this is a subset of, not a substitute for, spec 0017 §23's full 22-item human acceptance contract; see `docs/verification.md` → "Discover & MusicBrainz Navigation Enhancement Evidence" for the exact evidence matrix and the remaining human-only checks. See "Post-M12 evolution" below for the full chronology; the pre-enhancement accepted state (2026-09-15, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy `6aa8783d1835a5e433449dd4`) and M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) are preserved as history below and in section 22, and are no longer the current accepted runtime.
 
 ---
 
@@ -50,8 +50,10 @@ original 2026-08-18 roadmap
      PR #35 plan; PR #36 runtime - one independent-review correction round,
      2 MEDIUM findings fixed, folded into the same PR before merge)
   -> accepted production runtime built from main abff1e86, deploy 6aaa63fe
-     (2026-09-16), human production acceptance 8/8 PASS - this documentation
-     closeout (PR E) does not change this deployed runtime
+     (2026-09-16), 8-step human production smoke PASS (a subset of spec
+     0017 section 23's full 22-item acceptance contract, not yet complete) -
+     this documentation closeout (PR C) does not change this deployed
+     runtime
 ```
 
 ---
@@ -165,8 +167,14 @@ schema/dependency change. Full detail in
   same PR (a shared `invalidatePendingWork()` guard-release helper; a
   `Symbol`-sentinel-based `parseOptionalMode`/`Offset`/`HasMore` redesign),
   with named regression tests for each; final review **0 BLOCKER / 0 HIGH /
-  0 MEDIUM**. 21 files changed (2,644 insertions / 219 deletions), all
-  within the plan's own file list. Full test suite: **72 files / 983
+  0 MEDIUM**. 21 files changed (2,644 insertions / 219 deletions): 19
+  followed the plan's own file list exactly, and 2
+  (`src/catalog/CatalogPanel.tsx`, `src/pages/ScanPage.tsx`) needed a
+  minimal, disclosed, type-compliance-only fix (`mode: 'all'` added to
+  satisfy the additively-widened `CatalogSearchDraft`/`CatalogSearchResult`
+  types) outside the plan's original file list — no behavior/scope
+  expansion resulted; recorded as a Plan 017 deviation in PR #36's own PR
+  body and in `docs/verification.md`. Full test suite: **72 files / 983
   tests**, all passing; typecheck/lint/build clean; pgTAP 507/507; db lint
   clean; `npm audit --omit=dev` 0 vulnerabilities. Zero real MusicBrainz
   calls anywhere in implementation or automated verification.
@@ -179,19 +187,25 @@ schema/dependency change. Full detail in
 (`netlify deploy --prod`, 162 modules transformed, six existing Netlify
 Functions packaged).
 
-**Human production acceptance — 8/8 PASS, 2026-09-16:** `/api/health`;
-Discover All-mode search; Artist-mode search on the same ambiguous query
-returning artist-focused results; Load More appending further results
-without losing prior ones; Album-mode search; an exact MusicBrainz release
-URL resolving to exactly one candidate; adding a record to the collection
-from a live result; Record Detail showing "View on MusicBrainz" for a
-MusicBrainz-backed record. A transient Draft Deploy catalog-add
-configuration error observed pre-production did not reproduce in
-production and is not a current product defect.
+**Human production acceptance — 8-step production smoke, 8/8 PASS,
+2026-09-16:** `/api/health`; Discover All-mode search; Artist-mode search on
+the same ambiguous query returning artist-focused results; Load More
+appending further results without losing prior ones; Album-mode search; an
+exact MusicBrainz release URL resolving to exactly one candidate; adding a
+record to the collection from a live result; Record Detail showing "View on
+MusicBrainz" for a MusicBrainz-backed record. A transient Draft Deploy
+catalog-add configuration error observed pre-production did not reproduce
+in production and is not a current product defect. **This 8-step smoke is a
+representative subset of, not a substitute for, spec 0017 §23's full
+22-item human production acceptance contract** — see `docs/verification.md`
+→ "Discover & MusicBrainz Navigation Enhancement Evidence" for the exact
+item-by-item evidence matrix and the remaining human-only checklist. Full
+§23 acceptance, and therefore spec §27's Definition of Done, is **not yet
+complete**.
 
-**Documentation closeout:** this section, plus README/SPEC/User
+**Documentation closeout (PR C):** this section, plus README/SPEC/User
 Guide/Visual Inspect/API Integrations updates and refreshed Discover/Record
-Detail screenshots, represented in current repository/Git history (PR E).
+Detail screenshots, represented in current repository/Git history (PR #37).
 It changes no runtime, test, schema, or configuration file; the accepted
 production runtime remains the PR #36 merge above.
 

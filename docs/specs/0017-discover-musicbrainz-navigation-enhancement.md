@@ -1,11 +1,21 @@
 # 0017 Discover & MusicBrainz Navigation Enhancement (Specification)
 
-Status: **PLANNING ONLY — implementation not started.** No runtime, test, schema,
-dependency, or migration change has been made. This document is the primary
-specification; a companion implementation plan (`docs/plans/017-...`) is
-expected before implementation begins, following the same human-approval
-discipline as every prior milestone/enhancement (`AGENTS.md` "Development
-Workflow").
+Status: **RUNTIME COMPLETE, MERGED, DEPLOYED — documentation closeout (PR C)
+in progress; full §23 human acceptance not yet complete.** PR A (this spec,
+PR #34; the companion plan, PR #35) is merged. PR B (runtime implementation
++ one independent-review correction round — 0 BLOCKER / 0 HIGH / 2 MEDIUM
+found and fixed in the same PR before merge, PR #36) is implemented, merged
+(`abff1e86cbc36c754e8645179fa5bbee9ec27afe`), and deployed
+(`6aaa63fe2829c87037fd2cd0`). The human has performed an 8-step production
+smoke test (PASS, 2026-09-16) covering a representative subset of this
+section's own §23 acceptance items — see `docs/verification.md` → "Discover
+& MusicBrainz Navigation Enhancement Evidence" for the exact mapping. **§23's
+full 22-item human production acceptance is not yet complete**; the same
+verification section tracks the remaining human-only checks. No schema,
+dependency, or migration change was made by this enhancement. This
+document's body below, including every "Correction from an earlier draft"
+note, is preserved exactly as written and approved at planning time — it is
+not rewritten to describe the implementation retroactively.
 
 Baseline `main` when this spec was written: `cc8570a9d5c0a3e587b8ebb3facc1233f397a576`
 (PR #33 — final presentation documentation, merged). Accepted production
