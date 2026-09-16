@@ -179,7 +179,8 @@ itself (`ScanPanel.tsx:218`) is unchanged.
   `.candidates` from the richer response, proving the compatibility
   boundary itself, once, at the layer where it actually lives — not
   duplicated into Scan's own test file.
-- No Scan-specific UI change. No new Scan state. No Scan CSS change.
+- No other Scan-specific UI change beyond the one accessible-name addition
+  above. No new Scan state. No Scan CSS change.
 
 ### Chosen designs (resolved — no open behavior-defining implementation choice)
 
@@ -691,9 +692,20 @@ unrecognized `mode` → `invalid_query` (omitted → `all`, re-verified);
 invalid/negative/non-integer `offset` → `invalid_query`; the combined
 `offset + limit > 20` rejection (`offset=15&limit=10` rejected,
 `offset=15&limit=5` accepted); `releaseId` + any of `q`/`mode`/`offset`/`limit`
-→ `invalid_query`; neither `q` nor `releaseId` → `invalid_query`; pacing/rate-limit
-retry reused unmodified for both the search and exact-lookup branches;
-existing add-path tests unmodified.
+→ `invalid_query`; neither `q` nor `releaseId` → `invalid_query`; **pacing and
+retry are separate contracts, per spec §14 — do not conflate them:** the
+existing shared `paceProviderRequest()` pacing is reused **unmodified by
+every new call path** (search, Load More, and the exact lookup all call it);
+the existing single bounded rate-limit retry (`lookupReleaseWithRateLimitRetry`,
+1200ms backoff) is reused **only by the exact-lookup branch**, because that
+branch is the one that already calls `lookupReleaseWithRateLimitRetry` today
+(via `handleCatalogAdd`'s existing lookup). Normal search and Load More get
+**no retry policy** — search has none today, and spec §14 explicitly does not
+add one, to avoid a burst of retried requests defeating the 1/second pacing
+intent under a sustained provider outage. Test both halves separately:
+pacing called before every one of the three request types; the bounded retry
+exercised only on the exact-lookup path, never on a plain search/Load More
+429/503; existing add-path tests unmodified.
 
 **Exact-lookup zero-write test, using the existing dependency seam (correction
 from an earlier draft, which assumed a mock seam that does not exist):**
@@ -711,11 +723,14 @@ a `vi.fn`): for the exact-lookup request, assert
   `providerReleaseId` (the exact lookup happened);
 - `dependencies.lookupReleaseGroupGenres` is **not** called (no genre
   enrichment on this branch);
-- `createClient` is **never** called with the service-role key argument for
-  this request (i.e. `serviceClient` — the object the harness's `createClient`
-  mock returns for `key === 'service-key'` — is never constructed for this
-  branch); equivalently, `serviceClient.from` is never invoked, so neither a
-  `.from('releases')` nor a `.from('collection_items')` call occurs;
+- `createClient` is **never called with the service-role key** for this
+  request — the harness's `serviceClient` mock object is constructed
+  up-front regardless (it exists to serve the add-path tests in the same
+  file), so the precise, correct assertion is that it is never **selected/
+  returned** through the service-role `createClient` path for an
+  exact-lookup request, not that it fails to exist; consequently
+  `serviceClient.from` is never invoked, so neither a `.from('releases')`
+  nor a `.from('collection_items')` call occurs;
 - the response is the expected single-candidate `CatalogSearchResponse`
   shape (`{ candidates: [one], offset: 0, hasMore: false }`).
 
@@ -878,44 +893,81 @@ wherever an already-accepted path can be checked without a new write (an
 already-owned record's duplicate-copy Cancel path, not a fresh Confirm,
 unless a genuinely new copy is explicitly authorized and later removed).
 
-**Reuse strategy to stay inside the 10-request cap:** items 1–3 below are
-satisfied by **three real searches total, one per mode** (not one search
-per bullet point plus separate ranking comparisons) — the same three
-searches whose results also satisfy items 5–7 (initial page, Load More,
-repeated-click guard) by choosing at least one of the three to be a query
-broad enough to exercise Load More. Item 4 (Hebrew) can reuse one of those
-three searches if a Hebrew query is used for one of the three modes, or add
-one more request if not — either way, still inside the reuse count. Items
-10–14 (exact URL) need at most 2 requests (one exact lookup on a
-not-yet-owned release, one on an already-owned release). Item 22's
-MusicBrainz calls (Scan's own existing search) are **not** part of this
-round at all per this item's rewritten scope below (zero new Scan-triggered
-MusicBrainz calls are required — existing production evidence is cited
-instead). This yields roughly 5–7 requests for a careful pass, comfortably
-under the 10-request cap with headroom for one retry.
+**Restored alignment with spec §23 (correction from an earlier draft, which
+weakened the approved human-acceptance criterion into a non-comparative
+check the plan is not authorized to substitute):** spec §23 items 2–3
+require a **comparative, human-observed** ranking result for a deliberately
+ambiguous real-world case — not merely "the right mode parameter was sent."
+This plan does not weaken that; it only adds, as a supplement (not a
+replacement), that the exact Lucene query template each mode builds is
+already proven deterministically by the automated query-builder tests
+(`musicbrainz.test.ts`) — the production comparison below is a
+human-observed check of live provider *ranking behavior*, a different kind
+of evidence than the automated tests provide, and spec §23 requires both.
+
+**Concrete reuse scenario, staying inside the 10-request hard cap (retries
+included), with room to spare:**
+
+1. A deliberately ambiguous artist-name term ("Term A") searched in **All**
+   mode. [request 1 — also satisfies item 1's artist-only-query check.]
+2. The same Term A searched in **Artist** mode, compared directly against
+   request 1's result — satisfies item 2's approved comparative criterion
+   (the expected release visibly ranks better under Artist mode for this
+   term than it did under All). [request 2]
+3. One "Load more" page on request 2's result set (chosen so Term A's
+   Artist-mode result has more than 5 matches) — satisfies items 5 (initial
+   page, already shown by request 2), 6 (append), and 7 (the rapid-click
+   guard is a UI-level assertion that a second click makes no second
+   request — verified without any additional provider call). [request 3]
+4. A deliberately ambiguous release-title term ("Term B") searched in
+   **All** mode — comparison baseline for item 3. [request 4]
+5. The same Term B searched in **Album** mode, compared against request 4 —
+   satisfies item 3's approved comparative criterion. [request 5]
+6. One Hebrew (or other non-Latin) query, in any one mode — satisfies item
+   4. (If Term A or Term B is chosen to already be Hebrew, this request can
+   be folded into one of requests 1–5 instead of added separately — the
+   scenario below counts it as its own request to stay concrete and not
+   rely on that coincidence.) [request 6]
+7. One deliberately narrow query that returns a genuine partial raw page —
+   satisfies item 9 via its approved partial-page branch (§23 item 9 is an
+   **OR**: raw partial page, or the 20-result window — reaching the
+   20-result window would itself cost 3 additional Load More requests for
+   one query and is not required when the cheaper partial-page branch
+   already satisfies the item; the 20-result-window path remains proven by
+   the automated `computeHasMore`/pagination tests, which already cover it
+   exhaustively). [request 7]
+8. One exact-URL lookup on a real, not-yet-owned MusicBrainz release —
+   satisfies items 10 (resolves correctly), 11 (a **local-only** rejection
+   case costs zero network requests by construction), and 12 (no database
+   write). [request 8]
+9. One exact-URL lookup on a real, already-owned release — satisfies items
+   13 (duplicate-copy affordance) and 14 (Cancel writes nothing). [request 9]
+
+**Total: 9 real MusicBrainz requests**, leaving exactly 1 in reserve under
+the 10-request hard cap for an unplanned retry. Items 15–21 and item 22
+(below) add zero further MusicBrainz requests (a passive `href`, existing
+already-catalogued data, UI-only viewport checks, and Scan's own scope,
+respectively). **If the specific real-world Artist/Album/Hebrew cases
+chosen during execution cannot be satisfied within this budget, STOP before
+making a 10th request and ask the human** — do not silently exceed the cap
+by substituting more searches for a case that isn't cooperating.
 
 1. All-mode search finds a release by title (as before) **and** now also by
-   artist name alone — one deliberate artist-only query, confirming it
+   artist name alone (Term A in All mode, request 1 above) — confirming it
    returns that artist's releases (a case that previously returned poor/no
    results).
-2. **Artist mode — observable, non-comparative checks (not a ranking
-   comparison against `All`):** submit a deliberate artist-oriented query in
-   Artist mode; confirm (via browser dev tools or the request itself) that
-   the request used `mode=artist`; confirm the returned candidates are
-   consistent with an artist-field-scoped search (releases credited to that
-   artist). Do **not** require the result to rank "visibly better" than
-   `All` mode would have — that is subjective and depends on MusicBrainz's
-   own live ranking, which this plan does not control or predict. The exact
-   Lucene template (`artist:(...)`) is what automated query-builder tests
-   already prove authoritatively (`musicbrainz.test.ts`) — this human check
-   only confirms the mode selector actually drives the right request end to
-   end.
-3. **Album mode — the same observable, non-comparative checks:** submit a
-   deliberate release-title-oriented query in Album mode; confirm the
-   request used `mode=album`; confirm the returned candidates include
-   release-title matches consistent with a title-field-scoped search. No
-   "better ranking than `All`" requirement here either, for the same
-   reason.
+2. **Artist mode (spec §23 item 2 — approved comparative criterion,
+   restored):** for Term A, a deliberately ambiguous real-world case, the
+   selected/expected release ranks visibly better under Artist mode
+   (request 2) than it did under All mode (request 1) for the same term.
+   The exact Lucene template (`artist:(...)`) is separately, deterministically
+   proven by the automated query-builder tests (`musicbrainz.test.ts`) — this
+   human check is the live-provider-ranking evidence spec §23 additionally
+   requires, not a substitute for those tests, and not replaced by them.
+3. **Album mode (spec §23 item 3 — the same approved comparative criterion,
+   restored):** for Term B, a deliberately ambiguous release-title-focused
+   case, Album mode (request 5) produces title/release-focused results
+   comparably improved over All mode (request 4) for the same term.
 4. A Hebrew (or other non-Latin) query stays intact end-to-end in every
    mode.
 5. Initial page renders correctly (5 results, or fewer with no error).
@@ -924,8 +976,12 @@ under the 10-request cap with headroom for one retry.
    requests or candidates.
 8. (Load-More-failure-preserves-results is automated-test evidence per spec
    §23 item 8 — not re-attempted here as a forced production failure.)
-9. Result exhaustion (a narrow query, and separately the 20-result window)
-   correctly removes "Load more."
+9. **Result exhaustion (spec §23 item 9 — approved OR restored):** raw
+   partial page, **or** the 20-result window — either is sufficient, not
+   both. This round demonstrates the partial-page branch (request 7); the
+   20-result-window branch is proven by automated tests and is not
+   separately re-demonstrated in production, since the spec's own wording
+   is disjunctive.
 10. A real, valid MusicBrainz release URL resolves to the exact expected
     release.
 11. An invalid release-group/artist/wrong-domain URL fails locally with no
