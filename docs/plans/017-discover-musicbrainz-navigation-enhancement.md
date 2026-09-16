@@ -133,7 +133,12 @@ spec alone:
 
 ### Scan compatibility decision (resolved, not left open)
 
-**Scan's source file (`ScanPanel.tsx`) requires zero code changes.**
+**No Scan search/state/recognition/add/duplicate-copy logic change.**
+**Exactly one intended Scan presentation/accessibility change:** the
+existing per-candidate MusicBrainz link (`ScanPanel.tsx:567-574`) gains the
+approved visually-hidden "(opens in a new tab)" text, identically to every
+other external link this spec touches (§19). The `searchCatalog` call site
+itself (`ScanPanel.tsx:218`) is unchanged.
 
 - Scan's user-visible workflow/state machine (photo → recognition → catalog
   candidates → human confirmation, the `ScanState` union in `ScanPanel.tsx:36-56`)
@@ -156,15 +161,15 @@ spec alone:
   alone, and the client should not lean on a fallback it doesn't have to"
   posture already used elsewhere in this codebase (e.g. `boundedLimit` in
   `client.ts` never omits `limit` and hopes for a server default either).
-- **Consequence Scan does inherit, correctly, without any code change of its
-  own:** every Scan catalog search now runs under the corrected `All`-mode
-  semantics (`artist:(...) OR release:(...)` instead of today's release-title-only
-  unqualified query) — this is the intended, spec-approved behavior change
-  to the shared search boundary (spec §5.2), not something this plan
-  reinterprets or should avoid. A photo recognition whose extracted query is
-  mostly an artist name (a common case) now has a better chance of matching,
-  which is a strict improvement, not a regression, to Scan's existing
-  candidate step.
+- **Consequence Scan does inherit, without any search/state-machine code
+  change of its own:** every Scan catalog search now runs under the
+  corrected `All`-mode semantics (`artist:(...) OR release:(...)` instead of
+  today's release-title-only unqualified query) — this is the intended,
+  spec-approved behavior change to the shared search boundary (spec §5.2),
+  not something this plan reinterprets or should avoid. Scan intentionally
+  inherits the approved corrected All-mode shared-search semantics; its
+  state machine and persistence behavior must be regression tested (below),
+  not assumed unaffected.
 - **What proves this didn't regress:** `ScanPanel.test.tsx`'s existing mocks
   patch `searchCatalog` (or the underlying `client.ts` module) directly, not
   the raw provider — those tests continue to assert Scan's own behavior
@@ -203,8 +208,11 @@ distinguishes it from the rest of `musicbrainz.ts`), containing:
   case-insensitive), `http`→`https` normalization, `/release/<mbid>` path
   only (rejecting every other entity path and any extra segment beyond one
   optional trailing slash), tolerant-and-stripped query/fragment, rejects
-  userinfo/credentials and non-`http(s)` schemes and a non-default port,
-  validates the extracted ID against `MUSICBRAINZ_RELEASE_ID_PATTERN`, and
+  userinfo/credentials, non-`http(s)` schemes, and an explicit non-default
+  port (spec §10.2 itself lists this exact rejection case —
+  `musicbrainz.org:8080` — verified against the approved spec text during
+  this correction round, not invented here), validates the extracted ID
+  against `MUSICBRAINZ_RELEASE_ID_PATTERN`, and
   lowercases it. An empty/whitespace-only input returns `null` and is
   treated by the caller as "untouched," not an error (§10.2's own
   distinction — this function does not need to encode that distinction
@@ -564,15 +572,14 @@ mapped to where each is actually exercised:
   `runSearch` behavior, unchanged in spirit).
 - Mode switch clears displayed results/pagination but preserves the
   typed-but-unsubmitted input text (§6.6) — test both halves separately.
-- "New search" reset clears mode back to `all`? **No** — spec §6.6 only says
-  mode-*change* resets pagination; "New search" is today's existing
-  `resetSearch`, which the spec does not say must also force mode back to
-  `all`. Decision: "New search" resets query/candidates/pagination exactly
-  as today and **leaves the currently-selected mode as-is** (least
-  surprising — the user picked a mode, "New search" means "let me search for
-  something else in the mode I'm already using," not "start over
-  entirely"). If independent review disagrees, this is a one-line, easily
-  revisited behavior — not architecturally significant.
+- **"New search" — fixed behavior:** spec §6.6 only says mode-*change*
+  resets pagination; "New search" is today's existing `resetSearch`. Fixed
+  decision: "New search" clears query/results/pagination state exactly as
+  today and **preserves the currently-selected search mode** (the user
+  picked a mode; "New search" means "let me search for something else in
+  the mode I'm already using," not "start over entirely"). Test both halves:
+  mode value unchanged after "New search," and query/candidates/pagination
+  actually cleared.
 - Old sessionStorage draft (pre-enhancement shape) restores today's
   behavior + implied `mode: 'all'`, `offset: 0`, `hasMore: false` — explicit
   test with a hand-built old-shaped stored value.
@@ -596,15 +603,14 @@ mapped to where each is actually exercised:
   button disables while `exactUrlPhase === 'loading'`, exactly like the
   spec's own §10.4 table — single-flight by construction, no generation
   counter needed here.
-- Exact-lookup result vs. normal search result state → fully independent
-  state slices (above) — never cross-contaminate; a new normal search does
-  not clear an exact-lookup result still on screen (and vice versa) unless
-  the human decides during review that visual crowding makes clearing the
-  other section on new activity preferable — **not a spec requirement
-  either way**, and it is a display-only decision, not a data-safety one.
-  Plan default: leave both visible simultaneously (no forced clearing);
-  this may be revisited as UI-polish feedback, not a behavior-defining
-  question.
+- **Normal search vs. exact lookup — fixed behavior:** fully independent
+  surfaces, fully independent state slices (above) — never cross-contaminate.
+  Starting a normal search does **not** automatically clear a successful
+  exact-lookup result, and vice versa; the exact-lookup result remains on
+  screen until the exact-lookup surface itself is changed (a new URL
+  submitted) or explicitly reset. Test: submit a normal search after a
+  successful exact-lookup result is showing, and confirm the exact-lookup
+  result is still rendered unchanged.
 - Exact lookup ownership data still loading → the exact-lookup's rendered
   card reuses the identical `collectionStatus !== 'ready'` disabled-action
   branch the results list already has (same `renderCandidate` helper — this
@@ -685,12 +691,41 @@ unrecognized `mode` → `invalid_query` (omitted → `all`, re-verified);
 invalid/negative/non-integer `offset` → `invalid_query`; the combined
 `offset + limit > 20` rejection (`offset=15&limit=10` rejected,
 `offset=15&limit=5` accepted); `releaseId` + any of `q`/`mode`/`offset`/`limit`
-→ `invalid_query`; neither `q` nor `releaseId` → `invalid_query`; the
-exact-lookup branch performs zero genre enrichment and zero database write
-(assert the mocked `upsertCatalogRelease`/`createCatalogCollectionItem`
-equivalents are never called); pacing/rate-limit retry reused unmodified
-for both the search and exact-lookup branches; existing add-path tests
-unmodified.
+→ `invalid_query`; neither `q` nor `releaseId` → `invalid_query`; pacing/rate-limit
+retry reused unmodified for both the search and exact-lookup branches;
+existing add-path tests unmodified.
+
+**Exact-lookup zero-write test, using the existing dependency seam (correction
+from an earlier draft, which assumed a mock seam that does not exist):**
+`upsertCatalogRelease` and `createCatalogCollectionItem` are private,
+module-local functions in `catalog-handlers.mts` — **not** members of
+`CatalogFunctionDependencies` — confirmed by direct inspection of the current
+file. There is no `dependencies.upsertRelease`/`dependencies.createCollectionItem`
+to mock directly, and this plan does **not** introduce one merely for this
+test. Instead, reuse the exact harness `catalog-functions.test.ts` already
+builds for the add-path tests (`createClient: vi.fn((_url, key) => key ===
+'service-key' ? serviceClient : authClient)`, with `serviceClient.from` itself
+a `vi.fn`): for the exact-lookup request, assert
+
+- `dependencies.lookupRelease` is called once with the expected
+  `providerReleaseId` (the exact lookup happened);
+- `dependencies.lookupReleaseGroupGenres` is **not** called (no genre
+  enrichment on this branch);
+- `createClient` is **never** called with the service-role key argument for
+  this request (i.e. `serviceClient` — the object the harness's `createClient`
+  mock returns for `key === 'service-key'` — is never constructed for this
+  branch); equivalently, `serviceClient.from` is never invoked, so neither a
+  `.from('releases')` nor a `.from('collection_items')` call occurs;
+- the response is the expected single-candidate `CatalogSearchResponse`
+  shape (`{ candidates: [one], offset: 0, hasMore: false }`).
+
+This proves the same fact ("zero database write from this branch") the
+original draft intended, using the dependency seam that actually exists
+today. **If implementation later discovers this seam cannot provide robust
+evidence** (e.g. because `upsertCatalogRelease`/`createCatalogCollectionItem`
+are refactored in a way that changes this), **STOP and report** rather than
+silently adding a new injectable persistence dependency to
+`CatalogFunctionDependencies` to work around it.
 
 **`src/lib/catalog/client.test.ts` (extended):** `searchCatalogPage` sends
 `q`/`mode`/`offset`/`limit` correctly and returns the full response;
@@ -775,17 +810,36 @@ grepping the new/changed test files for any non-mocked `fetch`).
 
 `npm run dev`, no production account required (a local/dev Supabase session
 is enough since this only exercises Discover/Scan/Record Detail, not
-auth/deploy-specific behavior): All/Artist/Album search; first page; Load
-More; New Search; mode-switch-clears-results; exact-URL local validation
-error; a real exact-release candidate (this **does** make a real
-MusicBrainz call — the same kind Discover already makes today locally, not
-a new class of call); "Search on MusicBrainz" opens the correct external
-URL; manual fallback still reachable; Record Detail provider link and
-manual-record no-link; desktop and one mobile viewport (390–430px); a
-Hebrew query end-to-end. No OpenRouter/Vision call at any point (Scan is
-verified via its existing mocked test suite, not a live smoke pass, since
-smoke-testing Scan meaningfully would require a real Vision call this plan
-does not authorize).
+auth/deploy-specific behavior). Split into two tiers:
+
+**Tier 1 — non-provider UI smoke, runs without permission (no real
+MusicBrainz call):** mode selector renders and switches; New Search;
+mode-switch-clears-results-but-keeps-typed-text; exact-URL **local**
+validation error cases (invalid host/path/scheme — zero network requests by
+construction, §10.2); "Search on MusicBrainz" link's `href` is correct for
+a typed term and for the generic untyped form (this is just reading the
+link's `href` attribute — activating it is optional and, if done, opens an
+external MusicBrainz page rather than calling any Vinyl Intelligence
+endpoint); manual fallback still reachable; Record Detail
+provider-link/manual-record-no-link rendering with fixture/existing data;
+desktop and one mobile viewport (390–430px) layout. **Zero OpenRouter/
+Vision/VIN calls at any point** — Scan is verified via its existing mocked
+test suite, not a live smoke pass; this tier does not touch Scan's live
+recognition flow at all.
+
+**Tier 2 — real-MusicBrainz local smoke, OPTIONAL and permission-gated:**
+mocked automated coverage (the "Test plan" above) is the pre-PR evidence on
+its own; Tier 2 is not required to open PR B. **Before making any real
+local MusicBrainz API request, STOP and obtain explicit human permission.**
+If granted, predeclare a bounded maximum of **at most 6 MusicBrainz API
+requests** for that local-smoke round — every actual provider request,
+including retries, counts toward that cap; stop and ask again before
+request 7. Within that budget: All/Artist/Album search (first page); one
+Load More page; one real exact-release lookup. If permission is not given,
+skip Tier 2 entirely — mocked automated coverage remains the evidence PR B
+opens with, and real-provider verification waits for the bounded human
+production-acceptance round after merge and deploy (below). This
+correction round itself makes **zero** provider calls of either kind.
 
 ### Independent review gate
 
@@ -813,22 +867,55 @@ established bar throughout (do not merge with a MEDIUM finding open).
 ### Human production acceptance (spec §23, operationalized)
 
 Performed only after independent review passes, PR B merges, and deploy
-from merged `main`. Bounded real-provider budget: normal MusicBrainz calls
-Discover/Scan already make today (spec estimate: roughly 6–10 MusicBrainz
-requests total across the checklist below, depending on how many Load More
-pages are exercised and the pacing between them), **zero** OpenRouter/
-Vision/curator calls. Prefer read-only verification wherever an
-already-accepted path can be checked without a new write (an already-owned
-record's duplicate-copy Cancel path, not a fresh Confirm, unless a genuinely
-new copy is explicitly authorized and later removed).
+from merged `main`. **Hard cap: a maximum of 10 total real MusicBrainz API
+requests for this entire acceptance round, retries included.** If
+satisfying the remaining checklist items below would exceed that cap, STOP
+and ask the human before making request 11 — do not silently exceed it and
+do not manufacture an unnecessary Add/delete mutation merely to consume
+acceptance steps. **Zero OpenRouter/Vision/VIN/curator calls, absolute, no
+conditional exception** (item 22 below). Prefer read-only verification
+wherever an already-accepted path can be checked without a new write (an
+already-owned record's duplicate-copy Cancel path, not a fresh Confirm,
+unless a genuinely new copy is explicitly authorized and later removed).
+
+**Reuse strategy to stay inside the 10-request cap:** items 1–3 below are
+satisfied by **three real searches total, one per mode** (not one search
+per bullet point plus separate ranking comparisons) — the same three
+searches whose results also satisfy items 5–7 (initial page, Load More,
+repeated-click guard) by choosing at least one of the three to be a query
+broad enough to exercise Load More. Item 4 (Hebrew) can reuse one of those
+three searches if a Hebrew query is used for one of the three modes, or add
+one more request if not — either way, still inside the reuse count. Items
+10–14 (exact URL) need at most 2 requests (one exact lookup on a
+not-yet-owned release, one on an already-owned release). Item 22's
+MusicBrainz calls (Scan's own existing search) are **not** part of this
+round at all per this item's rewritten scope below (zero new Scan-triggered
+MusicBrainz calls are required — existing production evidence is cited
+instead). This yields roughly 5–7 requests for a careful pass, comfortably
+under the 10-request cap with headroom for one retry.
 
 1. All-mode search finds a release by title (as before) **and** now also by
    artist name alone — one deliberate artist-only query, confirming it
    returns that artist's releases (a case that previously returned poor/no
    results).
-2. Artist mode search: a deliberately ambiguous real query ranks the
-   expected release visibly better than today's `All` mode would have.
-3. Album mode search: similarly, for a title-focused query.
+2. **Artist mode — observable, non-comparative checks (not a ranking
+   comparison against `All`):** submit a deliberate artist-oriented query in
+   Artist mode; confirm (via browser dev tools or the request itself) that
+   the request used `mode=artist`; confirm the returned candidates are
+   consistent with an artist-field-scoped search (releases credited to that
+   artist). Do **not** require the result to rank "visibly better" than
+   `All` mode would have — that is subjective and depends on MusicBrainz's
+   own live ranking, which this plan does not control or predict. The exact
+   Lucene template (`artist:(...)`) is what automated query-builder tests
+   already prove authoritatively (`musicbrainz.test.ts`) — this human check
+   only confirms the mode selector actually drives the right request end to
+   end.
+3. **Album mode — the same observable, non-comparative checks:** submit a
+   deliberate release-title-oriented query in Album mode; confirm the
+   request used `mode=album`; confirm the returned candidates include
+   release-title matches consistent with a title-field-scoped search. No
+   "better ranking than `All`" requirement here either, for the same
+   reason.
 4. A Hebrew (or other non-Latin) query stays intact end-to-end in every
    mode.
 5. Initial page renders correctly (5 results, or fewer with no error).
@@ -862,11 +949,20 @@ new copy is explicitly authorized and later removed).
     overflow.
 21. Existing manual-add path still works, unchanged.
 22. Existing Scan flow (recognition → candidates → confirm, including its
-    own duplicate-copy handling) remains fully intact — including one real
-    Vision recognition if a production account scenario naturally calls for
-    it during this round; not a forced additional Vision call solely for
-    this acceptance if an already-recent Scan interaction already
-    demonstrates it.
+    own duplicate-copy handling) remains fully intact. **This item performs
+    zero OpenRouter/Vision/VIN calls — none, under any circumstance.** Scan's
+    regression is proven by: (a) the automated mocked regression suite
+    (`ScanPanel.test.tsx`, unmodified in intent, per the "Test plan" above)
+    for its state machine, add, and duplicate-copy behavior; (b) the
+    `client.test.ts` compatibility assertion for the shared catalog-search
+    contract Scan depends on; (c) already-existing, previously-accepted
+    production Scan evidence (spec 0006/0016's own acceptance record) cited
+    as historical evidence that Scan's recognition→candidate→confirm flow
+    works in production. This enhancement does not trigger a new Vision
+    recognition merely to re-prove Scan — spec 0017 is a non-AI enhancement,
+    and its acceptance round performs **zero** OpenRouter calls, **zero**
+    Vision calls, and **zero** VIN/curator calls, with no conditional
+    exception.
 
 ### Stop conditions
 
@@ -1070,24 +1166,16 @@ part of this plan's scope; they are a separately authorized follow-up task.
 
 ## Unresolved behavior-defining questions
 
-**NONE.** Every implementation choice this plan needed to make (MusicBrainz
+**NONE.** Every implementation choice this plan needed to make — MusicBrainz
 identity/URL module location, browser client contract shape, provider
-search internal result shape and its validation layer, Scan's compatibility
-mechanism, Discover's state/concurrency design, the accessible search-mode
-control's implementation, CSS file targets, test file targets, and PR
-decomposition) is resolved above, with rationale grounded in direct source
-inspection — not left as "could use X or Y." The two genuinely open items
-below are cosmetic/display-only, not behavior-defining, and are flagged as
-such rather than silently decided as if they were architecturally
-significant:
-
-- Whether "New search" also resets the selected mode back to `all` (this
-  plan's default: no, mode is preserved) — reversible in a one-line change
-  if independent review or human product judgment prefers otherwise.
-- Whether an active exact-lookup result is visually cleared when a new
-  normal search is submitted, or left on screen alongside it (this plan's
-  default: left alone, no forced clearing) — a display-only choice with no
-  data-safety, security, or ownership consequence either way.
+search internal result shape and its validation layer, the exact-lookup
+zero-write test strategy against the real dependency seam, Scan's
+compatibility mechanism, Discover's state/concurrency design, the
+accessible search-mode control's implementation, "New search"'s effect on
+the selected mode, the coexistence of a normal search and an exact-lookup
+result, CSS file targets, test file targets, and PR decomposition — is
+resolved above, with rationale grounded in direct source inspection, and is
+now a fixed Plan 017 decision, not left as "could use X or Y."
 
 ## References
 
