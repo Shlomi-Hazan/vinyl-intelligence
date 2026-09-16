@@ -68,6 +68,7 @@ export function CatalogPanel({
       if (userId) {
         saveCatalogSearchDraft(userId, {
           draftQuery,
+          mode: 'all',
           result: lastResultRef.current,
         })
       }
@@ -114,7 +115,10 @@ export function CatalogPanel({
       // response). A transient error below never becomes a restored state.
       lastResultRef.current = {
         submittedQuery: trimmedQuery,
+        mode: 'all',
         candidates: nextCandidates,
+        offset: 0,
+        hasMore: false,
       }
       persistSearchDraft(explicitQuery ?? query)
     } catch (error) {

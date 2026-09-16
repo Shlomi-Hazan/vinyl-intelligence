@@ -5,6 +5,7 @@ import {
   type CatalogCandidate,
   type CatalogErrorCode,
   type CatalogSearchResponse,
+  type SearchMode,
 } from './types.ts'
 
 const DEFAULT_CATALOG_LIMIT = 5
@@ -108,6 +109,67 @@ function boundedLimit(limit: number): number {
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_CATALOG_LIMIT)
 }
 
+export type SearchCatalogPageOptions = {
+  query: string
+  mode: SearchMode
+  /** Non-negative page offset. Omitted -> 0 (spec 0017 §8.1). */
+  offset?: number
+  limit?: number
+}
+
+/**
+ * A single, mode-aware, paginated catalog search page (spec 0017 §8.1).
+ * Used by Discover, which needs the full `{ candidates, offset, hasMore }`
+ * response shape for its mode selector and Load More UI.
+ */
+export async function searchCatalogPage(
+  client: BrowserSupabaseClient,
+  { limit, mode, offset, query }: SearchCatalogPageOptions,
+): Promise<CatalogSearchResponse> {
+  const params = new URLSearchParams({
+    limit: boundedLimit(limit ?? DEFAULT_CATALOG_LIMIT).toString(),
+    mode,
+    offset: (offset ?? 0).toString(),
+    q: query.trim(),
+  })
+
+  return requestCatalog<CatalogSearchResponse>(
+    client,
+    `/api/catalog/search?${params.toString()}`,
+  )
+}
+
+/**
+ * The exact-URL lookup (spec 0017 §10-§11): `releaseId` alone, mutually
+ * exclusive with `q`/`mode`/`offset`/`limit` server-side. Returns the exact
+ * same `CatalogSearchResponse` shape as a normal search page
+ * (`{ candidates: [one], offset: 0, hasMore: false }`), so Discover's
+ * existing candidate-rendering, ownership, and duplicate-copy code needs no
+ * new branches to handle it.
+ */
+export async function lookupCatalogRelease(
+  client: BrowserSupabaseClient,
+  releaseId: string,
+): Promise<CatalogSearchResponse> {
+  const params = new URLSearchParams({ releaseId })
+
+  return requestCatalog<CatalogSearchResponse>(
+    client,
+    `/api/catalog/search?${params.toString()}`,
+  )
+}
+
+/**
+ * The pre-0017 candidate-only contract, kept byte-identical for Scan
+ * (`ScanPanel.tsx` calls this exact function with this exact signature and
+ * return type - unchanged). Implemented as a thin wrapper over
+ * `searchCatalogPage`, explicitly sending `mode: 'all'` rather than relying
+ * on the server's omitted-mode-defaults-to-all transition safety net (spec
+ * 0017 §8.1) - new code should not lean on an implicit default for its own
+ * intentional request. Scan therefore inherits the corrected All-mode
+ * shared-search semantics through this shared boundary without any change
+ * to its own call site.
+ */
 export async function searchCatalog(
   client: BrowserSupabaseClient,
   query: string,
@@ -119,14 +181,11 @@ export async function searchCatalog(
     return []
   }
 
-  const params = new URLSearchParams({
-    q: trimmedQuery,
-    limit: boundedLimit(limit).toString(),
+  const data = await searchCatalogPage(client, {
+    limit,
+    mode: 'all',
+    query: trimmedQuery,
   })
-  const data = await requestCatalog<CatalogSearchResponse>(
-    client,
-    `/api/catalog/search?${params.toString()}`,
-  )
 
   return Array.isArray(data.candidates) ? data.candidates : []
 }
