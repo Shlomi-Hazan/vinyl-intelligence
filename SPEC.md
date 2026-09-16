@@ -92,7 +92,11 @@ A record can be added without any catalog lookup when MusicBrainz has no suitabl
 
 ## 13. Discover / MusicBrainz Catalog Search
 
-Search by artist and album title; the backend queries MusicBrainz and returns normalized candidates (artist, title, year, label, catalog number, country, format, cover reference). The user picks the correct release; metadata is imported from the confirmed MusicBrainz release, not invented by any model.
+Search in one of three explicit, mutually-exclusive modes — **All** (the default; matches artist or release title), **Artist**, or **Album** — each built into a field-scoped, Lucene-escaped MusicBrainz query server-side, never a raw pass-through of user text. The backend returns normalized candidates (artist, title, year, label, catalog number, country, format, cover reference), five at a time, with a server-computed `hasMore` flag; **Load more** appends the next page (deduplicated by release ID) up to a bounded 20-result window per query. A **"Search on MusicBrainz"** link opens the provider's own full search UI in a new tab when that bounded window still isn't enough.
+
+A user who already knows the exact pressing can paste its MusicBrainz release URL under **"Know the exact release?"**: the client extracts and validates the release ID locally (rejecting any non-`musicbrainz.org`/non-release URL before any network request), sends only that validated ID to the server, and the server performs the same read-only, already-existing exact-release lookup used by catalog-add — the pasted URL string itself is never fetched by the server. The result renders through the same candidate card, ownership check, and duplicate-copy flow as an ordinary search result.
+
+The user picks the correct release; metadata is imported from the confirmed MusicBrainz release, not invented by any model.
 
 ## 14. AI Cover Recognition
 
@@ -223,6 +227,7 @@ None of these providers' uptime, pricing, or exact response shape is guaranteed 
 - Every uploaded image is validated before use, but the exact validation differs by flow. The **recognition photo** (§14) is checked server-side against a MIME allow-list, a size cap, *and* magic-byte content sniffing (the declared type must match the file's actual signature) before it is ever sent to the vision model; it is discarded after use and never written to storage. A **custom cover or avatar** (§22, §27) is checked client-side against an accepted-MIME allow-list and an input-size cap, then decoded, downscaled/cropped, and re-encoded to WebP entirely in the browser (a corrupt or mislabeled file simply fails to decode) before being uploaded — this path does not perform the same explicit magic-byte signature check as recognition, and is the one kind of upload that is intentionally persisted, in a private, owner-scoped Storage bucket.
 - All model output — vision and curator alike — is treated as untrusted and schema-validated before use.
 - In-image text is explicitly framed to the vision model as untrusted data, not as instructions.
+- The Discover exact-release-URL lookup (§13) is the one place a user-pasted URL string is accepted: the server never fetches it. The client extracts and validates a bare MusicBrainz release ID from the pasted text; only that ID (re-validated server-side) ever reaches a lookup call, which the server itself constructs against `musicbrainz.org` — the same extract-and-validate-an-identifier pattern already used for catalog-add's `providerReleaseId`, never forward-an-arbitrary-URL.
 
 ## 34. Error / Loading / Empty / Failure States
 
@@ -252,6 +257,6 @@ See the README's [Known Limitations](README.md#️-known-limitations) section �
 
 This document describes the **current, final** product contract. It does not replace or invalidate the milestone-by-milestone record under [`docs/specs/`](docs/specs/README.md) and [`docs/plans/`](docs/plans/) — those preserve exactly what was proposed, approved, and verified at each stage of the project's evolution, including work later refined or corrected. Where this document and an individual historical spec appear to disagree, this document reflects the accepted final behavior; the historical spec reflects what was true, planned, or approved at the time it was written, and is not rewritten to pretend otherwise.
 
-For the full chronology — including the Visual Experience & Product Identity pass, the Hebrew & Multilingual Record Support enhancement, and the Final Submission Alignment remediation that produced the current duplicate-copy and rating/listening-browse behavior described above — see [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md).
+For the full chronology — including the Visual Experience & Product Identity pass, the Hebrew & Multilingual Record Support enhancement, the Final Submission Alignment remediation that produced the current duplicate-copy and rating/listening-browse behavior described above, and the Discover & MusicBrainz Navigation Enhancement that produced the current search-mode/pagination/exact-lookup behavior described in §13 — see [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md).
 
 Related current technical documentation: [Architecture](docs/architecture.md) · [Data Model](docs/data-model.md) · [AI Design](docs/ai-design.md) · [API Integrations](docs/api-integrations.md) · [Security](docs/security.md) · [Verification](docs/verification.md).

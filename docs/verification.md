@@ -5617,3 +5617,148 @@ H). No runtime, test, schema, or configuration file changed; the accepted
 production runtime remains the PR C merge above
 (`81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy
 `6aa8783d1835a5e433449dd4`).
+
+## Discover & MusicBrainz Navigation Enhancement Evidence
+
+A further deliberate, human-requested post-freeze usability enhancement,
+discovered during real hands-on product use after the Final Submission
+Alignment closeout: explicit All/Artist/Album search modes with corrected
+MusicBrainz query semantics, bounded "Load more" pagination, a deterministic
+exact-release-URL lookup, an outbound "Search on MusicBrainz" link, and a
+Record Detail "View on MusicBrainz" provenance link. Full contract:
+`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md`; plan:
+`docs/plans/017-discover-musicbrainz-navigation-enhancement.md`. Not a new
+numbered milestone, not an AI feature; no schema/dependency change.
+
+Same evidence-provenance convention as the section above: **AUTOMATED /
+AGENT-RUN LOCAL EVIDENCE** means commands actually executed by the
+implementation agent from a local checkout; this repository has no CI, so
+these are not GitHub status checks. **HUMAN-OBSERVED PRODUCTION EVIDENCE**
+means the human exercised the deployed production application directly and
+reported the observed result.
+
+### PR #34 — Spec
+
+Independently corrected across three audit rounds before merge (query
+semantics, pagination exhaustion formula, Unicode-aware Boolean-keyword
+literalization, mutual-exclusivity of `releaseId` against every other
+search parameter — each documented as a correction from an earlier draft
+inside the spec text itself, not silently rewritten). Merged to `main` as
+PR #34. Planning only — no runtime change.
+
+### PR #35 — Implementation Plan
+
+Operational plan derived from direct source inspection at the PR #34
+baseline (not assumed from the spec alone): the exact file list, the chosen
+designs (a new browser-safe `musicbrainzIdentity.ts` module so browser code
+never imports the provider-fetching half of `musicbrainz.ts`; the
+`computeHasMore` three-condition pagination formula, verified against its
+worked examples at planning time; a monotonic `requestSeq` stale-response
+guard instead of `AbortController`; a new `SegmentedRadioGroup` primitive
+so the mode selector uses correct `role="radio"`/`aria-checked` semantics
+without touching the existing `SegmentedControl`), and the full test plan.
+Merged to `main` as PR #35. Planning only — no runtime change.
+
+### PR #36 — Runtime Implementation + Correction
+
+**Starting HEAD:** `d919737d83e3ec804d27428e6ffa774b8373d72b` (PR #35
+merge). Five commits: `0efa37c` (MusicBrainz identity helpers and query
+semantics), `627f827` (catalog-search pagination and exact-lookup
+contract), `d44cca0` (Discover search modes, Load More, exact lookup),
+`56b500c` (Record Detail provenance link and external-link accessibility
+CSS), `7d65038` (correction — see below).
+
+**AUTOMATED / AGENT-RUN LOCAL EVIDENCE (final head
+`7d6503850c686ad8e9c48dc430dba166b0bf9dc3`):**
+
+- `git diff --check` clean; `npm run typecheck` clean; `npm run lint` 0
+  warnings.
+- `npm run test:run`: **72 test files / 983 tests**, all passing.
+- `npm run build` clean.
+- `npx supabase test db`: **10 files / 507 assertions PASS** (no
+  migration).
+- `npx supabase db lint`: no errors.
+- `npm audit --omit=dev`: **0 vulnerabilities**.
+- 21 files changed (2,644 insertions / 219 deletions), all within the
+  plan's own "Exact likely files" list — verified by diffing against the
+  PR #35 baseline.
+- Zero real MusicBrainz calls anywhere in implementation or automated
+  verification (all `searchMusicBrainzReleases`/`lookupReleaseWithRateLimitRetry`
+  fixtures mocked, confirmed by grepping the new/changed test files for any
+  non-mocked `fetch`).
+
+**Independent-review correction chronology:**
+
+1. Original implementation (commits `0efa37c`–`56b500c`). Independent
+   review found **0 BLOCKER / 0 HIGH / 2 MEDIUM**:
+   - MEDIUM — a "Load more" request superseded by a new search, a mode
+     change, or "New search" left `loadingMore` stuck `true` forever,
+     because the async operation's own `finally` block was the only code
+     path that ever cleared it, and a `requestSeq` bump that correctly
+     discards the *stale result* also makes that same `finally` branch
+     never fire.
+   - MEDIUM — the search-draft parser (`catalogSearchDraft.ts`) treated a
+     *present-but-malformed* `mode`/`offset`/`hasMore` field the same as an
+     *absent* one, silently defaulting both instead of invalidating the
+     whole stored draft for the malformed case, as spec §9 requires.
+2. Both fixed in correction commit `7d65038`: a new shared
+   `invalidatePendingWork()` helper bumps `requestSeq` **and** releases
+   both the `inProgress` and `loadingMore` guards together, called from
+   `resetSearch`, `handleModeChange`, and `runSearch`; the draft parser was
+   redesigned around a `Symbol('invalid')` sentinel so
+   `parseOptionalMode`/`Offset`/`HasMore` can distinguish "absent" from
+   "present and malformed," invalidating the containing draft/result only
+   for the latter. Named regression tests added for both: two concurrency
+   cases (a new search, and a mode change, each superseding an unresolved
+   Load More) and five malformed-field cases (`mode: "bogus"`,
+   `offset: -1`, `offset: 1.5`, `offset: "5"`, `hasMore: "true"`), plus the
+   existing old-shaped-draft compatibility test re-verified passing
+   unmodified.
+3. Final independent review at head `7d6503850c686ad8e9c48dc430dba166b0bf9dc3`:
+   **0 BLOCKER / 0 HIGH / 0 MEDIUM — APPROVED FOR MERGE.**
+
+**Merge and deploy:** normal merge commit
+`abff1e86cbc36c754e8645179fa5bbee9ec27afe` (parents:
+`d919737d83e3ec804d27428e6ffa774b8373d72b`,
+`7d6503850c686ad8e9c48dc430dba166b0bf9dc3`) — merged by the human directly
+via GitHub. Production deploy `6aaa63fe2829c87037fd2cd0` at
+`https://vinyl-intelligence.netlify.app`, performed manually by the human
+(`netlify deploy --prod`; Vite production build succeeded, 162 modules
+transformed, six existing Netlify Functions packaged).
+
+**HUMAN-OBSERVED PRODUCTION EVIDENCE — 8/8 PASS, 2026-09-16:**
+
+1. `/api/health` → `{"status":"ok"}`.
+2. Discover — All mode: a real search returns results.
+3. Artist mode: the same ambiguous/non-Latin query produces
+   artist-focused results, distinct from All mode.
+4. Load More: appends further results correctly; prior results remain.
+5. Album mode: album/title-focused search works.
+6. Exact MusicBrainz release URL: resolves to exactly one release
+   candidate.
+7. Add to collection: works successfully from a live result.
+8. Record Detail: a MusicBrainz-backed record displays "View on
+   MusicBrainz".
+
+A transient Draft Deploy catalog-add configuration error observed
+pre-production did not reproduce in production and is not a current
+product defect; PR #36 was not reopened and no runtime was modified because
+of it.
+
+**The Discover & MusicBrainz Navigation Enhancement is COMPLETE, human
+production-accepted.**
+
+### Documentation Closeout (this section)
+
+Documentation-only closeout represented by the current repository/Git
+history: README (Discover feature description, screenshots), root `SPEC.md`
+(§13, §33, §40), `docs/USER_GUIDE.md` (§7, §10), `docs/api-integrations.md`
+(MusicBrainz row), this roadmap's "Discover & MusicBrainz Navigation
+Enhancement" subsection, the spec index, `docs/INSPECT.md`, and this
+verification-evidence section. Screenshots refreshed: Discover initial
+state and results (now showing the mode selector), a new exact-release-URL
+lookup screenshot, and Record Detail (now showing "View on MusicBrainz").
+No runtime, test, schema, or configuration file changed; the accepted
+production runtime remains the PR #36 merge above
+(`abff1e86cbc36c754e8645179fa5bbee9ec27afe`, deploy
+`6aaa63fe2829c87037fd2cd0`).

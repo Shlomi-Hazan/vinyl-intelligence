@@ -4,11 +4,11 @@
 **Course:** Agentic Software Engineering (ASE-26)
 **Repository:** `Shlomi-Hazan/vinyl-intelligence`
 **Primary build workflow:** Human-directed agentic software engineering (Codex, then Claude Code)
-**Roadmap version:** 2026-09-02 (current); status updated 2026-09-15
+**Roadmap version:** 2026-09-02 (current); status updated 2026-09-16
 **Supersedes:** `docs/roadmaps/2026-08-18-complete-project-roadmap.md` — preserved unchanged as the historical snapshot
-**Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10, including two post-M12 evolutions (Hebrew & Multilingual Record Support; Final Submission Alignment)
+**Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10, including three post-M12 evolutions (Hebrew & Multilingual Record Support; Final Submission Alignment; Discover & MusicBrainz Navigation Enhancement)
 
-**Project status (2026-09-15): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled by this documentation change (PR D).** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b` (Netlify deploy `6aa8783d1835a5e433449dd4`). Human production acceptance passed 2026-09-15. See "Post-M12 evolution" below for the full chronology; M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) is preserved as history in section 22 and is no longer the current accepted runtime.
+**Project status (2026-09-16): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled (PR D) — Discover & MusicBrainz Navigation Enhancement COMPLETE, human-accepted in production.** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `abff1e86cbc36c754e8645179fa5bbee9ec27afe` (Netlify deploy `6aaa63fe2829c87037fd2cd0`). Human production acceptance passed 2026-09-16 (8/8 checks). See "Post-M12 evolution" below for the full chronology; the pre-enhancement accepted state (2026-09-15, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy `6aa8783d1835a5e433449dd4`) and M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) are preserved as history below and in section 22, and are no longer the current accepted runtime.
 
 ---
 
@@ -45,6 +45,13 @@ original 2026-08-18 roadmap
   -> accepted production runtime built from main 81812c1f, deploy 6aa8783d
      (2026-09-15) - later documentation-only history, including PR D, does
      not change this deployed runtime
+  -> Discover & MusicBrainz Navigation Enhancement: deliberate post-freeze
+     usability enhancement, not a new numbered milestone (PR #34 spec;
+     PR #35 plan; PR #36 runtime - one independent-review correction round,
+     2 MEDIUM findings fixed, folded into the same PR before merge)
+  -> accepted production runtime built from main abff1e86, deploy 6aaa63fe
+     (2026-09-16), human production acceptance 8/8 PASS - this documentation
+     closeout (PR E) does not change this deployed runtime
 ```
 
 ---
@@ -120,6 +127,73 @@ human-acceptance discipline as every milestone above.
   the ADR index/ADR 0003 status, and `docs/verification.md` currency and
   coverage). It changes no runtime, test, schema, or configuration file;
   the accepted production runtime remains the PR C merge above.
+
+Historical roadmap (`docs/roadmaps/2026-08-18-complete-project-roadmap.md`)
+untouched throughout this phase as well.
+
+### Discover & MusicBrainz Navigation Enhancement
+
+A further deliberate, human-requested post-freeze usability enhancement,
+discovered during real hands-on product use after the Final Submission
+Alignment closeout — not a new numbered milestone, not an AI feature, no
+schema/dependency change. Full detail in
+`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md` and
+`docs/plans/017-discover-musicbrainz-navigation-enhancement.md`.
+
+- **PR #34 — spec.** Discover's single unqualified free-text search is
+  corrected to three explicit modes (All/Artist/Album), each a field-scoped,
+  Lucene-escaped MusicBrainz query; bounded "Load more" pagination (5 per
+  page, 20 per query); a deterministic exact-MusicBrainz-release-URL lookup
+  (extract-and-validate the MBID client-side, never forward the raw URL);
+  an outbound "Search on MusicBrainz" link; and a Record Detail "View on
+  MusicBrainz" provenance link. Independently corrected across three audit
+  rounds before merge.
+- **PR #35 — plan.** Operational implementation plan: exact file list,
+  chosen designs (a new browser-safe `musicbrainzIdentity.ts` module, the
+  `computeHasMore` three-condition formula, the `requestSeq` stale-response
+  guard, `SegmentedRadioGroup`), and the full test plan.
+- **PR #36 — runtime implementation.** Five commits: MusicBrainz identity
+  helpers and query semantics; the catalog-search pagination/exact-lookup
+  contract; Discover search modes, Load More, and exact lookup; the
+  Record Detail provenance link and external-link accessibility CSS; and a
+  correction commit. Independent review found **0 BLOCKER / 0 HIGH /
+  2 MEDIUM**: (1) a superseded "Load more" request left `loadingMore` stuck
+  `true`, blocking further pagination; (2) the search-draft parser silently
+  defaulted a *present-but-malformed* `mode`/`offset`/`hasMore` field the
+  same way it defaults an *absent* one, instead of invalidating the whole
+  draft per the approved absent-vs-malformed contract. Both fixed in the
+  same PR (a shared `invalidatePendingWork()` guard-release helper; a
+  `Symbol`-sentinel-based `parseOptionalMode`/`Offset`/`HasMore` redesign),
+  with named regression tests for each; final review **0 BLOCKER / 0 HIGH /
+  0 MEDIUM**. 21 files changed (2,644 insertions / 219 deletions), all
+  within the plan's own file list. Full test suite: **72 files / 983
+  tests**, all passing; typecheck/lint/build clean; pgTAP 507/507; db lint
+  clean; `npm audit --omit=dev` 0 vulnerabilities. Zero real MusicBrainz
+  calls anywhere in implementation or automated verification.
+
+**Merge and deploy:** normal merge commit
+`abff1e86cbc36c754e8645179fa5bbee9ec27afe` (parents:
+`d919737d83e3ec804d27428e6ffa774b8373d72b`, PR head
+`7d6503850c686ad8e9c48dc430dba166b0bf9dc3`). Production deploy
+`6aaa63fe2829c87037fd2cd0` at `https://vinyl-intelligence.netlify.app`
+(`netlify deploy --prod`, 162 modules transformed, six existing Netlify
+Functions packaged).
+
+**Human production acceptance — 8/8 PASS, 2026-09-16:** `/api/health`;
+Discover All-mode search; Artist-mode search on the same ambiguous query
+returning artist-focused results; Load More appending further results
+without losing prior ones; Album-mode search; an exact MusicBrainz release
+URL resolving to exactly one candidate; adding a record to the collection
+from a live result; Record Detail showing "View on MusicBrainz" for a
+MusicBrainz-backed record. A transient Draft Deploy catalog-add
+configuration error observed pre-production did not reproduce in
+production and is not a current product defect.
+
+**Documentation closeout:** this section, plus README/SPEC/User
+Guide/Visual Inspect/API Integrations updates and refreshed Discover/Record
+Detail screenshots, represented in current repository/Git history (PR E).
+It changes no runtime, test, schema, or configuration file; the accepted
+production runtime remains the PR #36 merge above.
 
 Historical roadmap (`docs/roadmaps/2026-08-18-complete-project-roadmap.md`)
 untouched throughout this phase as well.

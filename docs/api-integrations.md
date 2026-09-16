@@ -1,7 +1,8 @@
 # API Integrations
 
-As-built section last updated: 2026-09-07 (Milestone 12). The verification /
-spike material below is preserved as the selection rationale.
+As-built section last updated: 2026-09-16 (Discover & MusicBrainz Navigation
+Enhancement). The verification / spike material below is preserved as the
+selection rationale.
 
 ---
 
@@ -14,7 +15,7 @@ Cover Art Archive image URLs (public, no key) and the browser Supabase client
 
 | Service | Used for | Auth | Where it runs | Notes |
 | --- | --- | --- | --- | --- |
-| **MusicBrainz** (`https://musicbrainz.org/ws/2/`) | release search + release / release-group lookup for the catalog-add flow; best-effort release-group genre tags | `MUSICBRAINZ_USER_AGENT` header, no key | `netlify/functions/_shared/catalog-handlers.mts` (`/api/catalog/search`, `/api/catalog/add`) | selected over Discogs (`docs/decisions/0002`); paced to <= 1 req/s; response shape validated; timeouts + bounded errors |
+| **MusicBrainz** (`https://musicbrainz.org/ws/2/`) | release search in three explicit modes (All/Artist/Album, field-scoped and Lucene-escaped server-side) with bounded 5-per-page / 20-per-query pagination; an exact-release-by-ID lookup (shared by catalog-add's confirmation step and Discover's paste-a-release-URL flow, `GET /api/catalog/search?releaseId=`); best-effort release-group genre tags on add | `MUSICBRAINZ_USER_AGENT` header, no key | `netlify/functions/_shared/catalog-handlers.mts` (`/api/catalog/search`, `/api/catalog/add`) | selected over Discogs (`docs/decisions/0002`); paced to <= 1 req/s; response shape **and** pagination metadata (`count`/`offset`) validated before use; timeouts + bounded errors; the exact-lookup path never fetches a client-supplied URL — only a client-validated, server-re-validated MBID crosses the boundary (`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md` §15) |
 | **Cover Art Archive** (`https://coverartarchive.org/release[-group]/{mbid}/front-{size}`) | display-time album artwork | none (public) | browser `<img src>` built client-side in `src/media/AlbumArtwork.tsx` | no key, no proxy, no persisted URL, no `releases.cover_url`; advances to the next tier on `<img>` error, never loops |
 | **OpenRouter** (`https://openrouter.ai/api/v1/chat/completions`) | vision cover recognition; curator intent extraction; curator selection/explanation; refinement | `OPENROUTER_API_KEY` (server-only) + optional `OPENROUTER_APP_URL` / `OPENROUTER_APP_TITLE` attribution headers | `netlify/functions/_shared/recognition-handlers.mts`, `curator-handlers.mts` | models: `google/gemini-3.1-flash-lite` (vision + curator intent), `google/gemini-3.5-flash` (curator selection). `temperature: 0`, strict `response_format` json_schema, bounded `max_tokens` (intent 300 / refinement 430 / selection 1200), `provider: { require_parameters: true }`; selection sends `reasoning: { effort }`. Per-user rate limits; `model_calls` telemetry; all output strict-validated as untrusted. Decisions `0003`, `0004`. |
 | **Supabase** (hosted project `dlkaljnywnrhzfxcfklx`) | Postgres + RLS, Auth (built-in email), Storage (two private webp-only buckets) | browser: publishable key + user JWT (RLS); server: `SUPABASE_SERVICE_ROLE_KEY` with explicit least-privilege grants | browser client + Netlify Functions | service role is INSERT-only on `model_calls`; SELECT/INSERT/UPDATE on `releases`; SELECT/INSERT on `collection_items`; never used to read user collection/history/profile for the curator |
