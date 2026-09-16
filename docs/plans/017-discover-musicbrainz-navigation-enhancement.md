@@ -882,16 +882,17 @@ established bar throughout (do not merge with a MEDIUM finding open).
 ### Human production acceptance (spec §23, operationalized)
 
 Performed only after independent review passes, PR B merges, and deploy
-from merged `main`. **Hard cap: a maximum of 10 total real MusicBrainz API
-requests for this entire acceptance round, retries included.** If
-satisfying the remaining checklist items below would exceed that cap, STOP
-and ask the human before making request 11 — do not silently exceed it and
-do not manufacture an unnecessary Add/delete mutation merely to consume
-acceptance steps. **Zero OpenRouter/Vision/VIN/curator calls, absolute, no
-conditional exception** (item 22 below). Prefer read-only verification
-wherever an already-accepted path can be checked without a new write (an
-already-owned record's duplicate-copy Cancel path, not a fresh Confirm,
-unless a genuinely new copy is explicitly authorized and later removed).
+from merged `main`. **Absolute hard cap: a maximum of 10 total real
+MusicBrainz API requests for this entire acceptance round, retries
+included.** Requests 1 through 10 are within the approved cap; **stop
+before making request 11** and ask the human, rather than silently
+exceeding it or manufacturing an unnecessary Add/delete mutation merely to
+consume the remaining budget. **Zero OpenRouter/Vision/VIN/curator calls,
+absolute, no conditional exception** (item 22 below). Prefer read-only
+verification wherever an already-accepted path can be checked without a
+new write (an already-owned record's duplicate-copy Cancel path, not a
+fresh Confirm, unless a genuinely new copy is explicitly authorized and
+later removed).
 
 **Restored alignment with spec §23 (correction from an earlier draft, which
 weakened the approved human-acceptance criterion into a non-comparative
@@ -905,71 +906,93 @@ already proven deterministically by the automated query-builder tests
 human-observed check of live provider *ranking behavior*, a different kind
 of evidence than the automated tests provide, and spec §23 requires both.
 
-**Concrete reuse scenario, staying inside the 10-request hard cap (retries
-included), with room to spare:**
+**Non-Latin coverage folded into the same comparison terms (correction from
+an earlier draft, which allocated non-Latin coverage to only one mode via a
+separate request, satisfying neither the checklist's "in every mode"
+wording nor spec §23 item 4 as written):** Term A and Term B (below) are
+themselves chosen as deliberately ambiguous **non-Latin** real-world cases
+(Hebrew or another non-Latin script — spec §23 permits either; this is not
+narrowed to Hebrew specifically, and if no suitable non-Latin comparative
+case can be found for one of the two terms within the approved budget,
+**STOP and ask the human** rather than silently dropping "every mode" or
+exceeding the cap). This makes the same four comparison requests do double
+duty: they prove the Artist/Album comparative criteria **and**, in the same
+act, that non-Latin text survives end-to-end in All mode (Term A/B's `All`
+requests), Artist mode (Term A's `Artist` request), and Album mode (Term
+B's `Album` request) — every mode spec §23 item 4 requires, with no
+additional request.
 
-1. A deliberately ambiguous artist-name term ("Term A") searched in **All**
-   mode. [request 1 — also satisfies item 1's artist-only-query check.]
+**Concrete reuse scenario, staying inside the 10-request hard cap (retries
+included):**
+
+1. Term A — a deliberately ambiguous **non-Latin** artist-name term —
+   searched in **All** mode. [request 1 — satisfies item 1's artist-only-query
+   check, and is the first of item 4's three required non-Latin
+   observations (All mode).]
 2. The same Term A searched in **Artist** mode, compared directly against
    request 1's result — satisfies item 2's approved comparative criterion
    (the expected release visibly ranks better under Artist mode for this
-   term than it did under All). [request 2]
+   term than it did under All), and is item 4's second required
+   observation (Artist mode, same non-Latin term). [request 2]
 3. One "Load more" page on request 2's result set (chosen so Term A's
    Artist-mode result has more than 5 matches) — satisfies items 5 (initial
    page, already shown by request 2), 6 (append), and 7 (the rapid-click
    guard is a UI-level assertion that a second click makes no second
    request — verified without any additional provider call). [request 3]
-4. A deliberately ambiguous release-title term ("Term B") searched in
-   **All** mode — comparison baseline for item 3. [request 4]
+4. Term B — a deliberately ambiguous **non-Latin** release-title term —
+   searched in **All** mode — comparison baseline for item 3. [request 4]
 5. The same Term B searched in **Album** mode, compared against request 4 —
-   satisfies item 3's approved comparative criterion. [request 5]
-6. One Hebrew (or other non-Latin) query, in any one mode — satisfies item
-   4. (If Term A or Term B is chosen to already be Hebrew, this request can
-   be folded into one of requests 1–5 instead of added separately — the
-   scenario below counts it as its own request to stay concrete and not
-   rely on that coincidence.) [request 6]
-7. One deliberately narrow query that returns a genuine partial raw page —
+   satisfies item 3's approved comparative criterion, and is item 4's third
+   required observation (Album mode, same non-Latin term). [request 5]
+6. One deliberately narrow query that returns a genuine partial raw page —
    satisfies item 9 via its approved partial-page branch (§23 item 9 is an
    **OR**: raw partial page, or the 20-result window — reaching the
    20-result window would itself cost 3 additional Load More requests for
    one query and is not required when the cheaper partial-page branch
    already satisfies the item; the 20-result-window path remains proven by
    the automated `computeHasMore`/pagination tests, which already cover it
-   exhaustively). [request 7]
-8. One exact-URL lookup on a real, not-yet-owned MusicBrainz release —
+   exhaustively). [request 6]
+7. One exact-URL lookup on a real, not-yet-owned MusicBrainz release —
    satisfies items 10 (resolves correctly), 11 (a **local-only** rejection
    case costs zero network requests by construction), and 12 (no database
-   write). [request 8]
-9. One exact-URL lookup on a real, already-owned release — satisfies items
-   13 (duplicate-copy affordance) and 14 (Cancel writes nothing). [request 9]
+   write). [request 7]
+8. One exact-URL lookup on a real, already-owned release — satisfies items
+   13 (duplicate-copy affordance) and 14 (Cancel writes nothing). [request 8]
 
-**Total: 9 real MusicBrainz requests**, leaving exactly 1 in reserve under
-the 10-request hard cap for an unplanned retry. Items 15–21 and item 22
-(below) add zero further MusicBrainz requests (a passive `href`, existing
-already-catalogued data, UI-only viewport checks, and Scan's own scope,
-respectively). **If the specific real-world Artist/Album/Hebrew cases
-chosen during execution cannot be satisfied within this budget, STOP before
-making a 10th request and ask the human** — do not silently exceed the cap
-by substituting more searches for a case that isn't cooperating.
+**Planned total: 8 real MusicBrainz requests**, leaving up to 2 in reserve
+under the 10-request absolute hard cap for unplanned retries — do not spend
+that headroom on additional provider calls merely because it exists. Items
+15–21 and item 22 (below) add zero further MusicBrainz requests (a passive
+`href`, existing already-catalogued data, UI-only viewport checks, and
+Scan's own scope, respectively). **If the specific real-world non-Latin
+Artist/Album comparative cases chosen during execution cannot be satisfied
+within this budget, STOP before making request 11 and ask the human** — do
+not silently drop non-Latin coverage from a mode, and do not substitute
+more searches for a case that isn't cooperating.
 
 1. All-mode search finds a release by title (as before) **and** now also by
    artist name alone (Term A in All mode, request 1 above) — confirming it
    returns that artist's releases (a case that previously returned poor/no
    results).
 2. **Artist mode (spec §23 item 2 — approved comparative criterion,
-   restored):** for Term A, a deliberately ambiguous real-world case, the
-   selected/expected release ranks visibly better under Artist mode
-   (request 2) than it did under All mode (request 1) for the same term.
-   The exact Lucene template (`artist:(...)`) is separately, deterministically
-   proven by the automated query-builder tests (`musicbrainz.test.ts`) — this
-   human check is the live-provider-ranking evidence spec §23 additionally
-   requires, not a substitute for those tests, and not replaced by them.
+   restored):** for Term A, a deliberately ambiguous non-Latin real-world
+   case, the selected/expected release ranks visibly better under Artist
+   mode (request 2) than it did under All mode (request 1) for the same
+   term. The exact Lucene template (`artist:(...)`) is separately,
+   deterministically proven by the automated query-builder tests
+   (`musicbrainz.test.ts`) — this human check is the live-provider-ranking
+   evidence spec §23 additionally requires, not a substitute for those
+   tests, and not replaced by them.
 3. **Album mode (spec §23 item 3 — the same approved comparative criterion,
-   restored):** for Term B, a deliberately ambiguous release-title-focused
-   case, Album mode (request 5) produces title/release-focused results
-   comparably improved over All mode (request 4) for the same term.
-4. A Hebrew (or other non-Latin) query stays intact end-to-end in every
-   mode.
+   restored):** for Term B, a deliberately ambiguous non-Latin
+   release-title-focused case, Album mode (request 5) produces
+   title/release-focused results comparably improved over All mode
+   (request 4) for the same term.
+4. **A Hebrew (or other non-Latin) query stays intact end-to-end in every
+   mode** — satisfied without a separate request: Term A/B's non-Latin
+   script is observed intact in All mode (requests 1 and 4), Artist mode
+   (request 2), and Album mode (request 5) — all three modes, using the
+   same requests items 1–3 above already make.
 5. Initial page renders correctly (5 results, or fewer with no error).
 6. "Load more" appends without replacing/losing prior results.
 7. Rapid repeated "Load more" clicks produce no parallel/duplicate
@@ -978,7 +1001,7 @@ by substituting more searches for a case that isn't cooperating.
    §23 item 8 — not re-attempted here as a forced production failure.)
 9. **Result exhaustion (spec §23 item 9 — approved OR restored):** raw
    partial page, **or** the 20-result window — either is sufficient, not
-   both. This round demonstrates the partial-page branch (request 7); the
+   both. This round demonstrates the partial-page branch (request 6); the
    20-result-window branch is proven by automated tests and is not
    separately re-demonstrated in production, since the spec's own wording
    is disjunctive.
