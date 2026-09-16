@@ -1,5 +1,12 @@
 export type CatalogProvider = 'musicbrainz'
 
+/**
+ * The three mutually-exclusive Discover search modes (spec 0017 §6). A
+ * shared browser+server wire-contract value - not a provider internal, so
+ * it lives here rather than in `musicbrainz.ts`.
+ */
+export type SearchMode = 'all' | 'artist' | 'album'
+
 export type CatalogCandidate = {
   provider: CatalogProvider
   providerReleaseId: string
@@ -18,6 +25,15 @@ export type CatalogCandidate = {
 
 export type CatalogSearchResponse = {
   candidates: CatalogCandidate[]
+  /** Echoes the effective offset this page was fetched at (spec 0017 §8.2). */
+  offset: number
+  /**
+   * Computed server-side from the provider's raw page size and its own
+   * `count` field (spec 0017 §7.2) - never inferred client-side from
+   * `candidates.length` alone. Additive to the pre-0017 shape: any code that
+   * only reads `.candidates` continues to work unmodified.
+   */
+  hasMore: boolean
 }
 
 export type CatalogCollectionItem = {

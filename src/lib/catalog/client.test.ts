@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addCatalogReleaseToCollection,
+  lookupCatalogRelease,
   searchCatalog,
+  searchCatalogPage,
 } from './client.ts'
 import { CatalogClientError } from './types.ts'
 import type { BrowserSupabaseClient } from '../supabase/client.ts'
@@ -65,7 +67,89 @@ describe('catalog browser client', () => {
       .toHaveLength(1)
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/catalog/search?q=pink+floyd&limit=10',
+      '/api/catalog/search?limit=10&mode=all&offset=0&q=pink+floyd',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${accessToken}`,
+        }),
+      }),
+    )
+  })
+
+  it('searchCatalog compatibility wrapper explicitly sends mode=all (Scan compatibility, spec 0017)', async () => {
+    const fetchMock = mockFetch({ candidates: [], hasMore: false, offset: 0 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await searchCatalog(createClient(), 'pink floyd')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('mode=all'),
+      expect.anything(),
+    )
+  })
+
+  it('searchCatalogPage sends mode/offset/limit and returns the full page shape', async () => {
+    const fetchMock = mockFetch({
+      candidates: [],
+      hasMore: true,
+      offset: 5,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      searchCatalogPage(createClient(), {
+        limit: 5,
+        mode: 'artist',
+        offset: 5,
+        query: 'portishead',
+      }),
+    ).resolves.toEqual({ candidates: [], hasMore: true, offset: 5 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/catalog/search?limit=5&mode=artist&offset=5&q=portishead',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${accessToken}`,
+        }),
+      }),
+    )
+  })
+
+  it('lookupCatalogRelease sends releaseId alone and returns the response shape', async () => {
+    const releaseId = '11111111-1111-4111-8111-111111111111'
+    const fetchMock = mockFetch({
+      candidates: [
+        {
+          artist: 'Pink Floyd',
+          catalogNumber: null,
+          country: null,
+          derivedProviderPageUrl: `https://musicbrainz.org/release/${releaseId}`,
+          format: null,
+          label: null,
+          provider: 'musicbrainz',
+          providerReleaseGroupId: null,
+          providerReleaseId: releaseId,
+          releaseYear: null,
+          score: null,
+          title: 'The Dark Side of the Moon',
+          transientCoverDisplayUrl: null,
+        },
+      ],
+      hasMore: false,
+      offset: 0,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      lookupCatalogRelease(createClient(), releaseId),
+    ).resolves.toMatchObject({
+      candidates: [{ providerReleaseId: releaseId }],
+      hasMore: false,
+      offset: 0,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/catalog/search?releaseId=${releaseId}`,
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: `Bearer ${accessToken}`,

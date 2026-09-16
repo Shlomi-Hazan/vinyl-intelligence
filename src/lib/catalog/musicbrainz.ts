@@ -1,4 +1,5 @@
-import type { CatalogCandidate, CatalogErrorCode } from './types.ts'
+import { musicBrainzReleaseUrl, MUSICBRAINZ_RELEASE_ID_PATTERN } from './musicbrainzIdentity.ts'
+import type { CatalogCandidate, CatalogErrorCode, SearchMode } from './types.ts'
 
 const MUSICBRAINZ_API_BASE_URL = 'https://musicbrainz.org/ws/2'
 const MUSICBRAINZ_PROVIDER = 'musicbrainz'
@@ -17,8 +18,11 @@ const RELEASE_FIELD_LIMITS = {
 const RELEASE_YEAR_MIN = 1900
 const RELEASE_YEAR_MAX = 2100
 
-export const MUSICBRAINZ_RELEASE_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Re-exported so every existing import site (`catalog-handlers.mts` and its
+// test) keeps working unmodified - `musicbrainzIdentity.ts` is now the one
+// canonical definition (spec 0017; that module is browser-safe, this one is
+// not, since it also contains provider-fetch/timeout logic).
+export { MUSICBRAINZ_RELEASE_ID_PATTERN }
 
 export type FetchFunction = (
   input: string | URL,
@@ -33,7 +37,26 @@ type MusicBrainzFetchOptions = {
 
 export type MusicBrainzSearchOptions = MusicBrainzFetchOptions & {
   limit: number
+  mode: SearchMode
+  offset: number
   query: string
+}
+
+/**
+ * The internal MusicBrainz search-page result (spec 0017 §7.2/§8.2) -
+ * provider-adapter internal, not exported from `types.ts`: nothing outside
+ * this module and `catalog-handlers.mts` needs `rawCount`/`providerCount`/
+ * `providerOffset` - the browser only ever sees the final `hasMore` boolean
+ * the handler computes from them.
+ */
+export type MusicBrainzSearchPage = {
+  candidates: CatalogCandidate[]
+  /** `releases.length`, before `normalizeMusicBrainzRelease` filtering. */
+  rawCount: number
+  /** The provider's own `count` field - the total matching result count. */
+  providerCount: number
+  /** The provider's own `offset` field, already verified to equal the requested offset. */
+  providerOffset: number
 }
 
 export type MusicBrainzLookupOptions = MusicBrainzFetchOptions & {
@@ -194,14 +217,81 @@ function extractScore(release: MusicBrainzRelease): number | null {
   return typeof score === 'number' && Number.isFinite(score) ? score : null
 }
 
-export function buildMusicBrainzSearchUrl(query: string, limit: number): URL {
+export function buildMusicBrainzSearchUrl(
+  query: string,
+  limit: number,
+  offset: number,
+): URL {
   const url = new URL(`${MUSICBRAINZ_API_BASE_URL}/release`)
 
   url.searchParams.set('query', query)
   url.searchParams.set('fmt', 'json')
   url.searchParams.set('limit', limit.toString())
+  url.searchParams.set('offset', offset.toString())
 
   return url
+}
+
+// Lucene defines AND/OR/NOT as ALL-CAPS Boolean-operator word tokens
+// (https://lucene.apache.org/core/2_9_4/queryparsersyntax.html, "Boolean
+// Operators"), distinct from and not covered by the punctuation escape set
+// below. A standalone occurrence of one of these words in literal user text
+// would otherwise be parsed as a live Boolean operator rather than searched
+// for. Matched with a Unicode-aware boundary (native `\p{L}`/`\p{N}`
+// property escapes plus lookaround, not JavaScript's ASCII-only `\b`) so a
+// keyword embedded directly in non-Latin or accented-Latin text with no
+// separating whitespace (e.g. a Hebrew word immediately followed by `AND`)
+// is never incorrectly treated as standalone (spec 0017 §6.2).
+const BOOLEAN_KEYWORD_PATTERN = /(?<![\p{L}\p{N}_])(AND|OR|NOT)(?![\p{L}\p{N}_])/gu
+
+/**
+ * Lowercases every standalone, case-sensitive `AND`/`OR`/`NOT` token in
+ * `s`, leaving every other character - and all whitespace - untouched.
+ * Lucene only recognizes these as operators when ALL CAPS, so a lowercased
+ * token is guaranteed never to be parsed as one; MusicBrainz's underlying
+ * full-text index normalizes case during analysis, so this does not change
+ * what the user is searching for (spec 0017 §6.2).
+ */
+export function literalize(s: string): string {
+  return s.replace(BOOLEAN_KEYWORD_PATTERN, (match) => match.toLowerCase())
+}
+
+// The documented Lucene special characters (spec 0017 §5.1):
+// + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
+// (MusicBrainz's own example additionally escapes `/`.) Escaping each
+// individual character - rather than only the doubled `&&`/`||` forms -
+// already neutralizes the symbolic `&&`/`||`/`!` operator forms too.
+const LUCENE_SPECIAL_CHARACTER_PATTERN = /[-+&|!(){}[\]^"~*?:\\/]/g
+
+/**
+ * Backslash-escapes every Lucene special character in `s`, in a single pass
+ * (so inserted backslashes are never themselves re-escaped).
+ */
+export function escape(s: string): string {
+  return s.replace(LUCENE_SPECIAL_CHARACTER_PATTERN, (char) => `\\${char}`)
+}
+
+/**
+ * The exact mode -> MusicBrainz `query` value templates (spec 0017 §6.2).
+ * `raw` is expected already trimmed (leading/trailing whitespace) with
+ * internal whitespace preserved exactly as typed - this function does not
+ * re-trim or collapse it. The trusted `OR` joining `all` mode's two field
+ * clauses is spliced in here, after `literalize`/`escape` have already run
+ * on the user's own text - it is the only `OR` in the resulting query
+ * permitted to act as live Boolean syntax.
+ */
+export function buildMusicBrainzQuery(mode: SearchMode, raw: string): string {
+  const term = escape(literalize(raw))
+
+  if (mode === 'artist') {
+    return `artist:(${term})`
+  }
+
+  if (mode === 'album') {
+    return `release:(${term})`
+  }
+
+  return `artist:(${term}) OR release:(${term})`
 }
 
 export function buildMusicBrainzLookupUrl(providerReleaseId: string): URL {
@@ -323,6 +413,16 @@ export function normalizeMusicBrainzRelease(
     return null
   }
 
+  // The single canonical implementation (spec 0017 §13.3) - `providerReleaseId`
+  // is already validated above, so this cannot actually return null, but
+  // routing through the shared helper (rather than re-inlining the URL
+  // string) is what keeps it the one true implementation.
+  const derivedProviderPageUrl = musicBrainzReleaseUrl(providerReleaseId)
+
+  if (!derivedProviderPageUrl) {
+    return null
+  }
+
   return {
     provider: MUSICBRAINZ_PROVIDER,
     providerReleaseId,
@@ -336,7 +436,7 @@ export function normalizeMusicBrainzRelease(
     country: cleanOptionalText(release.country, RELEASE_FIELD_LIMITS.country),
     format: extractFormat(release),
     transientCoverDisplayUrl: null,
-    derivedProviderPageUrl: `https://musicbrainz.org/release/${providerReleaseId}`,
+    derivedProviderPageUrl,
   }
 }
 
@@ -402,13 +502,30 @@ async function fetchMusicBrainzJson(
   }
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+/**
+ * A single search request/response, including all of spec 0017 §8.4's
+ * malformed-pagination-metadata validation. This is the one place that
+ * validates the provider's raw response shape (the existing `releases`-is-
+ * an-array check already lived here; the new `count`/`offset`/relational
+ * checks join it in the same place, rather than being duplicated in the
+ * handler). Any failure throws the existing `provider_bad_response`
+ * category - never a silent default, never a fallback derived from
+ * `candidates.length`/`rawCount`.
+ */
 export async function searchMusicBrainzReleases({
   limit,
+  mode,
+  offset,
   query,
   ...fetchOptions
-}: MusicBrainzSearchOptions): Promise<CatalogCandidate[]> {
+}: MusicBrainzSearchOptions): Promise<MusicBrainzSearchPage> {
+  const builtQuery = buildMusicBrainzQuery(mode, query)
   const payload = await fetchMusicBrainzJson(
-    buildMusicBrainzSearchUrl(query, limit),
+    buildMusicBrainzSearchUrl(builtQuery, limit, offset),
     fetchOptions,
   )
 
@@ -419,9 +536,43 @@ export async function searchMusicBrainzReleases({
     )
   }
 
-  return payload.releases
+  const providerCount = payload.count
+  const providerOffset = payload.offset
+  const rawCount = payload.releases.length
+
+  if (!isNonNegativeInteger(providerCount) || !isNonNegativeInteger(providerOffset)) {
+    throw new MusicBrainzError(
+      'provider_bad_response',
+      'MusicBrainz search response was malformed.',
+    )
+  }
+
+  if (providerOffset !== offset) {
+    throw new MusicBrainzError(
+      'provider_bad_response',
+      'MusicBrainz search response was malformed.',
+    )
+  }
+
+  if (rawCount > limit) {
+    throw new MusicBrainzError(
+      'provider_bad_response',
+      'MusicBrainz search response was malformed.',
+    )
+  }
+
+  if (rawCount > 0 && providerCount < offset + rawCount) {
+    throw new MusicBrainzError(
+      'provider_bad_response',
+      'MusicBrainz search response was malformed.',
+    )
+  }
+
+  const candidates = payload.releases
     .map((release) => normalizeMusicBrainzRelease(release))
     .filter((candidate): candidate is CatalogCandidate => candidate !== null)
+
+  return { candidates, providerCount, providerOffset, rawCount }
 }
 
 export async function lookupMusicBrainzRelease({

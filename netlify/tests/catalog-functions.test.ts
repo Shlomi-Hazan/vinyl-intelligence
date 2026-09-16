@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import addHandler, { config as addConfig } from '../functions/catalog-add.mts'
 import searchHandler, { config as searchConfig } from '../functions/catalog-search.mts'
 import {
+  computeHasMore,
   handleCatalogAdd,
   handleCatalogSearch,
 } from '../functions/_shared/catalog-handlers.mts'
@@ -57,7 +58,12 @@ function createDependencies(options: {
   releaseUpsertError?: Error
   searchError?: Error
 } = {}) {
-  const searchReleases = vi.fn(async () => [catalogCandidate()])
+  const searchReleases = vi.fn(async () => ({
+    candidates: [catalogCandidate()],
+    providerCount: 1,
+    providerOffset: 0,
+    rawCount: 1,
+  }))
   const lookupRelease = vi.fn(async () => catalogCandidate())
   const lookupReleaseGroupGenres = vi.fn(async (): Promise<string[]> => [])
   const paceProviderRequest = vi.fn(async () => undefined)
@@ -222,6 +228,8 @@ describe('catalog Netlify functions', () => {
 
     expect(searchReleases).toHaveBeenCalledWith({
       limit: 10,
+      mode: 'all',
+      offset: 0,
       query: 'pink',
       userAgent: env.MUSICBRAINZ_USER_AGENT,
     })
@@ -245,6 +253,8 @@ describe('catalog Netlify functions', () => {
           title: 'The Dark Side of the Moon',
         },
       ],
+      hasMore: false,
+      offset: 0,
     })
     expect(paceProviderRequest).toHaveBeenCalledOnce()
   })
@@ -651,5 +661,333 @@ describe('catalog Netlify functions', () => {
     expect(response.status).toBe(200)
     expect(lookupReleaseGroupGenres).not.toHaveBeenCalled()
     expect(paceProviderRequest).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('computeHasMore (spec 0017 §7.2 - the three worked examples)', () => {
+  it('a completely full raw page that is also the entire result set -> false', () => {
+    expect(
+      computeHasMore({ limit: 5, offset: 0, providerCount: 5, rawCount: 5 }),
+    ).toBe(false)
+  })
+
+  it('a completely full raw page with more results beyond it -> true', () => {
+    expect(
+      computeHasMore({ limit: 5, offset: 0, providerCount: 6, rawCount: 5 }),
+    ).toBe(true)
+  })
+
+  it('the 20-result window boundary short-circuits regardless of providerCount -> false', () => {
+    expect(
+      computeHasMore({ limit: 5, offset: 15, providerCount: 100, rawCount: 5 }),
+    ).toBe(false)
+  })
+
+  it('a partial raw page is exhaustion regardless of providerCount -> false', () => {
+    expect(
+      computeHasMore({ limit: 5, offset: 0, providerCount: 100, rawCount: 3 }),
+    ).toBe(false)
+  })
+})
+
+describe('catalog search - modes, pagination, and exact lookup (spec 0017)', () => {
+  it('an omitted mode defaults to all', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(searchReleases).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'all' }),
+    )
+  })
+
+  it('accepts each explicit valid mode', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    for (const mode of ['all', 'artist', 'album']) {
+      searchReleases.mockClear()
+      const response = await handleCatalogSearch(
+        authedRequest(`http://app.test/api/catalog/search?q=pink&mode=${mode}`),
+        env,
+        dependencies,
+      )
+
+      expect(response.status).toBe(200)
+      expect(searchReleases).toHaveBeenCalledWith(
+        expect.objectContaining({ mode }),
+      )
+    }
+  })
+
+  it('rejects a present but unrecognized mode as invalid_query (not silently coerced to all)', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink&mode=bogus'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(searchReleases).not.toHaveBeenCalled()
+  })
+
+  it('an omitted offset defaults to 0', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(searchReleases).toHaveBeenCalledWith(
+      expect.objectContaining({ offset: 0 }),
+    )
+  })
+
+  it('accepts a valid non-negative integer offset', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink&offset=5'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(searchReleases).toHaveBeenCalledWith(
+      expect.objectContaining({ offset: 5 }),
+    )
+  })
+
+  it.each(['-1', '1.5', 'abc'])(
+    'rejects an invalid offset (%s) as invalid_query',
+    async (offset) => {
+      const { dependencies, searchReleases } = createDependencies()
+
+      const response = await handleCatalogSearch(
+        authedRequest(`http://app.test/api/catalog/search?q=pink&offset=${offset}`),
+        env,
+        dependencies,
+      )
+
+      expect(response.status).toBe(400)
+      await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+      expect(searchReleases).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects a combined offset + limit exceeding the 20-result window, even when each is individually valid', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink&offset=15&limit=10'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(searchReleases).not.toHaveBeenCalled()
+  })
+
+  it('accepts the boundary case that exactly fills the 20-result window', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink&offset=15&limit=5'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(searchReleases).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5, offset: 15 }),
+    )
+  })
+
+  it('reflects the count-aware hasMore formula in the actual response', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+    searchReleases.mockResolvedValue({
+      candidates: [catalogCandidate()],
+      providerCount: 6,
+      providerOffset: 0,
+      rawCount: 5,
+    })
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink&limit=5'),
+      env,
+      dependencies,
+    )
+
+    await expect(readJson(response)).resolves.toMatchObject({ hasMore: true, offset: 0 })
+  })
+
+  it('rejects releaseId combined with q', async () => {
+    const { dependencies, searchReleases, lookupRelease } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?releaseId=${providerReleaseId}&q=pink`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(searchReleases).not.toHaveBeenCalled()
+    expect(lookupRelease).not.toHaveBeenCalled()
+  })
+
+  it.each(['mode=all', 'offset=0', 'limit=5'])(
+    'rejects releaseId combined with %s',
+    async (extraParam) => {
+      const { dependencies, lookupRelease } = createDependencies()
+
+      const response = await handleCatalogSearch(
+        authedRequest(
+          `http://app.test/api/catalog/search?releaseId=${providerReleaseId}&${extraParam}`,
+        ),
+        env,
+        dependencies,
+      )
+
+      expect(response.status).toBe(400)
+      await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+      expect(lookupRelease).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects a request with neither q nor releaseId', async () => {
+    const { dependencies, searchReleases, lookupRelease } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(searchReleases).not.toHaveBeenCalled()
+    expect(lookupRelease).not.toHaveBeenCalled()
+  })
+
+  it('rejects a malformed releaseId', async () => {
+    const { dependencies, lookupRelease } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?releaseId=not-a-uuid'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(lookupRelease).not.toHaveBeenCalled()
+  })
+
+  it('performs the exact lookup and returns the single-candidate response shape', async () => {
+    const { dependencies, lookupRelease, paceProviderRequest } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?releaseId=${providerReleaseId}`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(lookupRelease).toHaveBeenCalledWith({
+      providerReleaseId,
+      userAgent: env.MUSICBRAINZ_USER_AGENT,
+    })
+    expect(paceProviderRequest).toHaveBeenCalledOnce()
+    await expect(readJson(response)).resolves.toEqual({
+      candidates: [catalogCandidate()],
+      hasMore: false,
+      offset: 0,
+    })
+  })
+
+  it('the exact lookup performs no genre enrichment and no database write', async () => {
+    const { dependencies, createClient, lookupReleaseGroupGenres, serviceClient } =
+      createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?releaseId=${providerReleaseId}`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(lookupReleaseGroupGenres).not.toHaveBeenCalled()
+    // The service-role createClient path is never selected for this
+    // request - `serviceClient` is constructed up-front in the shared test
+    // harness (it exists to serve the add-path tests above), so the
+    // meaningful assertion is that createClient is never invoked with the
+    // service-role key, not that the object fails to exist.
+    expect(createClient).not.toHaveBeenCalledWith(
+      expect.any(String),
+      'service-key',
+      expect.anything(),
+    )
+    expect(serviceClient.from).not.toHaveBeenCalled()
+  })
+
+  it('the exact lookup reuses the existing single bounded rate-limit retry', async () => {
+    const { dependencies, delay, lookupRelease, paceProviderRequest } =
+      createDependencies()
+
+    lookupRelease.mockReset()
+    lookupRelease
+      .mockRejectedValueOnce(
+        new MusicBrainzError(
+          'provider_rate_limited',
+          'MusicBrainz is rate limiting or temporarily unavailable.',
+          503,
+        ),
+      )
+      .mockResolvedValueOnce(catalogCandidate())
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?releaseId=${providerReleaseId}`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(lookupRelease).toHaveBeenCalledTimes(2)
+    expect(delay).toHaveBeenCalledTimes(1)
+    expect(delay).toHaveBeenCalledWith(1200)
+    // Pacing is the shared, unmodified pacer every MusicBrainz call already
+    // uses - twice here, once for the initial attempt and once for the
+    // retry (spec 0017 §14).
+    expect(paceProviderRequest).toHaveBeenCalledTimes(2)
+  })
+
+  it('a normal search still gets no retry policy of its own (unchanged, re-verified)', async () => {
+    const { dependencies, delay, searchReleases } = createDependencies({
+      searchError: new MusicBrainzError(
+        'provider_rate_limited',
+        'MusicBrainz is rate limiting or temporarily unavailable.',
+        503,
+      ),
+    })
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink&offset=5'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(503)
+    expect(searchReleases).toHaveBeenCalledTimes(1)
+    expect(delay).not.toHaveBeenCalled()
   })
 })

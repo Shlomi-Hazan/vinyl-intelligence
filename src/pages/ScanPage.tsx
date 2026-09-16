@@ -32,7 +32,7 @@ export function ScanPage() {
         collectionStatus={status}
         onCollectionChanged={invalidate}
         onSearchByText={(query) => {
-          saveCatalogSearchDraft(userId, { draftQuery: query, result: null })
+          saveCatalogSearchDraft(userId, { draftQuery: query, mode: 'all', result: null })
           navigate('/discover')
         }}
       />

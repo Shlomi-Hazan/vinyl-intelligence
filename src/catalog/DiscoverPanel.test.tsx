@@ -3,18 +3,21 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DiscoverPanel } from './DiscoverPanel.tsx'
+import { buildUserSessionKey } from '../lib/session/sessionDraft.ts'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
 import type { LoadPhase } from '../app/collection-data-context.ts'
-import type { CatalogCandidate } from '../lib/catalog/types.ts'
+import type { CatalogCandidate, CatalogSearchResponse } from '../lib/catalog/types.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
-const searchCatalog = vi.fn()
+const searchCatalogPage = vi.fn()
+const lookupCatalogRelease = vi.fn()
 const addCatalogReleaseToCollection = vi.fn()
 const addManual = vi.fn()
 
 vi.mock('../lib/catalog/client.ts', () => ({
-  searchCatalog: (...a: unknown[]) => searchCatalog(...a),
+  searchCatalogPage: (...a: unknown[]) => searchCatalogPage(...a),
+  lookupCatalogRelease: (...a: unknown[]) => lookupCatalogRelease(...a),
   addCatalogReleaseToCollection: (...a: unknown[]) =>
     addCatalogReleaseToCollection(...a),
 }))
@@ -50,6 +53,16 @@ function candidate(over: Partial<CatalogCandidate> = {}): CatalogCandidate {
     derivedProviderPageUrl: 'https://musicbrainz.org/release/1',
     ...over,
   }
+}
+
+/** A well-formed `CatalogSearchResponse` for `searchCatalogPage`/
+ * `lookupCatalogRelease` mocks - `offset`/`hasMore` default to the common
+ * "first page, exhausted" case, overridable per test. */
+function page(
+  candidates: CatalogCandidate[],
+  overrides: Partial<CatalogSearchResponse> = {},
+): CatalogSearchResponse {
+  return { candidates, hasMore: false, offset: 0, ...overrides }
 }
 
 function ownedItem(
@@ -105,15 +118,17 @@ function renderPanel(
 describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
   it('renders composite candidate meta as separate <bdi> runs (year / Hebrew label / Latin format)', async () => {
     const user = userEvent.setup()
-    searchCatalog.mockResolvedValue([
-      candidate({
-        releaseYear: 1985,
-        label: 'הד ארצי',
-        catalogNumber: null,
-        country: null,
-        format: 'Vinyl',
-      }),
-    ])
+    searchCatalogPage.mockResolvedValue(
+      page([
+        candidate({
+          releaseYear: 1985,
+          label: 'הד ארצי',
+          catalogNumber: null,
+          country: null,
+          format: 'Vinyl',
+        }),
+      ]),
+    )
     renderPanel()
     await user.type(screen.getByLabelText('Search the catalog'), 'test')
     await user.keyboard('{Enter}')
@@ -133,9 +148,9 @@ describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
 
   it('gives the catalog search input dir="auto" and isolates a Hebrew candidate', async () => {
     const user = userEvent.setup()
-    searchCatalog.mockResolvedValue([
-      candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
-    ])
+    searchCatalogPage.mockResolvedValue(
+      page([candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' })]),
+    )
     const { container } = renderPanel()
     expect(screen.getByLabelText('Search the catalog')).toHaveAttribute('dir', 'auto')
 
@@ -152,9 +167,9 @@ describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
 
   it('isolates a Hebrew artist separately from a Latin title on the same candidate (no leakage)', async () => {
     const user = userEvent.setup()
-    searchCatalog.mockResolvedValue([
-      candidate({ artist: 'שלום חנוך', title: 'Greatest Hits' }),
-    ])
+    searchCatalogPage.mockResolvedValue(
+      page([candidate({ artist: 'שלום חנוך', title: 'Greatest Hits' })]),
+    )
     renderPanel()
     await user.type(screen.getByLabelText('Search the catalog'), 'test')
     await user.keyboard('{Enter}')
@@ -170,7 +185,7 @@ describe('DiscoverPanel - Hebrew & multilingual (spec 0015)', () => {
 
   it('an all-Latin/English candidate is unaffected by the Hebrew isolation path', async () => {
     const user = userEvent.setup()
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     renderPanel()
     await user.type(screen.getByLabelText('Search the catalog'), 'dummy')
     await user.keyboard('{Enter}')
@@ -187,12 +202,12 @@ describe('DiscoverPanel', () => {
   it('starts with an initial prompt (no search fired)', () => {
     renderPanel()
     expect(screen.getByText(/Search MusicBrainz for a release/i)).toBeInTheDocument()
-    expect(searchCatalog).not.toHaveBeenCalled()
+    expect(searchCatalogPage).not.toHaveBeenCalled()
   })
 
   it('search: loading -> results with only real metadata', async () => {
-    let resolve: (v: CatalogCandidate[]) => void = () => {}
-    searchCatalog.mockImplementation(() => new Promise((r) => (resolve = r)))
+    let resolve: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementation(() => new Promise((r) => (resolve = r)))
     const { container } = render(
       <MemoryRouter>
         <DiscoverPanel
@@ -208,7 +223,7 @@ describe('DiscoverPanel', () => {
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
 
-    resolve([candidate()])
+    resolve(page([candidate()]))
     const card = await screen.findByRole('article')
     expect(within(card).getByText('Portishead')).toBeInTheDocument()
     expect(within(card).getByText('Dummy')).toBeInTheDocument()
@@ -216,11 +231,14 @@ describe('DiscoverPanel', () => {
     expect(card.querySelector('.vi-candidate__meta')).toHaveTextContent(
       '1994 · Go! Beat · GB · LP',
     )
-    expect(searchCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead')
+    expect(searchCatalogPage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ limit: 5, mode: 'all', offset: 0, query: 'portishead' }),
+    )
   })
 
   it('no results shows a distinct empty state, not an error', async () => {
-    searchCatalog.mockResolvedValue([])
+    searchCatalogPage.mockResolvedValue(page([]))
     renderPanel()
     await userEvent.setup().type(screen.getByRole('searchbox'), 'zzz nothing{enter}')
     expect(
@@ -230,7 +248,7 @@ describe('DiscoverPanel', () => {
   })
 
   it('a provider error is shown as an error with a retry', async () => {
-    searchCatalog.mockRejectedValue(new Error('MusicBrainz unavailable'))
+    searchCatalogPage.mockRejectedValue(new Error('MusicBrainz unavailable'))
     renderPanel()
     await userEvent.setup().type(screen.getByRole('searchbox'), 'anything{enter}')
     expect(await screen.findByText('MusicBrainz unavailable')).toBeInTheDocument()
@@ -238,7 +256,7 @@ describe('DiscoverPanel', () => {
   })
 
   it('an already-owned release shows "In your collection" AND "Add another copy" instead of plain Add', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     renderPanel(ownedPortishead())
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
     expect(await screen.findByText('In your collection')).toBeInTheDocument()
@@ -247,7 +265,7 @@ describe('DiscoverPanel', () => {
   })
 
   it('adds a candidate and notifies the collection changed', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     addCatalogReleaseToCollection.mockResolvedValue({})
     const { onCollectionChanged } = renderPanel()
     const user = userEvent.setup()
@@ -270,11 +288,12 @@ describe('DiscoverPanel', () => {
     expect(screen.getByRole('heading', { name: 'Add a record manually' })).toBeInTheDocument()
   })
 
-  it('"New search" clears the query, results, and the stored draft', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+  it('"New search" clears the query, results, and the stored draft, but preserves the selected mode', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     const user = userEvent.setup()
     renderPanel()
 
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
     await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
     await screen.findByRole('article')
     expect(sessionStorage.length).toBeGreaterThan(0)
@@ -288,10 +307,15 @@ describe('DiscoverPanel', () => {
     expect(
       JSON.stringify({ ...sessionStorage }),
     ).not.toContain('portishead')
+    // mode is preserved (fixed Plan 017 decision)
+    expect(screen.getByRole('radio', { name: 'Artist' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
   })
 
   it('restores the previous query + results, and the same query can be re-run', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     const user = userEvent.setup()
 
     const first = renderPanel()
@@ -300,8 +324,10 @@ describe('DiscoverPanel', () => {
     first.unmount?.()
 
     // a fresh mount restores from the draft without a new call
-    searchCatalog.mockClear()
-    searchCatalog.mockResolvedValue([candidate(), candidate({ providerReleaseId: 'x2' })])
+    searchCatalogPage.mockClear()
+    searchCatalogPage.mockResolvedValue(
+      page([candidate(), candidate({ providerReleaseId: 'x2' })]),
+    )
     render(
       <MemoryRouter>
         <DiscoverPanel
@@ -314,11 +340,490 @@ describe('DiscoverPanel', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('article')).toBeInTheDocument()
-    expect(searchCatalog).not.toHaveBeenCalled()
+    expect(searchCatalogPage).not.toHaveBeenCalled()
 
     // re-running the same restored query still works
     await user.type(screen.getByRole('searchbox'), '{enter}')
-    await waitFor(() => expect(searchCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead'))
+    await waitFor(() =>
+      expect(searchCatalogPage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ query: 'portishead' }),
+      ),
+    )
+  })
+
+  it('restores an old-shaped stored draft (no mode/offset/hasMore) without invalidating it', async () => {
+    sessionStorage.setItem(
+      buildUserSessionKey('catalog-search', 'uid'),
+      JSON.stringify({
+        draftQuery: 'portishead',
+        result: { submittedQuery: 'portishead', candidates: [candidate()] },
+      }),
+    )
+    renderPanel()
+
+    expect(await screen.findByRole('article')).toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toHaveValue('portishead')
+    // mode defaults to 'all' when absent from the old-shaped draft
+    expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    // no Load More offered - hasMore defaults to false
+    expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull()
+    expect(searchCatalogPage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      name: 'a malformed top-level mode ("bogus")',
+      draft: { draftQuery: 'portishead', mode: 'bogus', result: null },
+    },
+    {
+      name: 'a malformed result.offset (-1, negative)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          offset: -1,
+        },
+      },
+    },
+    {
+      name: 'a malformed result.offset (1.5, fractional)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          offset: 1.5,
+        },
+      },
+    },
+    {
+      name: 'a malformed result.offset ("5", a string)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          offset: '5',
+        },
+      },
+    },
+    {
+      name: 'a malformed result.hasMore ("true", a string)',
+      draft: {
+        draftQuery: 'portishead',
+        result: {
+          submittedQuery: 'portishead',
+          candidates: [candidate()],
+          hasMore: 'true',
+        },
+      },
+    },
+  ])(
+    'a present-but-malformed draft field ($name) invalidates the stored draft rather than being silently defaulted (spec 0017 §9)',
+    ({ draft }) => {
+      sessionStorage.setItem(
+        buildUserSessionKey('catalog-search', 'uid'),
+        JSON.stringify(draft),
+      )
+      renderPanel()
+
+      // the whole draft is ignored - back to the ordinary initial state,
+      // not a half-restored query/mode/result
+      expect(screen.getByText(/Search MusicBrainz for a release/i)).toBeInTheDocument()
+      expect(screen.getByRole('searchbox')).toHaveValue('')
+      expect(screen.queryByRole('article')).toBeNull()
+      expect(searchCatalogPage).not.toHaveBeenCalled()
+    },
+  )
+})
+
+describe('DiscoverPanel - search modes (spec 0017 §6/§19)', () => {
+  it('the mode selector uses radiogroup/radio/aria-checked, never aria-pressed', () => {
+    renderPanel()
+    const group = screen.getByRole('radiogroup', { name: 'Search mode' })
+    expect(group).toBeInTheDocument()
+    const options = within(group).getAllByRole('radio')
+    expect(options.map((o) => o.textContent)).toEqual(['All', 'Artist', 'Album'])
+    expect(options[0]).toHaveAttribute('aria-checked', 'true')
+    expect(options[0]).not.toHaveAttribute('aria-pressed')
+  })
+
+  it('selecting a mode sends it on the next search, clears prior results, but keeps typed text', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    await user.type(screen.getByRole('searchbox'), ' more')
+    await user.click(screen.getByRole('radio', { name: 'Album' }))
+
+    // results/pagination cleared, back to the initial hint
+    expect(screen.queryByRole('article')).toBeNull()
+    expect(screen.getByText(/Search MusicBrainz for a release/i)).toBeInTheDocument()
+    // typed-but-unsubmitted text preserved
+    expect(screen.getByRole('searchbox')).toHaveValue('portishead more')
+
+    searchCatalogPage.mockClear()
+    await user.type(screen.getByRole('searchbox'), '{enter}')
+    await waitFor(() =>
+      expect(searchCatalogPage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ mode: 'album' }),
+      ),
+    )
+  })
+
+  it('a stale response from a superseded mode never overwrites the newer results', async () => {
+    let resolveFirst: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementationOnce(
+      () => new Promise((r) => (resolveFirst = r)),
+    )
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    // switch mode while the first request is still in flight
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'newer' })]),
+    )
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
+    await user.click(screen.getByRole('searchbox'))
+    await user.keyboard('{Enter}')
+
+    await screen.findByRole('article')
+    expect(screen.getByText('Dummy')).toBeInTheDocument()
+
+    // the stale first response now resolves - it must be discarded
+    resolveFirst(page([candidate({ providerReleaseId: 'stale', title: 'Stale Title' })]))
+    await waitFor(() => expect(screen.queryByText('Stale Title')).toBeNull())
+    expect(screen.getByText('Dummy')).toBeInTheDocument()
+  })
+})
+
+describe('DiscoverPanel - Load More (spec 0017 §7)', () => {
+  it('appends a second page without replacing the first, and dedupes by providerReleaseId', async () => {
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate()], { hasMore: true }),
+    )
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    searchCatalogPage.mockResolvedValueOnce(
+      page(
+        [candidate(), candidate({ providerReleaseId: 'x2', title: 'Second' })],
+        { offset: 5, hasMore: false },
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+
+    await screen.findByText('Second')
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(searchCatalogPage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ offset: 5 }),
+    )
+    // exhausted - the button is gone
+    expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull()
+  })
+
+  it('rapid repeated clicks issue exactly one Load More request', async () => {
+    searchCatalogPage.mockResolvedValueOnce(page([candidate()], { hasMore: true }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    let resolveMore: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementationOnce(
+      () => new Promise((r) => (resolveMore = r)),
+    )
+    const button = screen.getByRole('button', { name: 'Load more results' })
+    await user.click(button)
+    await user.click(button)
+    await user.click(button)
+
+    expect(searchCatalogPage).toHaveBeenCalledTimes(2) // 1 first page + 1 Load More
+    resolveMore(page([candidate()], { offset: 5, hasMore: false }))
+    await waitFor(() => expect(searchCatalogPage).toHaveBeenCalledTimes(2))
+  })
+
+  it('a failed Load More request preserves prior results and offers a same-offset retry', async () => {
+    searchCatalogPage.mockResolvedValueOnce(page([candidate()], { hasMore: true }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    searchCatalogPage.mockRejectedValueOnce(new Error('MusicBrainz unavailable'))
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+
+    expect(await screen.findByText('MusicBrainz unavailable')).toBeInTheDocument()
+    // the original result is untouched
+    expect(screen.getByText('Dummy')).toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate(), candidate({ providerReleaseId: 'x2', title: 'Second' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await screen.findByText('Second')
+    // retry re-requested the SAME next offset, not a skipped one
+    expect(searchCatalogPage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ offset: 5 }),
+    )
+  })
+
+  it('exhaustion (hasMore: false on the first page) shows no Load More button', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate()], { hasMore: false }))
+    renderPanel()
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+    expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull()
+  })
+
+  it('a new first-page search while Load More is unresolved supersedes it and leaves the new Load More usable (not stuck loading)', async () => {
+    searchCatalogPage.mockResolvedValueOnce(page([candidate()], { hasMore: true }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    let resolveStaleLoadMore: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementationOnce(
+      () => new Promise((r) => (resolveStaleLoadMore = r)),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+    // the stale Load More request is now pending/unresolved
+
+    // a brand-new first-page search supersedes it
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'newer', title: 'Newer Search Result' })], {
+        hasMore: true,
+      }),
+    )
+    await user.clear(screen.getByRole('searchbox'))
+    await user.type(screen.getByRole('searchbox'), 'radiohead{enter}')
+
+    await screen.findByText('Newer Search Result')
+    // the new search's own Load More is enabled/usable, not stuck disabled
+    // from the stale request's loadingMore
+    const newLoadMoreButton = screen.getByRole('button', { name: 'Load more results' })
+    expect(newLoadMoreButton).toBeEnabled()
+
+    // the stale Load More page finally resolves - it must never appear
+    resolveStaleLoadMore(
+      page([candidate({ providerReleaseId: 'stale-page', title: 'Stale Page Result' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await waitFor(() => expect(searchCatalogPage).toHaveBeenCalledTimes(3))
+    expect(screen.queryByText('Stale Page Result')).toBeNull()
+    expect(screen.getByText('Newer Search Result')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load more results' })).toBeEnabled()
+
+    // and that Load More button genuinely still works
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'page-2', title: 'Page Two Result' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+    await screen.findByText('Page Two Result')
+  })
+
+  it('a mode change while Load More is unresolved discards the stale page and leaves the new mode free to paginate normally', async () => {
+    searchCatalogPage.mockResolvedValueOnce(page([candidate()], { hasMore: true }))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByRole('article')
+
+    let resolveStaleLoadMore: (v: CatalogSearchResponse) => void = () => {}
+    searchCatalogPage.mockImplementationOnce(
+      () => new Promise((r) => (resolveStaleLoadMore = r)),
+    )
+    await user.click(screen.getByRole('button', { name: 'Load more results' }))
+
+    // mode change supersedes the pending Load More
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
+    expect(screen.queryByRole('article')).toBeNull()
+
+    // a later search under the new mode can paginate normally
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'artist-1', title: 'Artist Mode Result' })], {
+        hasMore: true,
+      }),
+    )
+    await user.click(screen.getByRole('searchbox'))
+    await user.keyboard('{Enter}')
+    await screen.findByText('Artist Mode Result')
+
+    const loadMoreButton = screen.getByRole('button', { name: 'Load more results' })
+    expect(loadMoreButton).toBeEnabled()
+
+    searchCatalogPage.mockResolvedValueOnce(
+      page([candidate({ providerReleaseId: 'artist-2', title: 'Artist Mode Page Two' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await user.click(loadMoreButton)
+    await screen.findByText('Artist Mode Page Two')
+
+    // the stale pre-mode-change Load More page must never appear
+    resolveStaleLoadMore(
+      page([candidate({ providerReleaseId: 'stale', title: 'Stale All-Mode Page' })], {
+        offset: 5,
+        hasMore: false,
+      }),
+    )
+    await waitFor(() => expect(searchCatalogPage).toHaveBeenCalledTimes(4))
+    expect(screen.queryByText('Stale All-Mode Page')).toBeNull()
+  })
+})
+
+describe('DiscoverPanel - exact MusicBrainz release URL lookup (spec 0017 §10-§11)', () => {
+  const validUrl = 'https://musicbrainz.org/release/11111111-1111-4111-8111-111111111111'
+
+  it('rejects an invalid URL locally, with zero network calls', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(
+      screen.getByLabelText('Know the exact release?'),
+      'https://example.com/release/11111111-1111-4111-8111-111111111111',
+    )
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    expect(
+      await screen.findByText('That doesn’t look like a MusicBrainz release URL.'),
+    ).toBeInTheDocument()
+    expect(lookupCatalogRelease).not.toHaveBeenCalled()
+  })
+
+  it('a valid URL performs the lookup and renders one candidate via the normal card', async () => {
+    lookupCatalogRelease.mockResolvedValue(page([candidate()]))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByLabelText('Know the exact release?'), validUrl)
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    const card = await screen.findByRole('article')
+    expect(within(card).getByText('Portishead')).toBeInTheDocument()
+    expect(lookupCatalogRelease).toHaveBeenCalledWith(
+      expect.anything(),
+      '11111111-1111-4111-8111-111111111111',
+    )
+  })
+
+  it('the exact lookup makes no database write by itself', async () => {
+    lookupCatalogRelease.mockResolvedValue(page([candidate()]))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByLabelText('Know the exact release?'), validUrl)
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    await screen.findByRole('article')
+    expect(addCatalogReleaseToCollection).not.toHaveBeenCalled()
+  })
+
+  it('an already-owned exact result shows the duplicate-copy affordance and dialog', async () => {
+    lookupCatalogRelease.mockResolvedValue(page([candidate()]))
+    const user = userEvent.setup()
+    renderPanel(ownedPortishead())
+
+    await user.type(screen.getByLabelText('Know the exact release?'), validUrl)
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add another copy' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('a collectionStatus !== ready render never classifies the exact result as owned or not-owned', async () => {
+    lookupCatalogRelease.mockResolvedValue(page([candidate()]))
+    const user = userEvent.setup()
+    renderPanel([], 'loading')
+
+    await user.type(screen.getByLabelText('Know the exact release?'), validUrl)
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Checking collection…' }),
+    ).toBeDisabled()
+  })
+
+  it('a normal search does not automatically clear a successful exact-lookup result', async () => {
+    lookupCatalogRelease.mockResolvedValue(
+      page([candidate({ providerReleaseId: 'exact-1', title: 'Exact Result' })]),
+    )
+    searchCatalogPage.mockResolvedValue(
+      page([candidate({ providerReleaseId: 'search-1', title: 'Search Result' })]),
+    )
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByLabelText('Know the exact release?'), validUrl)
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+    await screen.findByText('Exact Result')
+
+    await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
+    await screen.findByText('Search Result')
+
+    expect(screen.getByText('Exact Result')).toBeInTheDocument()
+  })
+})
+
+describe('DiscoverPanel - Search on MusicBrainz (spec 0017 §12)', () => {
+  it('opens the generic search URL when no term has been typed', () => {
+    renderPanel()
+    const link = screen.getByRole('link', { name: /Search on MusicBrainz/ })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://musicbrainz.org/search?type=release&method=indexed',
+    )
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
+  it('includes the currently-typed term', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead')
+    const link = screen.getByRole('link', { name: /Search on MusicBrainz/ })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://musicbrainz.org/search?query=portishead&type=release&method=indexed',
+    )
+  })
+})
+
+describe('DiscoverPanel - external-link accessibility (spec 0017 §19)', () => {
+  it('the existing per-candidate MusicBrainz link announces "(opens in a new tab)"', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
+    renderPanel()
+    await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
+    const link = await screen.findByRole('link', { name: /^MusicBrainz.*opens in a new tab/ })
+    expect(link).toHaveAttribute('href', candidate().derivedProviderPageUrl)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
   })
 })
 
@@ -327,7 +832,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
     'You already own this release. Add another physical copy to your collection?'
 
   it('a not-owned candidate keeps the ordinary single-click Add behavior, with no duplicate dialog', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     addCatalogReleaseToCollection.mockResolvedValue({})
     const { onCollectionChanged } = renderPanel([])
     const user = userEvent.setup()
@@ -341,7 +846,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
   })
 
   it('an owned candidate shows both the honest indicator and "Add another copy"', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     renderPanel(ownedPortishead())
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
 
@@ -350,7 +855,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
   })
 
   it('clicking "Add another copy" then Cancel makes zero add calls and zero collection-changed calls', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     const { onCollectionChanged } = renderPanel(ownedPortishead())
     const user = userEvent.setup()
     await user.type(screen.getByRole('searchbox'), 'portishead{enter}')
@@ -371,7 +876,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
   })
 
   it('confirming "Add another copy" makes exactly one add call for the correct candidate and notifies the collection changed', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     addCatalogReleaseToCollection.mockResolvedValue({})
     const { onCollectionChanged } = renderPanel(ownedPortishead())
     const user = userEvent.setup()
@@ -392,7 +897,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
   })
 
   it('a rapid/repeated confirmation cannot create a second add request - the outer action disables while pending', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     let resolveAdd: (v: unknown) => void = () => {}
     addCatalogReleaseToCollection.mockImplementation(
       () => new Promise((r) => (resolveAdd = r)),
@@ -424,7 +929,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
   })
 
   it('a failed duplicate add uses the existing addErrors presentation and remains recoverable', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     addCatalogReleaseToCollection.mockRejectedValue(new Error('Could not add that copy.'))
     renderPanel(ownedPortishead())
     const user = userEvent.setup()
@@ -449,9 +954,9 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
   })
 
   it('an owned Hebrew candidate still renders through the existing BidiText isolation with the duplicate UI present', async () => {
-    searchCatalog.mockResolvedValue([
-      candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' }),
-    ])
+    searchCatalogPage.mockResolvedValue(
+      page([candidate({ artist: 'שלום חנוך', title: 'מחכים למשיח' })]),
+    )
     const owned = ownedPortishead()
     owned[0].release.artist = 'שלום חנוך'
     owned[0].release.title = 'מחכים למשיח'
@@ -468,7 +973,7 @@ describe('DiscoverPanel - duplicate-copy confirmation (spec 0016 Finding B)', ()
 
 describe('DiscoverPanel - ownership gated on authoritative collection-load status (spec 0016 Finding B review correction)', () => {
   it('A: while loading, no candidate exposes an enabled add action, and shows a truthful placeholder', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     renderPanel([], 'loading')
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
 
@@ -481,7 +986,7 @@ describe('DiscoverPanel - ownership gated on authoritative collection-load statu
   })
 
   it('B: while errored, no candidate exposes an enabled add action, and shows a distinct truthful placeholder', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     renderPanel([], 'error')
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
 
@@ -494,7 +999,7 @@ describe('DiscoverPanel - ownership gated on authoritative collection-load statu
   })
 
   it('C: loading -> ready, NOT owned - the normal enabled Add action becomes available', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     const { rerender } = renderPanel([], 'loading')
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
     await screen.findByRole('button', { name: 'Checking collection…' })
@@ -517,7 +1022,7 @@ describe('DiscoverPanel - ownership gated on authoritative collection-load statu
   })
 
   it('D: loading -> ready, OWNED - the honest indicator and "Add another copy" appear', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     const { rerender } = renderPanel([], 'loading')
     await userEvent.setup().type(screen.getByRole('searchbox'), 'portishead{enter}')
     await screen.findByRole('button', { name: 'Checking collection…' })
@@ -538,7 +1043,7 @@ describe('DiscoverPanel - ownership gated on authoritative collection-load statu
   })
 
   it('E: a successful ordinary add cannot be followed by a second ordinary add during the post-add stale-reload window; the duplicate path appears once the reload returns the new item', async () => {
-    searchCatalog.mockResolvedValue([candidate()])
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
     addCatalogReleaseToCollection.mockResolvedValue({})
     const onCollectionChanged = vi.fn()
     const { rerender } = render(

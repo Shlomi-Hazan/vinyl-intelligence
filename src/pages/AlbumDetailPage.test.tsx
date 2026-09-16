@@ -225,3 +225,34 @@ describe('AlbumDetailPage', () => {
     expect(screen.queryByText('We could not find that record')).not.toBeInTheDocument()
   })
 })
+
+describe('AlbumDetailPage - MusicBrainz provenance link (spec 0017 §13)', () => {
+  const validMbid = '11111111-1111-4111-8111-111111111111'
+
+  function catalogItemWithValidMbid(): CollectionItemWithRelease {
+    const item = catalogItem()
+    item.release.provider_release_id = validMbid
+    return item
+  }
+
+  it('a catalog-backed release with a valid provider_release_id shows "View on MusicBrainz" pointing at the exact release URL', () => {
+    renderDetail(catalogItemWithValidMbid())
+    const link = screen.getByRole('link', { name: /^View on MusicBrainz.*opens in a new tab/ })
+    expect(link).toHaveAttribute('href', `https://musicbrainz.org/release/${validMbid}`)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
+  it('a manually-created release shows no MusicBrainz link', () => {
+    renderDetail(manualItem())
+    expect(screen.queryByText(/View on MusicBrainz/)).not.toBeInTheDocument()
+  })
+
+  it('a malformed provider_release_id (defensive regression guard) shows no link, never a malformed href', () => {
+    // catalogItem()'s fixture provider_release_id ('mbid-release') is not a
+    // valid MBID - this should be unreachable in practice, but the link
+    // must still be hidden, not rendered pointing at a malformed URL.
+    renderDetail(catalogItem())
+    expect(screen.queryByText(/View on MusicBrainz/)).not.toBeInTheDocument()
+  })
+})

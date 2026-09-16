@@ -203,6 +203,50 @@ export function SegmentedControl<T extends string>({
   )
 }
 
+/* --- SegmentedRadioGroup --- */
+
+/**
+ * A mutually-exclusive, single-select control with correct radio-group
+ * ARIA semantics (spec 0017 §19) - `role="radiogroup"` with `role="radio"`/
+ * `aria-checked` on each option, never `aria-pressed` (that is
+ * toggle-button semantics, correct for `SegmentedControl`'s two-state
+ * Grid/List case above, but not for a mutually-exclusive three-way choice).
+ * `SegmentedControl` itself is intentionally left unmodified - other
+ * surfaces (e.g. Collection Grid/List) depend on its current toggle
+ * semantics, which were never wrong for that use. Shares the same
+ * `.vi-segmented`/`.vi-segmented__opt` classes for visual consistency - no
+ * new CSS class is introduced, only the ARIA attributes differ.
+ */
+export function SegmentedRadioGroup<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { value: T; label: string; icon?: IconName }[]
+  value: T
+  onChange: (next: T) => void
+  label: string
+}) {
+  return (
+    <div className="vi-segmented" role="radiogroup" aria-label={label}>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          role="radio"
+          className="vi-segmented__opt"
+          aria-checked={value === opt.value}
+          onClick={() => onChange(opt.value)}
+        >
+          {opt.icon ? <Icon name={opt.icon} size={14} /> : null}
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /* --- Badge / Chip --- */
 
 export function Badge({
