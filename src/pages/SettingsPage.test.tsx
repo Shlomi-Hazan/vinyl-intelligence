@@ -136,4 +136,11 @@ describe('SettingsPage', () => {
     await u.click(screen.getByRole('button', { name: 'Sign out' }))
     await waitFor(() => expect(auth.signOut).toHaveBeenCalled())
   })
+
+  it('shows the app-level Discogs attribution notice (spec 0018)', () => {
+    renderSettings()
+    expect(
+      screen.getByText(/uses Discogs.* API but is not affiliated with/),
+    ).toBeInTheDocument()
+  })
 })

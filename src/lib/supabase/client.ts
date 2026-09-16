@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { CatalogProvider } from '../catalog/types.ts'
 
 export type Profile = {
   id: string
@@ -18,9 +19,14 @@ export type Release = {
   id: string
   created_by: string | null
   source: 'manual' | 'catalog'
-  provider: 'musicbrainz' | null
+  provider: CatalogProvider | null
   provider_release_id: string | null
   provider_release_group_id: string | null
+  /**
+   * Discogs freshness marker (spec 0018 S12) - set only for `provider =
+   * 'discogs'` rows; always null for MusicBrainz/manual rows.
+   */
+  provider_fetched_at: string | null
   artist: string
   title: string
   release_year: number | null
@@ -160,6 +166,7 @@ type Database = {
           provider?: null
           provider_release_id?: null
           provider_release_group_id?: null
+          provider_fetched_at?: null
           artist: string
           title: string
           release_year?: number | null

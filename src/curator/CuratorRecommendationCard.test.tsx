@@ -144,3 +144,46 @@ describe('CuratorRecommendationCard', () => {
     expect(within(card).getByText('Checking your listening history…')).toBeInTheDocument()
   })
 })
+
+describe('CuratorRecommendationCard - Discogs-backed owned item (spec 0018)', () => {
+  function discogsOwned(overrides: Partial<CollectionItemWithRelease> = {}) {
+    return owned({
+      release: {
+        ...owned().release,
+        provider: 'discogs',
+        provider_release_id: '26770295',
+        provider_release_group_id: null,
+      },
+      ...overrides,
+    })
+  }
+
+  it('never feeds a Discogs release id to AlbumArtwork as an MBID', () => {
+    renderCard({ ownedItem: discogsOwned() })
+    // No CAA lookup for a Discogs-backed item and no custom cover in this
+    // fixture - falls through to the branded (no cover art) fallback, never
+    // a fabricated MusicBrainz cover URL from the Discogs release id.
+    const cover = screen.getByRole('img', {
+      name: nameIgnoringBidi('Pink Floyd - Wish You Were Here (no cover art)'),
+    })
+    expect(cover.querySelector('img.vi-art__img')).toBeNull()
+  })
+
+  it('shows full Discogs attribution linking to the exact release', () => {
+    renderCard({ ownedItem: discogsOwned() })
+    const link = screen.getByRole('link', { name: 'Discogs' })
+    expect(link).toHaveAttribute('href', 'https://www.discogs.com/release/26770295')
+    expect(link).not.toHaveAttribute('rel', expect.stringContaining('nofollow'))
+    expect(screen.getByText(/Data provided by/)).toBeInTheDocument()
+  })
+
+  it('shows no Discogs attribution for a MusicBrainz-backed owned item', () => {
+    renderCard()
+    expect(screen.queryByText(/Data provided by/)).not.toBeInTheDocument()
+  })
+
+  it('shows no Discogs attribution when the owned item cannot be resolved', () => {
+    renderCard({ ownedItem: null })
+    expect(screen.queryByText(/Data provided by/)).not.toBeInTheDocument()
+  })
+})

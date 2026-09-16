@@ -503,7 +503,7 @@ export function ScanPanel({
                 const collectionReady = collectionStatus === 'ready'
                 const owned =
                   collectionReady &&
-                  isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
+                  isExactCatalogReleaseOwned(c.provider, c.providerReleaseId, ownedItems)
                 return (
                   <li key={c.providerReleaseId}>
                     <article className="vi-candidate" data-owned={owned}>

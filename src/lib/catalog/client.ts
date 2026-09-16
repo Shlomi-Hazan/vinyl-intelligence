@@ -1,4 +1,5 @@
 import type { BrowserSupabaseClient } from '../supabase/client.ts'
+import type { DiscogsSearchResponse } from './discogs.ts'
 import {
   CatalogClientError,
   type CatalogAddResponse,
@@ -7,6 +8,18 @@ import {
   type CatalogSearchResponse,
   type SearchMode,
 } from './types.ts'
+
+/**
+ * The exact response shape `/api/catalog/add` returns for a `{ action:
+ * 'refresh', provider: 'discogs', providerReleaseId }` request (spec 0018
+ * §8.0/§8.2.1). The browser must use `providerFetchedAt` as returned here -
+ * never `Date.now()` - when updating its own freshness clock.
+ */
+export type DiscogsRefreshResponse = {
+  candidate: CatalogCandidate
+  genres: string[]
+  providerFetchedAt: string
+}
 
 const DEFAULT_CATALOG_LIMIT = 5
 const MAX_CATALOG_LIMIT = 10
@@ -206,4 +219,64 @@ export async function addCatalogReleaseToCollection(
   })
 
   return data.item
+}
+
+/**
+ * The explicit, user-triggered Discogs fallback search (spec 0018 §6/§8):
+ * `GET /api/catalog/search?provider=discogs&q=...`. A genuinely distinct
+ * response shape from `CatalogSearchResponse` - never forced into it.
+ */
+export async function searchDiscogsCatalog(
+  client: BrowserSupabaseClient,
+  query: string,
+): Promise<DiscogsSearchResponse> {
+  const params = new URLSearchParams({ provider: 'discogs', q: query.trim() })
+
+  return requestCatalog<DiscogsSearchResponse>(
+    client,
+    `/api/catalog/search?${params.toString()}`,
+  )
+}
+
+/**
+ * The read-only Discogs exact-preview lookup (spec 0018 §5.2/§6 step 3):
+ * `GET /api/catalog/search?provider=discogs&releaseId=...`. Zero database
+ * writes. Returns the same `CatalogSearchResponse` shape as the existing
+ * MusicBrainz exact lookup (`lookupCatalogRelease`) - a real, fully-
+ * normalized `CatalogCandidate`, never trusted metadata from the browser's
+ * own prior search-result display.
+ */
+export async function lookupDiscogsCatalogRelease(
+  client: BrowserSupabaseClient,
+  releaseId: string,
+): Promise<CatalogSearchResponse> {
+  const params = new URLSearchParams({ provider: 'discogs', releaseId })
+
+  return requestCatalog<CatalogSearchResponse>(
+    client,
+    `/api/catalog/search?${params.toString()}`,
+  )
+}
+
+/**
+ * Re-fetches and persists the current Discogs metadata for an
+ * already-owned release (spec 0018 §8.2.1) via the existing
+ * `POST /api/catalog/add` endpoint's `refresh` action - never creates a new
+ * collection item.
+ */
+export async function refreshDiscogsCollectionItem(
+  client: BrowserSupabaseClient,
+  providerReleaseId: string,
+): Promise<DiscogsRefreshResponse> {
+  return requestCatalog<DiscogsRefreshResponse>(client, '/api/catalog/add', {
+    body: JSON.stringify({
+      action: 'refresh',
+      provider: 'discogs',
+      providerReleaseId,
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    method: 'POST',
+  })
 }

@@ -1,4 +1,4 @@
-export type CatalogProvider = 'musicbrainz'
+export type CatalogProvider = 'musicbrainz' | 'discogs'
 
 /**
  * The three mutually-exclusive Discover search modes (spec 0017 §6). A

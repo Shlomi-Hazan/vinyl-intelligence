@@ -14,12 +14,20 @@ const searchCatalogPage = vi.fn()
 const lookupCatalogRelease = vi.fn()
 const addCatalogReleaseToCollection = vi.fn()
 const addManual = vi.fn()
+const searchDiscogsCatalog = vi.fn()
+const lookupDiscogsCatalogRelease = vi.fn()
+const refreshDiscogsCollectionItem = vi.fn()
 
 vi.mock('../lib/catalog/client.ts', () => ({
   searchCatalogPage: (...a: unknown[]) => searchCatalogPage(...a),
   lookupCatalogRelease: (...a: unknown[]) => lookupCatalogRelease(...a),
   addCatalogReleaseToCollection: (...a: unknown[]) =>
     addCatalogReleaseToCollection(...a),
+  searchDiscogsCatalog: (...a: unknown[]) => searchDiscogsCatalog(...a),
+  lookupDiscogsCatalogRelease: (...a: unknown[]) =>
+    lookupDiscogsCatalogRelease(...a),
+  refreshDiscogsCollectionItem: (...a: unknown[]) =>
+    refreshDiscogsCollectionItem(...a),
 }))
 vi.mock('../lib/supabase/collection.ts', async (o) => ({
   ...(await o<typeof import('../lib/supabase/collection.ts')>()),
@@ -86,6 +94,7 @@ function ownedItem(
       format: null,
       genres: [],
       updated_at: '',
+      provider: 'musicbrainz',
       provider_release_id: '11111111-1111-4111-8111-111111111111',
       ...over,
     },
@@ -1098,5 +1107,27 @@ describe('DiscoverPanel - ownership gated on authoritative collection-load statu
     // exactly one add call across this entire sequence - no second ordinary
     // add was ever possible during the stale window
     expect(addCatalogReleaseToCollection).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('DiscoverPanel - Discogs fallback entry point (spec 0018 §6)', () => {
+  it('is closed by default and never searches Discogs on mount', () => {
+    renderPanel()
+    expect(screen.queryByRole('heading', { name: 'Search Discogs' })).toBeNull()
+    expect(searchDiscogsCatalog).not.toHaveBeenCalled()
+  })
+
+  it('opens the Discogs search panel on demand and can be closed again', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(screen.getByRole('button', { name: "Can't find it? Search Discogs" }))
+    expect(screen.getByRole('heading', { name: 'Search Discogs' })).toBeInTheDocument()
+    // opening the panel alone never triggers a Discogs request - it is
+    // strictly user-triggered per search submit (spec 0018 §6).
+    expect(searchDiscogsCatalog).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Close Discogs search' }))
+    expect(screen.queryByRole('heading', { name: 'Search Discogs' })).toBeNull()
   })
 })

@@ -249,3 +249,40 @@ describe('HistoryPage journal', () => {
     expect(reloadEvents).not.toHaveBeenCalled()
   })
 })
+
+describe('HistoryPage - Discogs masking and attribution (spec 0018 §7/§8.4)', () => {
+  it('a fresh Discogs-backed row shows the real title/artist plus a compact attribution mark', () => {
+    const discogsRow = makeItem('d1', 'כהן', 'מה שאפשר עם מה שנשאר', {
+      provider: 'discogs',
+      provider_release_id: '26770295',
+      provider_fetched_at: new Date().toISOString(),
+    })
+    renderHistory(
+      baseData({
+        items: [discogsRow],
+        events: [ev('e1', '2026-09-16T10:00:00.000Z', 'd1')],
+      }),
+    )
+    expect(screen.getByText(/מה שאפשר עם מה שנשאר/)).toBeInTheDocument()
+    expect(screen.getByText(/Data provided by/)).toBeInTheDocument()
+  })
+
+  it('a masked row replaces artist/title with a placeholder and hides attribution, but keeps the timestamp', () => {
+    const discogsRow = {
+      ...makeItem('d1', 'כהן', 'מה שאפשר עם מה שנשאר', {
+        provider: 'discogs',
+        provider_release_id: '26770295',
+      }),
+      discogsUnavailable: true,
+    } as CollectionItemWithRelease
+    renderHistory(
+      baseData({
+        items: [discogsRow],
+        events: [ev('e1', '2026-09-16T10:00:00.000Z', 'd1')],
+      }),
+    )
+    expect(screen.getByText('Record details unavailable')).toBeInTheDocument()
+    expect(screen.queryByText(/כהן/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Data provided by/)).not.toBeInTheDocument()
+  })
+})

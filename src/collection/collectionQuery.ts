@@ -89,9 +89,31 @@ export function decadeLabel(year: number): string {
  * The genres a record is browsed / filtered by: the CANONICAL effective genres
  * (catalog + personal, deduped by canonical form - spec 0015 §10.5). Neither
  * source is mutated.
+ *
+ * Spec 0018 §8.4: for a masked (`discogsUnavailable`) item, its CATALOG
+ * genres are treated as absent for exactly as long as it stays masked - only
+ * its own personal genres (never provider-derived) remain usable here.
  */
 function itemGenres(item: CollectionItemWithRelease): string[] {
+  if (item.discogsUnavailable) {
+    return effectiveGenres({ ...item, release: { ...item.release, genres: [] } })
+  }
   return effectiveGenres(item)
+}
+
+/** `release_year`, treated as absent (`null`) for a masked item (spec 0018 §8.4). */
+function itemReleaseYear(item: CollectionItemWithRelease): number | null {
+  return item.discogsUnavailable ? null : item.release.release_year
+}
+
+/** `artist`/`title`, treated as empty strings for a masked item's own search
+ * matching (spec 0018 §8.4) - never matched by a text search targeting them. */
+function itemArtist(item: CollectionItemWithRelease): string {
+  return item.discogsUnavailable ? '' : item.release.artist
+}
+
+function itemTitle(item: CollectionItemWithRelease): string {
+  return item.discogsUnavailable ? '' : item.release.title
 }
 
 /** Decades actually represented in the loaded collection, ascending. */
@@ -99,7 +121,7 @@ export function availableDecades(items: CollectionItemWithRelease[]): string[] {
   const decades = new Set<string>()
 
   for (const item of items) {
-    const year = item.release.release_year
+    const year = itemReleaseYear(item)
 
     if (typeof year === 'number') {
       decades.add(decadeLabel(year))
@@ -180,8 +202,8 @@ function matchesSearch(item: CollectionItemWithRelease, needle: string): boolean
   }
 
   return (
-    buildSearchKey(item.release.artist).includes(needle)
-    || buildSearchKey(item.release.title).includes(needle)
+    buildSearchKey(itemArtist(item)).includes(needle)
+    || buildSearchKey(itemTitle(item)).includes(needle)
   )
 }
 
@@ -189,7 +211,7 @@ function matchesYear(
   item: CollectionItemWithRelease,
   year: number | null,
 ): boolean {
-  return year === null || item.release.release_year === year
+  return year === null || itemReleaseYear(item) === year
 }
 
 function matchesDecade(
@@ -200,7 +222,7 @@ function matchesDecade(
     return true
   }
 
-  const year = item.release.release_year
+  const year = itemReleaseYear(item)
 
   return typeof year === 'number' && decadeLabel(year) === decade
 }
@@ -284,8 +306,8 @@ function yearSort(
   b: CollectionItemWithRelease,
   direction: 'asc' | 'desc',
 ): number {
-  const ay = a.release.release_year
-  const by = b.release.release_year
+  const ay = itemReleaseYear(a)
+  const by = itemReleaseYear(b)
 
   if (ay === null && by === null) {
     return 0
@@ -368,9 +390,9 @@ function compareBySort(
 ): number {
   switch (sort) {
     case 'artist-asc':
-      return compareNames(a.release.artist, b.release.artist)
+      return compareNames(itemArtist(a), itemArtist(b))
     case 'album-asc':
-      return compareNames(a.release.title, b.release.title)
+      return compareNames(itemTitle(a), itemTitle(b))
     case 'year-desc':
       return yearSort(a, b, 'desc')
     case 'year-asc':

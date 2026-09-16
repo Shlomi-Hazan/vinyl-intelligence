@@ -32,6 +32,31 @@ select ok(
 select ok(
   exists (
     select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'releases'
+      and column_name = 'provider_fetched_at'
+  ),
+  'releases has a Discogs freshness marker column (spec 0018)'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace ns on ns.oid = rel.relnamespace
+    where ns.nspname = 'public'
+      and rel.relname = 'releases'
+      and con.conname = 'releases_discogs_requires_fetched_at'
+      and con.contype = 'c'
+  ),
+  'releases enforces a Discogs-only freshness marker requirement'
+);
+
+select ok(
+  exists (
+    select 1
     from pg_policies
     where schemaname = 'public'
       and tablename = 'releases'
@@ -272,14 +297,110 @@ select throws_ok(
      ) values (
        null,
        'catalog',
-       'discogs',
+       'spotify',
        '44444444-4444-4444-8444-444444444444',
        'Invalid Provider Artist',
        'Invalid Provider Album'
      ) $$,
   '23514',
   null,
-  'catalog provider is limited to approved MusicBrainz value'
+  'catalog provider is limited to approved provider values'
+);
+
+select lives_ok(
+  $$ insert into public.releases (
+       id,
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title,
+       release_year,
+       label,
+       catalog_number,
+       country,
+       format,
+       provider_fetched_at
+     ) values (
+       '40000000-0000-4000-8000-000000000002',
+       null,
+       'catalog',
+       'discogs',
+       '26770295',
+       'Discogs Artist',
+       'Discogs Album',
+       1999,
+       'Hasivuv',
+       'HSV005',
+       'IL',
+       'LP',
+       now()
+     ) $$,
+  'service role can create a valid Discogs catalog release with a fetched-at marker'
+);
+
+select throws_ok(
+  $$ insert into public.releases (
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title,
+       provider_fetched_at
+     ) values (
+       null,
+       'catalog',
+       'discogs',
+       '26770295',
+       'Duplicate Discogs Artist',
+       'Duplicate Discogs Album',
+       now()
+     ) $$,
+  '23505',
+  null,
+  'provider release identity uniqueness rejects a duplicate Discogs release id'
+);
+
+select throws_ok(
+  $$ insert into public.releases (
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title
+     ) values (
+       null,
+       'catalog',
+       'discogs',
+       '77777777',
+       'Missing Fetched At Artist',
+       'Missing Fetched At Album'
+     ) $$,
+  '23514',
+  null,
+  'a Discogs catalog release without a fetched-at marker is rejected'
+);
+
+select lives_ok(
+  $$ insert into public.releases (
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title
+     ) values (
+       null,
+       'catalog',
+       'musicbrainz',
+       'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+       'Musicbrainz No Fetched At Artist',
+       'Musicbrainz No Fetched At Album'
+     ) $$,
+  'a MusicBrainz catalog release without a fetched-at marker is still accepted (provider-qualified check)'
 );
 
 select throws_ok(

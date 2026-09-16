@@ -68,6 +68,15 @@ export function SettingsPage() {
         <h2 id="vi-settings-account">Account</h2>
         <SignOutButton onSignOut={signOut} />
       </section>
+
+      <section className="vi-settings__section" aria-labelledby="vi-settings-about">
+        <h2 id="vi-settings-about">About</h2>
+        <p className="vi-hint">
+          This application uses Discogs&rsquo; API but is not affiliated with,
+          sponsored or endorsed by Discogs. &ldquo;Discogs&rdquo; is a trademark
+          of Zink Media, LLC.
+        </p>
+      </section>
     </div>
   )
 }

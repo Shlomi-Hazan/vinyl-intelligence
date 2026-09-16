@@ -1,4 +1,9 @@
 import { musicBrainzReleaseUrl, MUSICBRAINZ_RELEASE_ID_PATTERN } from './musicbrainzIdentity.ts'
+import {
+  RELEASE_FIELD_LIMITS,
+  RELEASE_YEAR_MAX,
+  RELEASE_YEAR_MIN,
+} from './catalogFieldLimits.ts'
 import type { CatalogCandidate, CatalogErrorCode, SearchMode } from './types.ts'
 
 const MUSICBRAINZ_API_BASE_URL = 'https://musicbrainz.org/ws/2'
@@ -7,16 +12,6 @@ const DEFAULT_TIMEOUT_MS = 8_000
 const GENRE_LOOKUP_TIMEOUT_MS = 6_000
 const MAX_GENRES = 12
 const GENRE_MAX_LENGTH = 40
-const RELEASE_FIELD_LIMITS = {
-  artist: 160,
-  title: 200,
-  label: 160,
-  catalogNumber: 120,
-  country: 80,
-  format: 80,
-} as const
-const RELEASE_YEAR_MIN = 1900
-const RELEASE_YEAR_MAX = 2100
 
 // Re-exported so every existing import site (`catalog-handlers.mts` and its
 // test) keeps working unmodified - `musicbrainzIdentity.ts` is now the one
@@ -316,7 +311,14 @@ export function buildMusicBrainzReleaseGroupGenresUrl(releaseGroupId: string): U
   return url
 }
 
-function normalizeGenreName(value: unknown): string | null {
+/**
+ * Exported for `discogs.ts` (spec 0018 §4.2) - the same per-string cleaning
+ * rule (trim, lowercase, 1-40 chars) applies to Discogs's flat `genres:
+ * string[]` shape via a separate container-level normalizer
+ * (`normalizeDiscogsGenreList`); this one-line export is a zero-behavior-
+ * change addition, and every existing test of this function is unaffected.
+ */
+export function normalizeGenreName(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null
   }

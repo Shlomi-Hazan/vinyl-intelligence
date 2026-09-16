@@ -5,6 +5,8 @@ import { BidiText } from '../components/BidiText.tsx'
 import { isolate } from '../lib/i18n/isolate.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
 import { summarizeListeningForItem } from '../collection/listeningSummary.ts'
+import { DiscogsAttribution } from '../catalog/DiscogsAttribution.tsx'
+import { discogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
 import type { LoadPhase } from '../app/collection-data-context.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { ListeningEventRecord } from '../lib/supabase/listeningEvents.ts'
@@ -72,12 +74,15 @@ function artworkProps(
       customCoverVersion: null as string | number | null,
     }
   }
+  const isDiscogs = ownedItem.release.provider === 'discogs'
   return {
     artist: ownedItem.release.artist,
     title: ownedItem.release.title,
     seedId: ownedItem.release.id,
-    releaseMbid: ownedItem.release.provider_release_id ?? null,
-    releaseGroupMbid: ownedItem.release.provider_release_group_id ?? null,
+    releaseMbid: !isDiscogs ? ownedItem.release.provider_release_id ?? null : null,
+    releaseGroupMbid: !isDiscogs
+      ? ownedItem.release.provider_release_group_id ?? null
+      : null,
     customCoverPath: ownedItem.custom_cover_path
       ? customCoverPath(userId, ownedItem.id)
       : null,
@@ -219,6 +224,12 @@ export function CuratorRecommendationCard({
               ))}
             </p>
           ) : null}
+          {ownedItem?.release.provider === 'discogs' && ownedItem.release.provider_release_id
+            ? (() => {
+                const releaseUrl = discogsReleaseUrl(ownedItem.release.provider_release_id)
+                return releaseUrl ? <DiscogsAttribution releaseUrl={releaseUrl} /> : null
+              })()
+            : null}
         </div>
       </div>
 

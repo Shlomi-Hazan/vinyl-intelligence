@@ -13,9 +13,12 @@ import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
 import { useCuratorSession } from '../curator/useCuratorSession.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
+import { DiscogsAttribution } from '../catalog/DiscogsAttribution.tsx'
+import { discogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
 import {
   collectionStats,
   decadeDistribution,
+  insightsIncludeFreshDiscogsData,
   listeningStats,
   recentlyAdded,
   recentlyPlayed,
@@ -33,30 +36,48 @@ const QUICK_VIN_CHIPS = [
 
 function AlbumMini({ item }: { item: CollectionItemWithRelease }) {
   const { client, userId } = useClient()
+  const isDiscogs = item.release.provider === 'discogs'
+  const unavailable = item.discogsUnavailable === true
   return (
     <Link
       to={`/collection/${item.id}`}
       className="vi-albumcard vi-albumcard__link"
     >
       <AlbumArtwork
-        artist={item.release.artist}
-        title={item.release.title}
+        artist={unavailable ? 'Unknown artist' : item.release.artist}
+        title={unavailable ? 'Unknown album' : item.release.title}
         seedId={item.release.id}
         size="grid"
-        releaseMbid={item.release.provider_release_id ?? null}
-        releaseGroupMbid={item.release.provider_release_group_id ?? null}
+        releaseMbid={!isDiscogs ? item.release.provider_release_id ?? null : null}
+        releaseGroupMbid={
+          !isDiscogs ? item.release.provider_release_group_id ?? null : null
+        }
         customCoverPath={
           item.custom_cover_path ? customCoverPath(userId, item.id) : null
         }
         client={client}
         customCoverVersion={item.custom_cover_updated_at ?? null}
       />
-      <span className="vi-albumcard__title">
-        <BidiText>{item.release.title}</BidiText>
-      </span>
-      <span className="vi-albumcard__meta">
-        <BidiText>{item.release.artist}</BidiText>
-      </span>
+      {unavailable ? (
+        <span className="vi-albumcard__title">Unavailable</span>
+      ) : (
+        <>
+          <span className="vi-albumcard__title">
+            <BidiText>{item.release.title}</BidiText>
+          </span>
+          <span className="vi-albumcard__meta">
+            <BidiText>{item.release.artist}</BidiText>
+          </span>
+          {item.release.provider === 'discogs' && item.release.provider_release_id
+            ? (() => {
+                const releaseUrl = discogsReleaseUrl(item.release.provider_release_id)
+                return releaseUrl ? (
+                  <DiscogsAttribution releaseUrl={releaseUrl} compact />
+                ) : null
+              })()
+            : null}
+        </>
+      )}
     </Link>
   )
 }
@@ -105,6 +126,13 @@ export function DashboardPage() {
   const added = useMemo(() => recentlyAdded(items, 6), [items])
   const decades = useMemo(() => decadeDistribution(items), [items])
   const genres = useMemo(() => topGenres(items, 5), [items])
+  // Spec 0018 §7: attribution renders on this block iff its computation
+  // included at least one currently-fresh Discogs item's provider-derived
+  // value - never a blanket "this block might include Discogs data" guess.
+  const insightsUseDiscogsData = useMemo(
+    () => insightsIncludeFreshDiscogsData(items),
+    [items],
+  )
 
   // ---- listening-derived values: ONLY computed when events are truly loaded.
   // Absence of loaded event data is NOT evidence that nothing was ever played,
@@ -406,6 +434,12 @@ export function DashboardPage() {
                             ))}
                           </div>
                         </div>
+                      ) : null}
+                      {insightsUseDiscogsData ? (
+                        <DiscogsAttribution
+                          releaseUrl="https://www.discogs.com"
+                          compact
+                        />
                       ) : null}
                     </div>
                   ) : (

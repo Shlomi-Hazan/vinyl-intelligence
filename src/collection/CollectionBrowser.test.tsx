@@ -11,6 +11,7 @@ import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
 const addListeningEvent = vi.fn()
 const updateSignals = vi.fn()
+const refreshDiscogsCollectionItem = vi.fn()
 
 vi.mock('../lib/supabase/listeningEvents.ts', async (o) => ({
   ...(await o<typeof import('../lib/supabase/listeningEvents.ts')>()),
@@ -19,6 +20,10 @@ vi.mock('../lib/supabase/listeningEvents.ts', async (o) => ({
 vi.mock('../lib/supabase/collection.ts', async (o) => ({
   ...(await o<typeof import('../lib/supabase/collection.ts')>()),
   updateCollectionItemPersonalSignals: (...a: unknown[]) => updateSignals(...a),
+}))
+vi.mock('../lib/catalog/client.ts', async (o) => ({
+  ...(await o<typeof import('../lib/catalog/client.ts')>()),
+  refreshDiscogsCollectionItem: (...a: unknown[]) => refreshDiscogsCollectionItem(...a),
 }))
 
 afterEach(() => {
@@ -842,5 +847,93 @@ describe('CollectionBrowser', () => {
       // §7).
       expect(onMutated).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('CollectionBrowser - Discogs artwork gating, masking, and attribution (spec 0018 §7/§8.4)', () => {
+  function discogsItem(overrides: Partial<CollectionItemWithRelease['release']> = {}) {
+    return item('d1', {
+      release: {
+        provider: 'discogs',
+        provider_release_id: '26770295',
+        provider_fetched_at: new Date().toISOString(),
+        genres: ['hip hop'],
+        ...overrides,
+      },
+    })
+  }
+
+  it('a fresh Discogs item shows normal metadata plus a compact attribution mark', () => {
+    renderBrowser([discogsItem()])
+    expect(screen.getByText(/Data provided by/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Discogs' })).toHaveAttribute(
+      'href',
+      'https://www.discogs.com/release/26770295',
+    )
+  })
+
+  it('a masked item shows the placeholder title, hides artist/meta, and offers a Retry action', () => {
+    const masked = { ...discogsItem(), discogsUnavailable: true } as CollectionItemWithRelease
+    renderBrowser([masked])
+    expect(screen.getByText('Catalog details unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('Album d1')).not.toBeInTheDocument()
+    expect(screen.queryByText('Artist d1')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    // No attribution mark for the masked fields (nothing being attributed).
+    expect(screen.queryByText(/Data provided by/)).not.toBeInTheDocument()
+  })
+
+  it('Retry calls refreshDiscogsCollectionItem and then onMutated, without navigating', async () => {
+    refreshDiscogsCollectionItem.mockResolvedValueOnce({
+      candidate: { providerReleaseId: '26770295' },
+      genres: [],
+      providerFetchedAt: new Date().toISOString(),
+    })
+    const masked = { ...discogsItem(), discogsUnavailable: true } as CollectionItemWithRelease
+    const onMutated = vi.fn()
+    renderBrowser([masked], '/collection', { onMutated })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => {
+      expect(refreshDiscogsCollectionItem).toHaveBeenCalledWith(expect.anything(), '26770295')
+    })
+    expect(onMutated).toHaveBeenCalled()
+    expect(screen.getByTestId('loc')).toHaveTextContent('')
+  })
+
+  it('a masked item is still navigable to Album Detail and its favourite control stays functional', async () => {
+    const masked = { ...discogsItem(), discogsUnavailable: true } as CollectionItemWithRelease
+    renderBrowser([masked])
+    expect(screen.getByRole('link', { name: /Catalog details unavailable/ })).toHaveAttribute(
+      'href',
+      '/collection/d1',
+    )
+    expect(screen.getByRole('button', { name: 'Add favourite' })).toBeEnabled()
+  })
+
+  it('a masked item is excluded from search matching its (absent) title/artist', async () => {
+    const masked = {
+      ...discogsItem(),
+      discogsUnavailable: true,
+    } as CollectionItemWithRelease
+    renderBrowser([masked, item('2', { release: { artist: 'David Bowie', title: 'Heroes' } })])
+
+    await userEvent.type(screen.getByPlaceholderText('Search artist or album'), 'Artist d1')
+    await waitFor(() => {
+      expect(screen.getByText('0 of 2 records')).toBeInTheDocument()
+    })
+  })
+
+  it("a masked item's catalog genre is excluded from the genre filter's available options", () => {
+    const masked = { ...discogsItem(), discogsUnavailable: true } as CollectionItemWithRelease
+    renderBrowser([masked])
+    expect(screen.queryByRole('option', { name: 'hip hop' })).not.toBeInTheDocument()
+  })
+
+  it('a MusicBrainz item never attempts a Discogs revalidation and shows no attribution', () => {
+    renderBrowser([item('mb1')])
+    expect(screen.queryByText(/Data provided by/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 })

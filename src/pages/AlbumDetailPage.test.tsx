@@ -17,6 +17,7 @@ import { nameIgnoringBidi } from '../test/i18n.ts'
 const updateManualRelease = vi.fn()
 const updateCollectionItemPersonalGenres = vi.fn()
 const deleteCollectionItem = vi.fn()
+const refreshDiscogsCollectionItem = vi.fn()
 
 vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
   const actual =
@@ -27,6 +28,14 @@ vi.mock('../lib/supabase/collection.ts', async (importOriginal) => {
     updateCollectionItemPersonalGenres: (...a: unknown[]) =>
       updateCollectionItemPersonalGenres(...a),
     deleteCollectionItem: (...a: unknown[]) => deleteCollectionItem(...a),
+  }
+})
+vi.mock('../lib/catalog/client.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/catalog/client.ts')>()
+  return {
+    ...actual,
+    refreshDiscogsCollectionItem: (...a: unknown[]) =>
+      refreshDiscogsCollectionItem(...a),
   }
 })
 vi.mock('../lib/supabase/listeningEvents.ts', async (importOriginal) => {
@@ -254,5 +263,83 @@ describe('AlbumDetailPage - MusicBrainz provenance link (spec 0017 §13)', () =>
     // must still be hidden, not rendered pointing at a malformed URL.
     renderDetail(catalogItem())
     expect(screen.queryByText(/View on MusicBrainz/)).not.toBeInTheDocument()
+  })
+})
+
+function discogsItem(overrides: Partial<CollectionItemWithRelease> = {}): CollectionItemWithRelease {
+  return {
+    id: 'd1',
+    added_at: '2026-09-16T00:00:00.000Z',
+    created_at: '2026-09-16T00:00:00.000Z',
+    rating: null,
+    is_favorite: false,
+    notes: null,
+    personal_genres: [],
+    release: {
+      id: 'rel-d1',
+      artist: 'כהן',
+      title: 'מה שאפשר עם מה שנשאר',
+      release_year: 2023,
+      label: 'Hasivuv',
+      catalog_number: 'HSV005',
+      country: 'Israel',
+      format: 'Vinyl',
+      genres: ['hip hop'],
+      updated_at: '2026-09-16T00:00:00.000Z',
+      provider: 'discogs',
+      provider_release_id: '26770295',
+      provider_release_group_id: '3058367',
+      provider_fetched_at: '2026-09-16T06:00:00.000Z',
+      source: 'catalog',
+    },
+    ...overrides,
+  }
+}
+
+describe('AlbumDetailPage - Discogs provenance and freshness (spec 0018 §8.4/§13)', () => {
+  it('a fresh Discogs release shows "View on Discogs" with the required attribution and never queries Cover Art Archive', () => {
+    renderDetail(discogsItem())
+    const link = screen.getByRole('link', { name: /^View on Discogs.*opens in a new tab/ })
+    expect(link).toHaveAttribute('href', 'https://www.discogs.com/release/26770295')
+    expect(screen.getByText(/Data provided by/)).toBeInTheDocument()
+    expect(screen.getByText('Hasivuv')).toBeInTheDocument()
+  })
+
+  it('a masked (discogsUnavailable) item shows a placeholder title/artist and hides every provider-derived field', () => {
+    const item = discogsItem({ discogsUnavailable: true })
+    renderDetail(item)
+
+    expect(screen.getByRole('heading', { name: 'Record details unavailable' })).toBeInTheDocument()
+    expect(screen.queryByText('מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+    expect(screen.queryByText('כהן')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hasivuv')).not.toBeInTheDocument()
+    expect(screen.queryByText('HSV005')).not.toBeInTheDocument()
+    // The identity-only Discogs link remains safe to show.
+    expect(screen.getByRole('link', { name: /^View on Discogs/ })).toBeInTheDocument()
+  })
+
+  it('Retry calls refreshDiscogsCollectionItem then invalidates the collection', async () => {
+    refreshDiscogsCollectionItem.mockResolvedValueOnce({
+      candidate: { providerReleaseId: '26770295' },
+      genres: [],
+      providerFetchedAt: new Date().toISOString(),
+    })
+    const item = discogsItem({ discogsUnavailable: true })
+    const data = baseData(item)
+    renderDetail(item, data)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => {
+      expect(refreshDiscogsCollectionItem).toHaveBeenCalledWith(client, '26770295')
+    })
+    expect(data.invalidate).toHaveBeenCalled()
+  })
+
+  it('a Discogs-backed release still allows favouriting, rating, notes, and listening controls while masked', () => {
+    const item = discogsItem({ discogsUnavailable: true })
+    renderDetail(item)
+    expect(screen.getByRole('button', { name: /favorite/i })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Rating' })).toBeInTheDocument()
   })
 })

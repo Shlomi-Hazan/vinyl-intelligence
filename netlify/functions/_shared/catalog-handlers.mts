@@ -7,6 +7,18 @@ import {
   MusicBrainzError,
   searchMusicBrainzReleases,
 } from '../../../src/lib/catalog/musicbrainz.ts'
+import {
+  DiscogsError,
+  lookupDiscogsRelease as lookupDiscogsReleaseImpl,
+  searchDiscogsReleases as searchDiscogsReleasesImpl,
+  type DiscogsSearchResponse,
+  type NormalizedDiscogsRelease,
+} from '../../../src/lib/catalog/discogs.ts'
+import { DISCOGS_RELEASE_ID_PATTERN } from '../../../src/lib/catalog/discogsIdentity.ts'
+import {
+  CatalogPersistenceError,
+  upsertCatalogRelease,
+} from './catalogPersistence.mts'
 import type {
   CatalogAddResponse,
   CatalogCandidate,
@@ -27,6 +39,12 @@ const MAX_EXPOSED_RESULTS = 20
 const SEARCH_MODES: readonly SearchMode[] = ['all', 'artist', 'album']
 const MUSICBRAINZ_PACING_MS = 1_000
 const MUSICBRAINZ_RATE_LIMIT_RETRY_DELAY_MS = 1_200
+// Discogs pacing is independent from MusicBrainz's (spec 0018 §12/§17) - an
+// in-process, best-effort throttle only (serverless instances may run as
+// separate warm processes; this cannot enforce a true cross-instance
+// ceiling). A deliberately conservative margin below the single, non-
+// guaranteed Phase-0 observation (~60/min), not "comfortably under" it.
+const DISCOGS_PACING_MS = 1_500
 const CATALOG_ITEM_SELECT = `
   id,
   added_at,
@@ -49,20 +67,19 @@ type Environment = Partial<Record<string, string>>
 
 type SupabaseFactory = typeof createClient
 
-type CatalogFunctionDependencies = {
+export type CatalogFunctionDependencies = {
   createClient: SupabaseFactory
   delay: (ms: number) => Promise<void>
   lookupRelease: typeof lookupMusicBrainzRelease
   lookupReleaseGroupGenres: typeof lookupMusicBrainzReleaseGroupGenres
   paceProviderRequest: () => Promise<void>
   searchReleases: typeof searchMusicBrainzReleases
+  lookupDiscogsRelease: typeof lookupDiscogsReleaseImpl
+  paceDiscogsRequest: () => Promise<void>
+  searchDiscogsReleases: typeof searchDiscogsReleasesImpl
 }
 
 type AuthenticatedUser = Pick<User, 'id'>
-
-type CatalogReleaseRow = {
-  id: string
-}
 
 type CollectionReleaseRow = CatalogAddResponse['item']['release']
 
@@ -75,7 +92,20 @@ type CatalogErrorPayload = {
   message: string
 }
 
+/**
+ * The read-only-preview-and-persisting-refresh response shape (spec 0018
+ * §8.0). `providerFetchedAt` is the exact ISO timestamp the server
+ * persisted - the browser must use THIS value, never `Date.now()`, when
+ * updating its own freshness clock.
+ */
+export type DiscogsRefreshResponse = {
+  candidate: CatalogCandidate
+  genres: string[]
+  providerFetchedAt: string
+}
+
 let nextMusicBrainzRequestAt = 0
+let nextDiscogsRequestAt = 0
 
 function defaultDelay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -91,11 +121,19 @@ function defaultDependencies(): CatalogFunctionDependencies {
     lookupReleaseGroupGenres: lookupMusicBrainzReleaseGroupGenres,
     paceProviderRequest: paceMusicBrainzRequest,
     searchReleases: searchMusicBrainzReleases,
+    lookupDiscogsRelease: lookupDiscogsReleaseImpl,
+    paceDiscogsRequest,
+    searchDiscogsReleases: searchDiscogsReleasesImpl,
   }
 }
 
 function jsonResponse(
-  payload: CatalogAddResponse | CatalogErrorPayload | CatalogSearchResponse,
+  payload:
+    | CatalogAddResponse
+    | CatalogErrorPayload
+    | CatalogSearchResponse
+    | DiscogsSearchResponse
+    | DiscogsRefreshResponse,
   status = 200,
 ): Response {
   return Response.json(payload, {
@@ -220,6 +258,28 @@ function parseOffset(value: string | null): number {
   return parsed
 }
 
+function isCatalogProvider(value: string): value is CatalogProvider {
+  return value === 'musicbrainz' || value === 'discogs'
+}
+
+/** Omitted `provider` defaults to `musicbrainz` (100% backward-compatible -
+ * no existing client sends this parameter, spec 0018 §5.1). */
+function parseProvider(value: string | null): CatalogProvider {
+  if (value === null) {
+    return 'musicbrainz'
+  }
+
+  if (!isCatalogProvider(value)) {
+    throw new CatalogFunctionError('invalid_query', 'Catalog provider is invalid.')
+  }
+
+  return value
+}
+
+function releaseIdPatternFor(provider: CatalogProvider): RegExp {
+  return provider === 'discogs' ? DISCOGS_RELEASE_ID_PATTERN : MUSICBRAINZ_RELEASE_ID_PATTERN
+}
+
 type SearchPageRequest = {
   kind: 'search'
   limit: number
@@ -228,19 +288,31 @@ type SearchPageRequest = {
   query: string
 }
 
+/**
+ * The explicit, user-triggered Discogs fallback search (spec 0018 §8) - a
+ * genuinely distinct request/response shape from `SearchPageRequest`, never
+ * forced into `CatalogSearchResponse`.
+ */
+type DiscogsSearchPageRequest = {
+  kind: 'discogs-search'
+  query: string
+}
+
 type ExactLookupRequest = {
   kind: 'exact'
+  provider: CatalogProvider
   releaseId: string
 }
 
-type CatalogSearchRequest = SearchPageRequest | ExactLookupRequest
+type CatalogSearchRequest = SearchPageRequest | DiscogsSearchPageRequest | ExactLookupRequest
 
 /**
  * `GET /api/catalog/search` accepts either a normal search request
- * (`q` + optional `mode`/`offset`/`limit`) or an exact-lookup request
- * (`releaseId` alone) - never both, never neither (spec 0017 §11.1). This
- * is the one place that branches between the two; `handleCatalogSearch`
- * itself just dispatches on `.kind`.
+ * (`q` + optional `mode`/`offset`/`limit`, `provider` defaulting to
+ * `musicbrainz`) or an exact-lookup request (`releaseId` + optional
+ * `provider`) - never both, never neither (spec 0017 §11.1; spec 0018 §5.1,
+ * §5.2). This is the one place that branches between them;
+ * `handleCatalogSearch` itself just dispatches on `.kind`.
  */
 function parseCatalogSearchRequest(request: Request): CatalogSearchRequest {
   const url = new URL(request.url)
@@ -249,6 +321,7 @@ function parseCatalogSearchRequest(request: Request): CatalogSearchRequest {
   const rawOffset = url.searchParams.get('offset')
   const rawLimit = url.searchParams.get('limit')
   const releaseId = url.searchParams.get('releaseId')
+  const provider = parseProvider(url.searchParams.get('provider'))
 
   if (releaseId !== null) {
     if (rawQuery !== null || rawMode !== null || rawOffset !== null || rawLimit !== null) {
@@ -258,14 +331,14 @@ function parseCatalogSearchRequest(request: Request): CatalogSearchRequest {
       )
     }
 
-    if (!MUSICBRAINZ_RELEASE_ID_PATTERN.test(releaseId)) {
+    if (!releaseIdPatternFor(provider).test(releaseId)) {
       throw new CatalogFunctionError(
         'invalid_query',
         'Catalog release identifier is invalid.',
       )
     }
 
-    return { kind: 'exact', releaseId }
+    return { kind: 'exact', provider, releaseId }
   }
 
   if (rawQuery === null) {
@@ -285,6 +358,17 @@ function parseCatalogSearchRequest(request: Request): CatalogSearchRequest {
       'invalid_query',
       `Search query must be ${SEARCH_QUERY_MIN_LENGTH}-${SEARCH_QUERY_MAX_LENGTH} characters.`,
     )
+  }
+
+  if (provider === 'discogs') {
+    if (rawMode !== null || rawOffset !== null || rawLimit !== null) {
+      throw new CatalogFunctionError(
+        'invalid_query',
+        'Discogs search does not accept mode, offset, or limit.',
+      )
+    }
+
+    return { kind: 'discogs-search', query }
   }
 
   const mode = parseMode(rawMode)
@@ -329,10 +413,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-async function parseAddRequest(request: Request): Promise<{
+type AddRequest = {
+  kind: 'add'
   provider: CatalogProvider
   providerReleaseId: string
-}> {
+}
+
+/**
+ * A Discogs-only revalidation request (spec 0018 §8.2.1/§8.3) - re-fetches
+ * and persists the current Discogs metadata for an already-owned release
+ * without creating a new collection item. Distinguished from the normal add
+ * shape by its extra `action` key.
+ */
+type RefreshRequest = {
+  kind: 'refresh'
+  providerReleaseId: string
+}
+
+async function parseAddOrRefreshRequest(
+  request: Request,
+): Promise<AddRequest | RefreshRequest> {
   let payload: unknown
 
   try {
@@ -351,7 +451,37 @@ async function parseAddRequest(request: Request): Promise<{
     )
   }
 
-  const keys = Object.keys(payload)
+  const keys = Object.keys(payload).sort()
+
+  if (
+    keys.length === 3
+    && keys[0] === 'action'
+    && keys[1] === 'provider'
+    && keys[2] === 'providerReleaseId'
+  ) {
+    if (payload.action !== 'refresh') {
+      throw new CatalogFunctionError('invalid_query', 'Unsupported catalog action.')
+    }
+
+    if (payload.provider !== 'discogs') {
+      throw new CatalogFunctionError(
+        'invalid_query',
+        'Only Discogs catalog releases support a refresh action.',
+      )
+    }
+
+    if (
+      typeof payload.providerReleaseId !== 'string'
+      || !DISCOGS_RELEASE_ID_PATTERN.test(payload.providerReleaseId)
+    ) {
+      throw new CatalogFunctionError(
+        'invalid_query',
+        'Catalog release identifier is invalid.',
+      )
+    }
+
+    return { kind: 'refresh', providerReleaseId: payload.providerReleaseId }
+  }
 
   if (
     keys.length !== 2
@@ -364,16 +494,13 @@ async function parseAddRequest(request: Request): Promise<{
     )
   }
 
-  if (payload.provider !== 'musicbrainz') {
-    throw new CatalogFunctionError(
-      'invalid_query',
-      'MusicBrainz is the only approved Milestone 4 catalog provider.',
-    )
+  if (typeof payload.provider !== 'string' || !isCatalogProvider(payload.provider)) {
+    throw new CatalogFunctionError('invalid_query', 'Catalog provider is invalid.')
   }
 
   if (
     typeof payload.providerReleaseId !== 'string'
-    || !MUSICBRAINZ_RELEASE_ID_PATTERN.test(payload.providerReleaseId)
+    || !releaseIdPatternFor(payload.provider).test(payload.providerReleaseId)
   ) {
     throw new CatalogFunctionError(
       'invalid_query',
@@ -382,43 +509,10 @@ async function parseAddRequest(request: Request): Promise<{
   }
 
   return {
+    kind: 'add',
     provider: payload.provider,
     providerReleaseId: payload.providerReleaseId,
   }
-}
-
-function catalogReleasePayload(candidate: CatalogCandidate, genres: string[]) {
-  const payload = {
-    artist: candidate.artist,
-    catalog_number: candidate.catalogNumber,
-    country: candidate.country,
-    created_by: null,
-    format: candidate.format,
-    label: candidate.label,
-    provider: candidate.provider,
-    provider_release_group_id: candidate.providerReleaseGroupId,
-    provider_release_id: candidate.providerReleaseId,
-    release_year: candidate.releaseYear,
-    source: 'catalog',
-    title: candidate.title,
-  }
-
-  // releases rows are shared across users. Only write `genres` when the
-  // optional enrichment actually produced one or more - omitting the key on an
-  // on-conflict upsert leaves any existing genres untouched, and a brand-new
-  // row falls back to the column default '{}'.
-  return genres.length > 0 ? { ...payload, genres } : payload
-}
-
-function normalizeCatalogReleaseRow(value: unknown): CatalogReleaseRow {
-  if (!isRecord(value) || typeof value.id !== 'string') {
-    throw new CatalogFunctionError(
-      'database_error',
-      'Catalog release persistence failed.',
-    )
-  }
-
-  return { id: value.id }
 }
 
 function normalizeCollectionItemRow(value: unknown): CatalogAddResponse['item'] {
@@ -459,39 +553,6 @@ function normalizeCollectionItemRow(value: unknown): CatalogAddResponse['item'] 
       genres: Array.isArray(release.genres) ? release.genres : [],
     },
   }
-}
-
-async function upsertCatalogRelease(
-  env: Environment,
-  createClientImpl: SupabaseFactory,
-  candidate: CatalogCandidate,
-  genres: string[],
-): Promise<CatalogReleaseRow> {
-  const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
-  const serviceRoleKey = requiredEnv(env, 'SUPABASE_SERVICE_ROLE_KEY')
-  const serviceClient = createClientImpl(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  })
-
-  const { data, error } = await serviceClient
-    .from('releases')
-    .upsert(catalogReleasePayload(candidate, genres), {
-      onConflict: 'provider,provider_release_id',
-    })
-    .select('id')
-    .single()
-
-  if (error) {
-    throw new CatalogFunctionError(
-      'database_error',
-      'Catalog release could not be saved.',
-    )
-  }
-
-  return normalizeCatalogReleaseRow(data)
 }
 
 async function createCatalogCollectionItem(
@@ -536,6 +597,23 @@ async function paceMusicBrainzRequest(): Promise<void> {
   }
 }
 
+/**
+ * An in-process, best-effort throttle only - not a verified global/
+ * cross-instance limiter (spec 0018 §12/§17, the same limitation the
+ * existing `paceMusicBrainzRequest` already silently has). Entirely
+ * independent from MusicBrainz's own pacer/clock.
+ */
+async function paceDiscogsRequest(): Promise<void> {
+  const now = Date.now()
+  const waitMs = Math.max(0, nextDiscogsRequestAt - now)
+
+  nextDiscogsRequestAt = Math.max(nextDiscogsRequestAt, now) + DISCOGS_PACING_MS
+
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs))
+  }
+}
+
 class CatalogFunctionError extends Error {
   readonly code: CatalogErrorCode
 
@@ -571,12 +649,58 @@ async function lookupReleaseWithRateLimitRetry(
   }
 }
 
+/**
+ * Fetches and persists the current Discogs metadata for one release
+ * (spec 0018 §5.3/§8.2.1/§8.3) - the shared, deliberately re-run exact
+ * lookup both the persisting add path and the read-only revalidation path
+ * use. No automatic retry on a Discogs rate limit (spec 0018 §17).
+ */
+async function fetchAndPersistDiscogsRelease(
+  env: Environment,
+  dependencies: CatalogFunctionDependencies,
+  providerReleaseId: string,
+): Promise<{
+  release: NormalizedDiscogsRelease
+  providerFetchedAt: string
+  releaseRowId: string
+}> {
+  const token = requiredEnv(env, 'DISCOGS_TOKEN')
+  const userAgent = requiredEnv(env, 'DISCOGS_USER_AGENT')
+
+  await dependencies.paceDiscogsRequest()
+
+  const release = await dependencies.lookupDiscogsRelease({
+    providerReleaseId,
+    token,
+    userAgent,
+  })
+  const providerFetchedAt = new Date().toISOString()
+
+  const releaseRow = await upsertCatalogRelease(
+    env,
+    dependencies.createClient,
+    release.candidate,
+    release.genres,
+    providerFetchedAt,
+  )
+
+  return { release, providerFetchedAt, releaseRowId: releaseRow.id }
+}
+
 function mapThrownError(error: unknown): Response {
   if (error instanceof CatalogFunctionError) {
     return errorResponse(error.code, error.message)
   }
 
   if (error instanceof MusicBrainzError) {
+    return errorResponse(error.code, error.message)
+  }
+
+  if (error instanceof DiscogsError) {
+    return errorResponse(error.code, error.message)
+  }
+
+  if (error instanceof CatalogPersistenceError) {
     return errorResponse(error.code, error.message)
   }
 
@@ -591,14 +715,47 @@ export async function handleCatalogSearch(
   try {
     await authenticateRequest(request, env, dependencies.createClient)
     const parsed = parseCatalogSearchRequest(request)
-    const userAgent = requiredEnv(env, 'MUSICBRAINZ_USER_AGENT')
+
+    if (parsed.kind === 'discogs-search') {
+      const token = requiredEnv(env, 'DISCOGS_TOKEN')
+      const userAgent = requiredEnv(env, 'DISCOGS_USER_AGENT')
+
+      await dependencies.paceDiscogsRequest()
+
+      const response = await dependencies.searchDiscogsReleases({
+        query: parsed.query,
+        token,
+        userAgent,
+      })
+
+      return jsonResponse(response)
+    }
 
     if (parsed.kind === 'exact') {
+      if (parsed.provider === 'discogs') {
+        const token = requiredEnv(env, 'DISCOGS_TOKEN')
+        const userAgent = requiredEnv(env, 'DISCOGS_USER_AGENT')
+
+        await dependencies.paceDiscogsRequest()
+
+        // Read-only exact-preview lookup (spec 0018 §5.2): zero database
+        // writes, for either provider, today or after this change.
+        const { candidate } = await dependencies.lookupDiscogsRelease({
+          providerReleaseId: parsed.releaseId,
+          token,
+          userAgent,
+        })
+
+        return jsonResponse({ candidates: [candidate], hasMore: false, offset: 0 })
+      }
+
       // Read-only exact release lookup (spec 0017 §10.3/§11.1): reuses the
       // exact same paced, rate-limit-retried function `handleCatalogAdd`
       // already calls - no genre enrichment, no database write of any
       // kind. Same response shape as a normal search, so the browser needs
       // zero new branches to render it.
+      const userAgent = requiredEnv(env, 'MUSICBRAINZ_USER_AGENT')
+
       await dependencies.paceProviderRequest()
 
       const candidate = await lookupReleaseWithRateLimitRetry(
@@ -609,6 +766,8 @@ export async function handleCatalogSearch(
 
       return jsonResponse({ candidates: [candidate], hasMore: false, offset: 0 })
     }
+
+    const userAgent = requiredEnv(env, 'MUSICBRAINZ_USER_AGENT')
 
     await dependencies.paceProviderRequest()
 
@@ -644,14 +803,50 @@ export async function handleCatalogAdd(
 ): Promise<Response> {
   try {
     const user = await authenticateRequest(request, env, dependencies.createClient)
-    const { providerReleaseId } = await parseAddRequest(request)
+    const parsed = await parseAddOrRefreshRequest(request)
+
+    if (parsed.kind === 'refresh') {
+      const { release, providerFetchedAt } = await fetchAndPersistDiscogsRelease(
+        env,
+        dependencies,
+        parsed.providerReleaseId,
+      )
+
+      const response: DiscogsRefreshResponse = {
+        candidate: release.candidate,
+        genres: release.genres,
+        providerFetchedAt,
+      }
+
+      return jsonResponse(response)
+    }
+
+    if (parsed.provider === 'discogs') {
+      // The second, independent, persisting lookup (spec 0018 §9): the
+      // browser's preview-step result (§5.2) is never trusted as metadata,
+      // only `provider` + `providerReleaseId`.
+      const { releaseRowId } = await fetchAndPersistDiscogsRelease(
+        env,
+        dependencies,
+        parsed.providerReleaseId,
+      )
+      const item = await createCatalogCollectionItem(
+        env,
+        dependencies.createClient,
+        user.id,
+        releaseRowId,
+      )
+
+      return jsonResponse({ item })
+    }
+
     const userAgent = requiredEnv(env, 'MUSICBRAINZ_USER_AGENT')
 
     await dependencies.paceProviderRequest()
 
     const candidate = await lookupReleaseWithRateLimitRetry(
       dependencies,
-      providerReleaseId,
+      parsed.providerReleaseId,
       userAgent,
     )
 
@@ -678,6 +873,7 @@ export async function handleCatalogAdd(
       dependencies.createClient,
       candidate,
       genres,
+      null,
     )
     const item = await createCatalogCollectionItem(
       env,

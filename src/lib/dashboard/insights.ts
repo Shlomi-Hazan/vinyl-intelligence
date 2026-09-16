@@ -200,12 +200,20 @@ export function rediscover(
 
 export type DecadeSlice = { decade: string; count: number; pct: number }
 
+/**
+ * A masked (`discogsUnavailable`) item's provider-derived `release_year` is
+ * excluded from this computation entirely, until it is unmasked (spec 0018
+ * §8.4) - it never contributes a slice, and never counts toward `total`.
+ */
 export function decadeDistribution(
   items: readonly CollectionItemWithRelease[],
 ): DecadeSlice[] {
   const counts = new Map<string, number>()
   let total = 0
   for (const item of items) {
+    if (item.discogsUnavailable) {
+      continue
+    }
     const decade = decadeOf(item.release.release_year)
     if (!decade) {
       continue
@@ -227,6 +235,11 @@ export function decadeDistribution(
 
 export type GenreSlice = { genre: string; count: number }
 
+/**
+ * A masked (`discogsUnavailable`) item's CATALOG genres are excluded from
+ * this computation entirely (spec 0018 §8.4) - only its own personal genres
+ * (never provider-derived) still participate.
+ */
 export function topGenres(
   items: readonly CollectionItemWithRelease[],
   limit = 5,
@@ -238,7 +251,9 @@ export function topGenres(
     // (spec 0015 §7): catalog + personal, canonical, deduped. A catalog `rock`
     // and a legacy personal `רוק` count as one `rock`; a record whose only
     // genre is a personal one now participates.
-    const genres = effectiveGenres(item)
+    const genres = item.discogsUnavailable
+      ? effectiveGenres({ ...item, release: { ...item.release, genres: [] } })
+      : effectiveGenres(item)
     if (genres.length > 0) {
       itemsWithGenre += 1
     }
@@ -255,4 +270,23 @@ export function topGenres(
     .map(([genre, count]) => ({ genre, count }))
     .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.genre.localeCompare(b.genre)))
     .slice(0, limit)
+}
+
+/**
+ * True when at least one CURRENTLY-FRESH Discogs-backed item contributed a
+ * provider-derived value (`release_year` or catalog `genres`) that could
+ * feed the decade/genre insight blocks (spec 0018 §7) - a masked item's data
+ * is already excluded from `decadeDistribution`/`topGenres` themselves, so
+ * this can never fire for a block that only ever saw an unavailable item's
+ * absent value.
+ */
+export function insightsIncludeFreshDiscogsData(
+  items: readonly CollectionItemWithRelease[],
+): boolean {
+  return items.some(
+    (item) =>
+      item.release.provider === 'discogs'
+      && !item.discogsUnavailable
+      && (item.release.release_year != null || (item.release.genres?.length ?? 0) > 0),
+  )
 }

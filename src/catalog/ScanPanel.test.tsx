@@ -88,6 +88,7 @@ function ownedItem(
       format: null,
       genres: [],
       updated_at: '',
+      provider: 'musicbrainz',
       provider_release_id: '11111111-1111-4111-8111-111111111111',
       ...over,
     },
