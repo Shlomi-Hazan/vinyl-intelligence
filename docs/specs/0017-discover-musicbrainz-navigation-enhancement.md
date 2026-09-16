@@ -1,8 +1,9 @@
 # 0017 Discover & MusicBrainz Navigation Enhancement (Specification)
 
 Status: **RUNTIME COMPLETE, MERGED, DEPLOYED; §23 HUMAN PRODUCTION
-ACCEPTANCE COMPLETE — documentation closeout (PR C) still IN PROGRESS/OPEN;
-final independent audit and a new final-submission tag PENDING.** This spec
+ACCEPTANCE COMPLETE; documentation closeout (PR C) MERGED (PR #37, merge
+commit `f347be94daa0e7e4e20e849d8dbcf8b0962840f6`); FINAL INDEPENDENT
+PRE-TAG AUDIT COMPLETE / PASS (0 BLOCKER / 0 HIGH / 0 MEDIUM).** This spec
 (PR #34) is merged; it precedes Plan 017's own PR A/B/C execution sequence.
 PR A (the companion plan, PR #35) is merged. PR B (runtime implementation
 + one independent-review correction round — 0 BLOCKER / 0 HIGH / 2 MEDIUM
@@ -13,12 +14,17 @@ smoke test (PASS, 2026-09-16), then completed the remaining §23 checks in a
 second round (also 2026-09-16) — see `docs/verification.md` → "Discover &
 MusicBrainz Navigation Enhancement Evidence" for the full evidence matrix
 and both rounds' record. **All 22 of §23's human production acceptance
-items now have sufficient evidence; §23 acceptance is COMPLETE.** This does
-not, by itself, mean spec §27's full Definition of Done is complete — the
-documentation/screenshot closeout (PR C, PR #37) remains open/unmerged, a
-final independent submission audit has not yet occurred, and a new
-final-submission tag has not yet been created. No schema, dependency, or
-migration change was made by this enhancement. This document's body below,
+items now have sufficient evidence; §23 acceptance is COMPLETE.** All of
+spec §27's Definition of Done is now satisfied except its final step: the
+merged repository commit represented by this closeout is the intended
+target for a new annotated final-submission tag,
+`ase26-final-submission-2026-09-16` (§26) — tag creation is a separate,
+external Git-ref action performed only after PR #38 (the status
+reconciliation carrying this text) merges. Verify the tag's existence and
+target directly from Git refs, not from this prose, which is written to
+remain accurate both before and after that tag exists. No schema,
+dependency, or migration change was made by this enhancement. This
+document's body below,
 including every "Correction from an earlier draft" note, is preserved
 exactly as written and approved at planning time — it is not rewritten to
 describe the implementation retroactively.

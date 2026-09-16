@@ -5862,18 +5862,30 @@ AUTOMATED BY CONTRACT + HISTORICAL/EXISTING ACCEPTED EVIDENCE (item 22).
 All 22 §23 items now have sufficient evidence. Spec 0017 §23 human
 production acceptance is COMPLETE / PASS.**
 
-**This does not, by itself, mean spec §27's Definition of Done is fully
-complete.** Per §27: the runtime is implemented, independently reviewed,
-merged, and deployed (items 1–9); §23 human production acceptance is now
-complete (item 10); but the documentation/screenshot closeout (§24/§25,
-items 11–12) is still open as PR #37 (not yet merged); a final independent
-submission audit (item 14) has not yet occurred; and a new post-enhancement
-final-submission tag (item 15) has not yet been created. Current state:
-runtime COMPLETE/MERGED/DEPLOYED; §23 human production acceptance
-COMPLETE/PASS; PR C documentation closeout IN PROGRESS/OPEN; final
-independent audit PENDING; new final-submission tag PENDING.
+**Spec §27's Definition of Done is now satisfied through item 14.** Per
+§27: the runtime is implemented, independently reviewed, merged, and
+deployed (items 1–9); §23 human production acceptance is complete
+(item 10); the documentation/screenshot closeout (§24/§25, items 11–12) is
+merged as PR #37 (merge commit
+`f347be94daa0e7e4e20e849d8dbcf8b0962840f6`); verification evidence is
+recorded in this file (item 13); and a final independent submission audit
+(item 14) is COMPLETE / PASS — the pre-tag audit of the merged repository
+state found **0 BLOCKER / 0 HIGH / 0 MEDIUM**, its sole finding being the
+stale post-merge status wording reconciled by PR #38 (this status
+reconciliation). Current state: runtime COMPLETE/MERGED/DEPLOYED; §23 human
+production acceptance COMPLETE/PASS; PR C documentation closeout MERGED;
+final independent pre-tag audit COMPLETE/PASS (0 BLOCKER/0 HIGH/0 MEDIUM).
 
-### Documentation Closeout (PR C, PR #37 — in progress)
+**Only item 15 remains:** the merged repository commit represented by
+PR #38 is the intended target for a new annotated final-submission tag,
+`ase26-final-submission-2026-09-16` (§26) — tag creation is a separate,
+external Git-ref action performed only after PR #38 merges, not part of
+any documentation change. Verify the tag's existence and current target
+directly from Git refs (`git rev-parse ase26-final-submission-2026-09-16`
+and its peeled commit), not from this prose — this wording is written to
+remain accurate both before and after that tag is created.
+
+### Documentation Closeout (PR C, PR #37 — merged)
 
 Documentation-only closeout represented by the current repository/Git
 history: README (Discover feature description, screenshots), root `SPEC.md`
@@ -5891,7 +5903,13 @@ new link; refreshed for the same reason). No runtime, test, schema, or
 configuration file changed; the accepted production runtime remains the
 PR #36 merge above (`abff1e86cbc36c754e8645179fa5bbee9ec27afe`, deploy
 `6aaa63fe2829c87037fd2cd0`). **Spec 0017 §23 human production acceptance is
-now complete; this closeout PR itself remains open/unmerged** — it does not
-claim a completion this PR's own scope cannot prove (see the §27 status
-breakdown above: PR C is still IN PROGRESS/OPEN, a final independent audit
-and a new final-submission tag both remain PENDING).
+complete; this closeout PR itself is now merged** as `main`
+`f347be94daa0e7e4e20e849d8dbcf8b0962840f6` — it does not claim a completion
+this PR's own scope cannot prove (see the §27 status breakdown above: the
+final independent pre-tag audit is now COMPLETE/PASS; only the new
+final-submission tag itself remains to be created, as a separate Git-ref
+action after PR #38 merges). That pre-tag audit found 0 BLOCKER / 0 HIGH /
+0 MEDIUM; its sole finding — stale post-merge status wording in this
+section and four other living documents, written while this PR was still
+open — is reconciled by PR #38 (this status reconciliation) and this same
+paragraph's surrounding text.

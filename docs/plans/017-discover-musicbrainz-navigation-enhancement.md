@@ -1,8 +1,10 @@
 # 017 Discover & MusicBrainz Navigation Enhancement (Implementation Plan)
 
 Status: **RUNTIME COMPLETE, MERGED, DEPLOYED; §23 HUMAN PRODUCTION
-ACCEPTANCE COMPLETE — PR C (this document's own documentation closeout,
-PR #37) still IN PROGRESS/OPEN.** The spec (PR #34) is merged; it precedes
+ACCEPTANCE COMPLETE; PR C (this document's own documentation closeout,
+PR #37) MERGED (merge commit `f347be94daa0e7e4e20e849d8dbcf8b0962840f6`);
+FINAL INDEPENDENT PRE-TAG AUDIT COMPLETE / PASS (0 BLOCKER / 0 HIGH /
+0 MEDIUM).** The spec (PR #34) is merged; it precedes
 this plan's own PR A/B/C execution sequence. PR A (this plan, PR #35) is
 merged. PR B (runtime implementation, PR #36) is complete: implemented,
 independently reviewed (one correction round — 0 BLOCKER / 0 HIGH /
@@ -14,10 +16,14 @@ Evidence" for the full chronology), merged
 2026-09-16, and the remaining §23 checks were completed in a second round
 (also 2026-09-16) — **all 22 of spec §23's human production acceptance
 items now have sufficient evidence; §23 acceptance is COMPLETE**, per the
-full record in the same verification section. This does not by itself mean
-spec §27's full Definition of Done is complete: this PR C documentation
-closeout remains open/unmerged, a final independent submission audit has
-not yet occurred, and a new final-submission tag has not yet been created.
+full record in the same verification section. All of spec §27's Definition
+of Done is now satisfied except its final step: the merged repository
+commit represented by this closeout is the intended target for a new
+annotated final-submission tag, `ase26-final-submission-2026-09-16` (§26)
+— tag creation is a separate, external Git-ref action performed only after
+PR #38 (the status reconciliation carrying this text) merges. Verify the
+tag's existence and target directly from Git refs, not from this prose,
+which is written to remain accurate both before and after that tag exists.
 The original PR A/B/C
 operational plan below is preserved unchanged as the plan that was
 executed; two minimal files outside its original file list
