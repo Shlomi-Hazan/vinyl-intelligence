@@ -136,6 +136,13 @@ Pending human approval of `docs/specs/0018-discogs-secondary-catalog-provider.md
   project's remaining timeline.
 - A mandatory, per-item Discogs attribution/link requirement adds a small
   but real, non-optional UI element to every Discogs-sourced surface.
+- VIN's **existing** server-side owned-collection read path
+  (`loadOwnedCollection`) already reads release metadata directly from the
+  same shared `releases` rows this decision extends to Discogs, with no
+  provider or freshness awareness today — confirmed by inspection, not a
+  hypothetical. This decision therefore requires that path (and
+  `loadCollection`'s equivalent client-side read) to become freshness-safe
+  plumbing, without any change to VIN's model, prompt, or ranking logic.
 - Materially better catalog coverage for physical vinyl releases,
   including verified real-world Israeli/Hebrew examples MusicBrainz did not
   surface — the concrete product benefit motivating this decision.
@@ -167,23 +174,27 @@ Pending human approval of `docs/specs/0018-discogs-secondary-catalog-provider.md
   remains primary, Discogs is an explicit fallback" product framing this
   decision is built around.
 - **Discogs used only as a transient, never-persisted discovery aid**
-  (identify, then require the user to re-enter data manually) — rejected as
-  unnecessarily user-hostile: it would discard exactly the structured,
-  already-verified metadata (§9/§10 of spec 0018) a server-side exact
-  lookup already produces, forcing the user to retype facts the app already
-  has confirmed correctly, for no additional compliance benefit spec 0018's
-  §12 freshness-invariant design doesn't already provide more simply.
+  (identify, then require the user to re-enter data manually) — rejected on
+  product-design grounds, not a compliance conclusion: it would discard
+  exactly the structured, already-verified metadata (§9/§10 of spec 0018) a
+  server-side exact lookup already produces, forcing the user to retype
+  facts the app already has confirmed correctly, for materially worse UX
+  than the chosen persistent-provider design, without spec 0018's own §12
+  freshness-invariant approach requiring that sacrifice.
 - **Automatic cross-provider fuzzy dedupe** (attempting to detect that a
   Discogs candidate and an already-owned MusicBrainz release are "probably"
   the same physical record) — rejected: no reliable identity signal exists
   across providers without risking false-positive merges of genuinely
   different pressings/editions, which would corrupt collection accuracy;
   explicitly deferred, not solved, in this decision (spec 0018 §7).
-- **Using Discogs images** — rejected: images are explicitly Discogs
-  Restricted Data (not CC0), subject to a separately and far more tightly
-  rate-limited endpoint (1/second, 1,000/day, shared across the whole
-  application's user base), and this codebase has no existing image-proxy
-  or cache infrastructure for any provider to build this safely and
-  compliantly within this enhancement's timeline. The existing branded
-  fallback and already-shipped custom-cover-upload feature already cover
-  this need with zero new code.
+- **Using Discogs images** — rejected: images are explicitly classified as
+  Discogs Restricted Data (not CC0) under the current official API Terms of
+  Use, and this codebase has no existing image-proxy or cache
+  infrastructure for any provider to build this safely and compliantly
+  within this enhancement's timeline. (Whether the image endpoint carries
+  its own separate, tighter rate limit was not independently confirmed
+  against the current official Terms during this decision's own research —
+  this rejection rests on the confirmed Restricted-Data classification and
+  the lack of existing infrastructure, not on an unverified numeric limit.)
+  The existing branded fallback and already-shipped custom-cover-upload
+  feature already cover this need with zero new code.

@@ -39,7 +39,11 @@ motivated by a real coverage gap discovered during final hands-on product use
 - a reopening of ADR 0002's primary-provider choice — ADR 0002 remains
   unchanged and correct; this spec extends it with a narrowly-scoped
   secondary-provider decision (ADR 0008);
-- an AI feature — no OpenRouter, Vision, or VIN involvement of any kind.
+- an AI feature — no OpenRouter or Vision call of any kind, and no VIN
+  model/prompt/schema/ranking change. VIN's own **existing** owned-collection
+  read path is a confirmed consumer of the same shared `releases` metadata
+  this enhancement extends (§3, §12) — that is an existing-architecture fact
+  this spec must account for, not a new AI capability this spec adds.
 
 It follows the same discipline as every prior post-freeze enhancement in this
 project (Hebrew & Multilingual Record Support, Final Submission Alignment,
@@ -123,8 +127,17 @@ Explicitly out of scope for this enhancement:
   lookup use (§5.2, §16);
 - any change to Scan's vision model, prompt, schema, recognition flow, or
   candidate source — Scan continues to search MusicBrainz only, unchanged;
-- any change to VIN (model, prompt, schema, rate limits, candidate
-  contract, or provider awareness);
+- any change to VIN's model, prompt, schema, rate limits, reasoning, ranking,
+  or candidate-selection contract, and no additional AI call of any kind.
+  **This is narrower than "no VIN change at all"**: VIN's server-side
+  `loadOwnedCollection` (`netlify/functions/_shared/curator-handlers.mts`)
+  already reads `release.artist`/`title`/`release_year`/`genres` directly
+  from the same shared `releases` rows this enhancement adds Discogs data
+  to, with no provider awareness and no freshness check today — confirmed by
+  direct inspection, not a hypothetical future extension. Freshness-safe
+  plumbing in that existing read path, sufficient to satisfy §12's
+  invariant, **is** in scope; the model/prompt/reasoning side of VIN is not
+  touched (§12);
 - database schema redesign or removal of existing provider validation — only
   a forward, additive widening of the existing catalog-identity constraint
   (§20);
@@ -236,22 +249,15 @@ returned HTTP 403 to automated fetch tooling during the original Milestone 4
 spike, and the same block was independently re-confirmed during this spec's
 own research — a persistent, known access constraint from this project's
 tooling environment, not a new problem). The clauses below are the ones
-material to this spec's design; they must be independently re-verified by a
-human directly opening the live page before implementation begins (§26).
+this spec attributes specifically to the Terms of Use document itself, as
+distinct from §5.1's empirical API observations — they must still be
+independently re-verified by a human directly opening the live page before
+implementation begins (§25 records this as an open item Plan 018 must
+close). **The exact authentication mechanism and
+numeric rate-limit values are deliberately not repeated here** — the Terms
+document is not the source for those; they are §5.1's empirical Phase-0
+observations instead, and are not re-asserted as Terms-document facts.
 
-- **Authentication:** a personal access token (`discogs.com/settings/developers`)
-  sent as `Authorization: Discogs token=<token>` is sufficient for read-only
-  Database Search and Release lookup — confirmed both by the terms and by
-  Phase-0 empirical evidence (§5.1). No OAuth end-user login and no
-  Consumer Key/Secret flow is required for this enhancement's scope.
-- **Rate limits:** authenticated requests are limited to 60/minute (a moving
-  60-second window); unauthenticated requests to 25/minute. Response headers
-  `X-Discogs-Ratelimit`, `X-Discogs-Ratelimit-Used`,
-  `X-Discogs-Ratelimit-Remaining` report the current state. Image requests
-  are separately, much more tightly limited: 1/second and 1,000/day, **per
-  application ID** (i.e. a shared budget across every Vinyl Intelligence
-  production user, not per-user) — one of the reasons Discogs images are out
-  of scope (§3, §11, §14).
 - **Data classification — CC0 vs. Restricted Data:** the terms distinguish
   CC0-licensed catalog metadata (release titles, dates, formats, track
   listings, barcodes/identifiers, credits, versions, artist names,
@@ -320,14 +326,18 @@ human directly opening the live page before implementation begins (§26).
   mechanism (which surfaces call the freshness check, how revalidation is
   triggered) is a Plan 018 decision, not fixed here (§12).
 - **Images (§14):** given the CC0/Restricted-Data split (§5.2) explicitly
-  places images outside CC0, the separate and much tighter image rate
-  limit, and this project's complete lack of existing image-proxy/cache
-  infrastructure for any provider, Discogs images are excluded from v1
-  entirely — the existing branded fallback and custom-cover-upload feature
-  already handle "facts but no usable image" gracefully, with zero new code.
+  places images outside CC0, and this project's complete lack of existing
+  image-proxy/cache infrastructure for any provider, Discogs images are
+  excluded from v1 entirely — the existing branded fallback and
+  custom-cover-upload feature already handle "facts but no usable image"
+  gracefully, with zero new code. (Whether the image endpoint carries its
+  own separate, tighter rate limit was not independently confirmed against
+  the current official Terms during this spec's research, §5.2 — this
+  decision does not rest on that unverified number.)
 - **Non-commercial-use basis (§5.2):** recorded here as the explicit basis
   for proceeding without seeking Discogs's separate written permission;
-  this record itself is the human-facing decision point (§26).
+  this record itself is the human-facing decision point requiring explicit
+  approval alongside the rest of this spec (§24 item 1).
 
 ## 6. Architecture Decision — Provider Boundary
 
@@ -491,13 +501,47 @@ rather than persisting a partial or guessed value:
 | `title` | `title` | Required. Same treatment against `RELEASE_FIELD_LIMITS.title` (200 chars). |
 | `release_year` | `year` (falling back to a parsed `released` date only if `year` is absent, never inventing one) | Validated against the same existing application year bounds already enforced for every other release (`RELEASE_YEAR_MIN`/`RELEASE_YEAR_MAX`, `src/lib/supabase/collection.ts`). An out-of-bounds or unparseable value stores `null`, exactly like the existing MusicBrainz path's handling of an unparseable date — never a fabricated year. |
 | `country` | `country` | Optional; same length bound as the existing `country` field (80 chars). |
-| `label` / `catalog_number` | `labels[]` | Deterministic choice: the **first** entry in the Discogs `labels[]` array supplies both `label` (its name) and `catalog_number` (its `catno`), mirroring how a physical sleeve typically shows one primary label/catalog-number pair most prominently. Additional labels in a multi-label release are **not** persisted in v1 (no new column is introduced for a label list) — this is a deliberate, bounded simplification, not an oversight. |
+| `label` / `catalog_number` | `labels[]` | Sentinel-aware deterministic choice (§10.1, below) — **not** simply the first array entry. Additional labels in a multi-label release are **not** persisted in v1 (no new column is introduced for a label list) — this is a deliberate, bounded simplification, not an oversight. |
 | `format` | `formats[]` | A deterministic, human-readable summary string derived from the matched Vinyl format entry (e.g. combining `name`, `qty`, and `descriptions` such as "Vinyl, LP, Album"), bounded to the existing `format` field's length limit (80 chars) — never the raw, unbounded `formats[]` array. |
 | `genres` | `genres` (Discogs) | Passed through the existing genre canonicalization/validation path (`release_genres_valid`, the existing `genres text[]` column and its existing constraints) — no new genre taxonomy is introduced; Discogs genre strings are treated exactly like MusicBrainz genre strings are today (community-curated tags, not model-inferred facts). |
 | `provider` | (fixed) | `'discogs'`. |
 | `provider_release_id` | `id` | Required. The exact Discogs Release ID, stored as a trimmed numeric string. |
 | `provider_release_group_id` | `master_id` | Optional/nullable — a Discogs release genuinely may have no master (§20). Never required, never fabricated when absent. |
 | `provider_fetched_at` | (application-generated) | Set to the current server timestamp at the moment of a successful revalidation (§12) — not derived from any Discogs response field. |
+
+### 10.1 Label / catalog-number selection rule
+
+A naive "first entry in `labels[]`" rule is demonstrably wrong: in the
+verified Phase-0 release `26770295` (§5.1), `labels[0]` is Shigola Records
+with `catno = "none"`, while `labels[1]` is Hasivuv with the real,
+meaningful pressing identifier `catno = "HSV005"`. `"none"` is Discogs's own
+literal no-catalog-number sentinel string, not an absent-value marker the
+application can trust as-is — persisting it verbatim would store a useless,
+misleading catalog number and silently discard the one the release actually
+has. The rule is therefore:
+
+1. From `labels[]`, prefer the **first** entry whose `name` is
+   valid/non-empty **and** whose `catno` is valid/non-empty **and** whose
+   `catno`, trimmed and compared case-insensitively, is **not** the literal
+   Discogs sentinel `"none"`.
+2. If such an entry exists: `label` = that entry's `name`;
+   `catalog_number` = that entry's `catno`.
+3. Otherwise (no entry has a usable, non-sentinel `catno`): `label` = the
+   first entry's `name` if any label is present at all; `catalog_number` =
+   `null`. A `null` catalog number is stored, never the literal string
+   `"none"`.
+
+No additional sentinel values are introduced beyond the one (`"none"`)
+directly observed in verified Phase-0 evidence — Plan 018/implementation
+must not invent further sentinel handling without new provider evidence to
+support it.
+
+Applied to the verified example: `labels[1]` (Hasivuv, `catno: "HSV005"`)
+is the first entry satisfying step 1, so `label = "Hasivuv"` and
+`catalog_number = "HSV005"` — the useful pressing identifier, not the
+useless `"none"` from `labels[0]`. (This assumes the live provider response
+still has this exact shape at implementation/acceptance time, §5.3 — it is
+not asserted as a permanent guarantee.)
 
 **Explicitly not persisted in v1:** `tracklist`, `identifiers` (barcodes
 etc.), `styles` (as distinct from `genres`), `date_added`/`date_changed`
@@ -536,6 +580,16 @@ displayed to a user as current when it is stale. Concretely:
   history, not when this application last checked (§5.3).
 - **Discogs provider metadata MUST NOT be displayed as fresh when
   `provider_fetched_at` is older than 6 hours.**
+- **The column is nullable at the database level** (so existing MusicBrainz
+  and manual rows, which have no meaningful "provider fetched at" concept,
+  remain valid with no backfill, §20). **For a catalog row with
+  `provider = 'discogs'`, `provider_fetched_at` is required to be non-null**
+  by product invariant (§20 specifies the corresponding database
+  constraint); regardless of whether that database-level constraint is
+  enforced, the runtime must independently and defensively treat a `NULL`
+  `provider_fetched_at` on any Discogs-provider row as **stale/unavailable
+  — never as fresh** — the absence of a timestamp is never interpreted as
+  "no check needed."
 - When a Discogs-backed record's metadata is found to be stale at display
   time, the application must revalidate the exact Discogs Release
   server-side (the same `GET /releases/{id}` call already used at add-time,
@@ -549,18 +603,36 @@ displayed to a user as current when it is stale. Concretely:
   record's Discogs-sourced fields — exactly the same "user-visible failure
   is preferable to fake success" discipline (`intent.txt` §16) already
   applied everywhere else in this product.
-- This is a **display-time** invariant, not merely an Album-Detail-page
-  concern: **any** surface that reads and presents Discogs-derived release
-  metadata as current information — Collection browse/grid/list, the
-  Dashboard, VIN (if it is ever extended to reference Discogs-backed
-  records — not proposed by this spec, §3), or any future consumer — must
-  not bypass this contract. This spec does not prescribe exactly which
-  shared code path enforces the check (a single shared "is this Discogs row
-  fresh enough to display, and if not, revalidate or degrade" helper is the
-  likely shape, analogous to the existing shared `isExactCatalogReleaseOwned`
-  helper's role) — **Plan 018 must determine the smallest centralized
-  implementation mechanism that satisfies this invariant across every
-  consuming view**, not each view independently reinventing the check.
+- This is a **display-time and candidate-fact invariant**, not merely an
+  Album-Detail-page concern. Direct repository inspection confirms exactly
+  two current consumers of persisted release metadata: `loadCollection`
+  (`src/lib/supabase/collection.ts`, the single shared read behind
+  Collection browse/grid/list, the Dashboard, and Album Detail), and
+  `loadOwnedCollection` (`netlify/functions/_shared/curator-handlers.mts`),
+  which **already** reads `release.artist`/`title`/`release_year`/`genres`
+  directly from `releases` for every owned collection item, unconditionally,
+  to build VIN's curator candidate facts — with no provider check and no
+  freshness check today. This is **not** a hypothetical future extension:
+  the moment a Discogs-backed release exists in a user's collection, this
+  existing, unmodified code path already reads its data. Both consumers —
+  and any future one — must not bypass this contract: a Discogs-backed
+  owned release's provider-derived metadata (`artist`, `title`,
+  `release_year`, `genres` sourced from the catalog row, not the user's own
+  personal-genre overlay) is eligible for **any** display or for inclusion
+  in VIN's candidate facts **only after** it satisfies this freshness
+  invariant. If freshness cannot be established (stale and revalidation
+  fails, §12 above), that release's provider-derived fields must not be
+  supplied to VIN as current metadata for that request — this is
+  freshness-safe **data plumbing**, not a VIN reasoning/ranking/prompt
+  change (§3). This spec does not prescribe exactly which shared code path
+  enforces the check (a single shared "is this Discogs row fresh enough to
+  use, and if not, revalidate or degrade" helper is the likely shape,
+  analogous to the existing shared `isExactCatalogReleaseOwned` helper's
+  role, reused by both `loadCollection` and `loadOwnedCollection`) —
+  **Plan 018 must determine the smallest centralized implementation
+  mechanism that satisfies this invariant across every consuming view**,
+  not each view independently reinventing the check, and not by changing
+  VIN's model, prompt, or ranking logic.
 - This spec deliberately does **not** prescribe a scheduled/background
   refresh subsystem (rejected in §5.4 as disproportionate for this
   timeline) — staleness is detected and resolved at display time, on the
@@ -638,11 +710,12 @@ Netlify Function never accepts or forwards a Discogs token from the browser.
 **Add:** `POST /api/catalog/add` gains `provider: 'discogs'` as a second
 accepted value alongside the existing `'musicbrainz'` (§4's confirmed
 `parseAddRequest` gate is the exact place this changes). A Discogs add
-request validates its numeric `providerReleaseId` against a **Discogs-specific**
-pattern — **never** `MUSICBRAINZ_RELEASE_ID_PATTERN**, which is a UUID regex
-that would incorrectly reject every Discogs id (§4, §9's exact-lookup step,
-§10's Vinyl-verification step, then the same upsert/collection-item creation
-pattern as MusicBrainz, unchanged in shape).
+request validates its numeric `providerReleaseId` against a
+**Discogs-specific** pattern — **never** `MUSICBRAINZ_RELEASE_ID_PATTERN`,
+which is a UUID regex that would incorrectly reject every Discogs id (§4).
+From there the request follows §9's exact-lookup step and §10's
+Vinyl-verification step, then the same upsert/collection-item creation
+pattern MusicBrainz already uses, unchanged in shape.
 
 Provider-specific validation, pacing, and error-handling remain
 provider-specific throughout — this spec explicitly rejects reusing any
@@ -683,8 +756,7 @@ Discogs pacing and error-handling are **independent** from MusicBrainz's —
 the existing `paceMusicBrainzRequest`/`MUSICBRAINZ_PACING_MS`/
 `nextMusicBrainzRequestAt` clock is not renamed or reused as a shared,
 misleadingly-generic mechanism; Discogs gets its own analogous pacer sized to
-its own observed/documented limits (§5.1/§5.2), not MusicBrainz's 1/second
-budget.
+its own observed limits (§5.1), not MusicBrainz's 1/second budget.
 
 Required:
 
@@ -745,8 +817,8 @@ this is not a localization project. The verified real Hebrew Discogs search
 ## 20. Database / Migration Specification (described, not implemented)
 
 This spec describes the required forward migration; it does not create or
-apply one (§26 — that is Plan 018/PR B's responsibility, after this spec and
-its plan are both human-approved).
+apply one — that is Plan 018/PR B's responsibility, after this spec and its
+plan are both human-approved.
 
 At minimum, the migration must:
 
@@ -759,12 +831,22 @@ At minimum, the migration must:
 - preserve every existing manual-release rule unchanged (`source = 'manual'`
   rows remain untouched by this migration);
 - introduce the minimal freshness marker required by §12 —
-  `provider_fetched_at timestamptz`, nullable (a MusicBrainz or manual row
-  has no meaningful "provider fetched at" concept and must not be forced to
-  carry one; only Discogs-backed rows populate it);
+  `provider_fetched_at timestamptz`, **nullable at the column level** (a
+  MusicBrainz or manual row has no meaningful "provider fetched at" concept
+  and must not be forced to carry one; only Discogs-backed rows populate
+  it) — **and additionally enforce, via a provider-qualified `CHECK`
+  constraint if it can be added without weakening any existing invariant,
+  that a catalog row with `provider = 'discogs'` must have a non-null
+  `provider_fetched_at`.** If Plan 018/PR B implementation finds a
+  provider-qualified `CHECK` constraint of this shape genuinely cannot be
+  added safely, it must stop and report that finding rather than silently
+  dropping the requirement — the runtime-level defensive treatment of
+  `NULL` as stale (§12) is a required backstop either way, not a substitute
+  for attempting the database-level guarantee;
 - guarantee every existing MusicBrainz row remains valid under the new
   constraint with **no backfill that changes its behavior** — an existing
-  MusicBrainz row's `provider_fetched_at` is simply absent/null, and no
+  MusicBrainz row's `provider_fetched_at` is simply absent/null, the new
+  Discogs-only `CHECK` constraint above does not apply to it, and no
   freshness check ever applies to a non-Discogs row (§12);
 - guarantee every existing manual row remains valid, unchanged;
 - require a Discogs catalog row to have a non-null, valid
@@ -800,6 +882,15 @@ established the pattern for this project.
 - a non-Vinyl Discogs release (e.g. a `File`/digital format, mirroring
   Phase-0's own `20370835` observation) is excluded from add-eligible
   candidates;
+- the §10.1 label/catalog-number sentinel rule: a `labels[]` array whose
+  first entry has `catno: "none"` and whose second entry has a real,
+  non-sentinel `catno` persists the **second** entry's name/catno, never the
+  literal string `"none"` (the verified Phase-0 release `26770295` — labels
+  Shigola Records `catno: "none"` then Hasivuv `catno: "HSV005"` — yielding
+  `label = "Hasivuv"`, `catalog_number = "HSV005"`, is the concrete fixture
+  for this test, subject to §5.3's live-data caveat); and a `labels[]` where
+  every entry's `catno` is absent or `"none"` persists `catalog_number =
+  null`, never `"none"`;
 - provider-qualified duplicate/ownership detection: a MusicBrainz-owned
   release and a same-numbered-looking (hypothetical) Discogs id are never
   conflated;
@@ -821,6 +912,14 @@ established the pattern for this project.
   data in both the search-results and Record-Detail surfaces;
 - the widened database constraint accepts a valid Discogs catalog row and
   still rejects an invalid/unapproved provider value;
+- if a provider-qualified `provider_fetched_at`-required `CHECK` constraint
+  was added (§20): a Discogs catalog row with a null `provider_fetched_at`
+  is rejected at the database level; a MusicBrainz or manual row with a
+  null `provider_fetched_at` is unaffected and still accepted;
+- **regardless of whether that database constraint exists**, the runtime
+  independently treats a `NULL` `provider_fetched_at` on any Discogs-provider
+  row as stale/unavailable — never as fresh — and never displays its
+  metadata as current without first attempting revalidation (§12);
 - existing manual-release semantics are unaffected (regression);
 - existing RLS/grants are unaffected (regression, pgTAP);
 - a fresh (`provider_fetched_at` within 6 hours) Discogs row displays its
@@ -831,6 +930,13 @@ established the pattern for this project.
   current — the UI shows the bounded unavailable/retry state instead (§12);
 - a successful revalidation updates both the metadata and
   `provider_fetched_at`;
+- **VIN's candidate-fact plumbing is freshness-safe**: `loadOwnedCollection`
+  never supplies a stale (or freshness-unestablished) Discogs-backed
+  release's provider-derived `artist`/`title`/`release_year`/`genres` to the
+  curator as current metadata for that request; this is verified without
+  any VIN model/prompt call (a mocked/fixture test of the shared
+  collection-loading path is sufficient — no OpenRouter call is exercised by
+  this test);
 - cross-provider equivalence is never inferred — two records added
   separately through MusicBrainz and Discogs for what a human would
   recognize as "the same album" remain two distinct collection items with no
@@ -925,15 +1031,24 @@ this specification document alone is not completion:
    separate section) — a Plan 018 UI decision, not fixed here; either
    placement satisfies this spec's contract.
 2. **Exact shared mechanism enforcing the §12 freshness invariant across
-   every consuming view** — deliberately left to Plan 018 (§12), since the
-   correct minimal shape depends on which views are found, during planning,
-   to actually render Discogs-derived metadata today (currently: Record
-   Detail and Collection browse; VIN/Dashboard involvement, if any, is out
-   of scope per §3 unless planning finds an unavoidable dependency, in which
-   case Plan 018 must stop and ask rather than silently extend scope).
+   every consuming view** — deliberately left to Plan 018 (§12). The set of
+   consumers is not open-ended speculation: repository inspection confirms
+   exactly two today, `loadCollection` (Collection browse/grid/list,
+   Dashboard, Album Detail) and `loadOwnedCollection` (VIN's candidate-fact
+   plumbing, confirmed reading the same columns unconditionally, §12). Plan
+   018 decides the shared implementation shape for both; it must not change
+   VIN's model, prompt, or ranking logic to satisfy this (§3).
 3. **Whether a bounded Discogs rate-limit retry (mirroring MusicBrainz's
    existing single bounded retry) is warranted, and its exact backoff** —
    left to Plan 018, bounded by §17's "no unbounded retry" requirement.
+4. **Independent human re-verification of the current official Discogs
+   documentation and Terms of Use directly in a browser**, before Plan 018
+   locks any detail this spec's own research could not confirm
+   independently (§5.2, §5.3) — both `https://www.discogs.com/developers`
+   and the API Terms of Use page returned HTTP 403 to this spec's own
+   automated fetch tooling, exactly as ADR 0002 encountered during the
+   original Milestone 4 spike. This must be closed before, not during,
+   implementation.
 
 No item above affects the identity contract, the freshness invariant, the
 attribution requirement, the security boundary, or the provider-boundary
@@ -954,4 +1069,4 @@ Verification, Git/PR discipline); `SPEC.md` §7, §13, §15, §16;
 `https://support.discogs.com/hc/en-us/articles/360009334593-API-Terms-of-Use`
 (both returned HTTP 403 to this spec's own automated fetch tooling, exactly
 as ADR 0002 encountered during the original Milestone 4 spike — required
-independent human re-verification before implementation, §5.2, §26).
+independent human re-verification before implementation, §5.2, §25).
