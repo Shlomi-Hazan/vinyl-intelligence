@@ -403,16 +403,20 @@ Discogs flow defines its **own**, spec-compatible sequence:
    /api/catalog/search?provider=discogs&q=...` (§5.1) → renders a small,
    distinctly-labeled ("Discogs") list of `DiscogsSearchResultItem`s (its
    own minimal renderer, §3.2 — title/year/country/format-summary/label).
-   An "already owned" badge is shown directly on a result whose
-   `providerReleaseId` matches an owned `(discogs, id)` pair (checked with
-   the already-known `providerReleaseId` — no need to wait for the exact
-   lookup for this check). **No attribution line is required on the raw
-   search-result row itself** — `DiscogsSearchResultItem` is
-   display/selection data, and the one confirmation dialog every result
-   must pass through before anything is added (step 4, below) is where
-   attribution is required (§7); this is a placement choice, not a scope
-   reduction — every result still passes through the attributed dialog
-   before it can be added.
+   **[corrected]** Each rendered result already displays real Discogs API
+   data (title, year, country, format, label) and therefore carries its
+   own compact `DiscogsAttribution` mark (§7), linked to
+   `discogsReleaseUrl(providerReleaseId)` — the same
+   `derivedProviderPageUrl` `DiscogsSearchResultItem` already computes
+   (§3.1). This is in addition to, not instead of, the confirmation
+   dialog's own full-variant attribution (§7) — a user sees Discogs
+   attribution at both the search-result stage and the confirmation stage,
+   exactly as the Terms require adjacency to every place the data is
+   directly presented, not only the last one before a write. An "already
+   owned" badge is shown directly on a result whose `providerReleaseId`
+   matches an owned `(discogs, id)` pair (checked with the already-known
+   `providerReleaseId` — no need to wait for the exact lookup for this
+   check).
 3. User clicks "Review & Add" on one result → client calls `GET
    /api/catalog/search?provider=discogs&releaseId=<id>` (§5.2) — a
    loading/"Finding…" state shown meanwhile.
@@ -482,6 +486,7 @@ export function DiscogsAttribution({
 
 | Surface | File | Attribution | Variant |
 | --- | --- | --- | --- |
+| **[corrected] Discogs search result row** | `DiscogsSearchPanel.tsx` | **Yes** | compact |
 | The Discogs exact-preview confirmation dialog (§6 step 4, both CTA cases) | new dialog, `DiscogsSearchPanel.tsx` or `DiscoverPanel.tsx` | **Yes** | full |
 | Album Detail (Discogs-backed, fresh) | `AlbumDetailPage.tsx` | **Yes** | full, beside "View on Discogs" |
 | `CollectionBrowser.tsx` grid card (`AlbumCard`), fresh | `CollectionBrowser.tsx` | **Yes** | compact |
@@ -1009,8 +1014,9 @@ value.
   `msUntilStale`) + `.test.ts`.
 - `src/lib/catalog/catalogFieldLimits.ts` (extracted shared constants).
 - `src/catalog/DiscogsAttribution.tsx` (full + compact variants).
-- `src/catalog/DiscogsSearchPanel.tsx` (search results + "Review & Add" +
-  the new confirmation dialog logic, §6, used for both the not-owned and
+- `src/catalog/DiscogsSearchPanel.tsx` (search results, each carrying its
+  own compact `DiscogsAttribution` mark, §7 + "Review & Add" + the new
+  confirmation dialog logic, §6, used for both the not-owned and
   already-owned Discogs cases) + `.test.ts`.
 - `netlify/functions/_shared/catalogPersistence.mts` — the extracted,
   exported `upsertCatalogRelease` (§8.3), imported by both
@@ -1346,7 +1352,7 @@ regression safety.
 
 | Spec 0018 section | Plan section | Test/evidence |
 | --- | --- | --- |
-| §6 provider boundary | §6 | `DiscogsSearchPanel.test.tsx` — no auto-fire |
+| §6 provider boundary | §6 | `DiscogsSearchPanel.test.tsx` — no auto-fire, attribution present on every rendered result |
 | §7 identity | §11 | `ownedRelease.test.ts` |
 | §8 search | §3 | `discogs.test.ts` (search-result normalizer, no artist/title split) |
 | §9 exact lookup/trust | §4, §5.2, §5.3, §6, §10 | `discogs.test.ts`, `catalog-functions.test.ts` (two-lookup flow) |
