@@ -20,6 +20,7 @@ import { canonicalizeGenres } from '../../../src/lib/genre/canonical.ts'
 import { isDiscogsRowFresh } from '../../../src/lib/catalog/discogsFreshness.ts'
 import { lookupDiscogsRelease } from '../../../src/lib/catalog/discogs.ts'
 import { upsertCatalogRelease } from './catalogPersistence.mts'
+import { paceDiscogsRequest as paceDiscogsRequestImpl } from './catalog-handlers.mts'
 import {
   CURATOR_INTENT_FEATURE,
   CURATOR_SELECTION_FEATURE,
@@ -68,6 +69,13 @@ export type CuratorFunctionDependencies = {
     args: { token: string; userId: string; windowStartIso: string },
   ) => Promise<number>
   now: () => number
+  /**
+   * The same 1500ms in-process/best-effort Discogs pacing discipline used
+   * by the catalog Netlify Functions (spec 0018 §12/§17, PR #41 finding 2) -
+   * applied before each stale-row revalidation call to `lookupDiscogsRelease`
+   * inside `loadOwnedCollection`. Injectable so tests never actually wait.
+   */
+  paceDiscogsRequest: () => Promise<void>
 }
 
 type CuratorResponsePayload =
@@ -349,6 +357,7 @@ async function loadOwnedCollection(
   env: Environment,
   createClientImpl: SupabaseFactory,
   { token }: AuthenticatedContext,
+  paceDiscogsRequest: () => Promise<void>,
 ): Promise<{
   items: CuratorCollectionItem[]
   events: CuratorListeningEvent[]
@@ -424,6 +433,10 @@ async function loadOwnedCollection(
     try {
       const token = requiredEnv(env, 'DISCOGS_TOKEN')
       const discogsUserAgent = requiredEnv(env, 'DISCOGS_USER_AGENT')
+      // Same 1500ms in-process/best-effort pacing discipline as the catalog
+      // Netlify Functions (spec 0018 §12/§17, PR #41 finding 2) - applied
+      // before each stale-row revalidation call, sequentially, no retry.
+      await paceDiscogsRequest()
       const { candidate, genres } = await lookupDiscogsRelease({
         providerReleaseId,
         token,
@@ -521,6 +534,7 @@ function defaultDependencies(): CuratorFunctionDependencies {
         windowStartIso,
       }),
     now: () => Date.now(),
+    paceDiscogsRequest: paceDiscogsRequestImpl,
   }
 }
 
@@ -628,6 +642,30 @@ async function runSelectionPipeline(args: {
   }
 }
 
+/**
+ * A neutral, honest `CuratorIntent` for the "owned rows exist, but every one
+ * was excluded before any interpretation happened" `no_match` short-circuit
+ * (PR #41 finding 3) - every field is a genuine "nothing was asked/inferred"
+ * default, never a fabricated reading of the user's actual request. This
+ * value is never sent to, or produced by, a model.
+ */
+function uninterpretedIntent(): CuratorIntent {
+  return {
+    includeGenres: [],
+    excludeGenres: [],
+    decades: [],
+    minRating: null,
+    favoritesOnly: false,
+    neverPlayedOnly: false,
+    avoidRecentlyPlayed: false,
+    recentDays: null,
+    preference: 'none',
+    energy: 'any',
+    mood: null,
+    requestedCount: 3,
+  }
+}
+
 export async function handleCuratorRecommend(
   request: Request,
   env: Environment = process.env,
@@ -638,9 +676,22 @@ export async function handleCuratorRecommend(
     const userRequest = await parseCuratorRequestBody(request)
     await enforceRateLimit(deps, env, context)
 
-    const { items, events, hasOwnedRows } = await loadOwnedCollection(env, deps.createClient, context)
+    const { items, events, hasOwnedRows } = await loadOwnedCollection(
+      env,
+      deps.createClient,
+      context,
+      deps.paceDiscogsRequest,
+    )
     if (!hasOwnedRows) {
       return jsonResponse({ status: 'empty_collection' })
+    }
+    // Owned rows exist, but every one was excluded by the Discogs
+    // freshness pass above (spec 0018 §12, PR #41 finding 3) - the normal
+    // no_match response, returned BEFORE any OpenRouter/model call (zero
+    // calls, not one) rather than falling through to LLM call #1 only to
+    // discover there is nothing left to interpret against.
+    if (items.length === 0) {
+      return jsonResponse({ status: 'no_match', interpretedIntent: uninterpretedIntent() })
     }
 
     const provider = providerConfig(env)
@@ -711,9 +762,22 @@ export async function handleCuratorRefine(
     const { request: followUp, context: refinementContext } = await parseCuratorRefineBody(request)
     await enforceRateLimit(deps, env, context)
 
-    const { items, events, hasOwnedRows } = await loadOwnedCollection(env, deps.createClient, context)
+    const { items, events, hasOwnedRows } = await loadOwnedCollection(
+      env,
+      deps.createClient,
+      context,
+      deps.paceDiscogsRequest,
+    )
     if (!hasOwnedRows) {
       return jsonResponse({ status: 'empty_collection' })
+    }
+    // Owned rows exist, but every one was excluded by the Discogs
+    // freshness pass above (spec 0018 §12, PR #41 finding 3) - the normal
+    // no_match response, returned BEFORE any OpenRouter/model call (zero
+    // calls, not one) rather than falling through to LLM call #1 only to
+    // discover there is nothing left to interpret against.
+    if (items.length === 0) {
+      return jsonResponse({ status: 'no_match', interpretedIntent: uninterpretedIntent() })
     }
 
     const provider = providerConfig(env)

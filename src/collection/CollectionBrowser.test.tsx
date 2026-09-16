@@ -912,6 +912,17 @@ describe('CollectionBrowser - Discogs artwork gating, masking, and attribution (
     expect(screen.getByRole('button', { name: 'Add favourite' })).toBeEnabled()
   })
 
+  it('a masked item still shows the user\'s own rating - it is never Discogs content (PR #41 finding 4)', () => {
+    const masked = {
+      ...discogsItem(),
+      discogsUnavailable: true,
+      rating: 4,
+    } as CollectionItemWithRelease
+    renderBrowser([masked])
+    expect(screen.getByText('Catalog details unavailable')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Rated 4 of 5' })).toBeInTheDocument()
+  })
+
   it('a masked item is excluded from search matching its (absent) title/artist', async () => {
     const masked = {
       ...discogsItem(),

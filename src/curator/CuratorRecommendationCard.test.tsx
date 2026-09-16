@@ -186,4 +186,32 @@ describe('CuratorRecommendationCard - Discogs-backed owned item (spec 0018)', ()
     renderCard({ ownedItem: null })
     expect(screen.queryByText(/Data provided by/)).not.toBeInTheDocument()
   })
+
+  it('never takes accessible artwork text from a stale/masked ownedItem - always uses the fresh recommendation facts (PR #41 finding 5)', () => {
+    const staleOwned = discogsOwned({
+      discogsUnavailable: true,
+      release: {
+        ...discogsOwned().release,
+        artist: 'Stale Artist (do not show)',
+        title: 'Stale Title (do not show)',
+      },
+    })
+    renderCard({
+      recommendation: recommendation({ artist: 'Fresh Artist', title: 'Fresh Title' }),
+      ownedItem: staleOwned,
+    })
+
+    // The stale ownedItem strings must never appear anywhere in the
+    // rendered card, accessible or otherwise.
+    expect(screen.queryByText(/Stale Artist/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Stale Title/)).not.toBeInTheDocument()
+
+    // The artwork's accessible name comes from the fresh recommendation,
+    // not the stale/masked owned item release fields.
+    expect(
+      screen.getByRole('img', {
+        name: nameIgnoringBidi('Fresh Artist - Fresh Title (no cover art)'),
+      }),
+    ).toBeInTheDocument()
+  })
 })

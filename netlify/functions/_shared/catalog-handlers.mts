@@ -79,7 +79,7 @@ export type CatalogFunctionDependencies = {
   searchDiscogsReleases: typeof searchDiscogsReleasesImpl
 }
 
-type AuthenticatedUser = Pick<User, 'id'>
+type AuthenticatedUser = Pick<User, 'id'> & { token: string }
 
 type CollectionReleaseRow = CatalogAddResponse['item']['release']
 
@@ -211,7 +211,7 @@ async function authenticateRequest(
     )
   }
 
-  return { id: data.user.id }
+  return { id: data.user.id, token }
 }
 
 function parseLimit(value: string | null): number {
@@ -555,6 +555,83 @@ function normalizeCollectionItemRow(value: unknown): CatalogAddResponse['item'] 
   }
 }
 
+/**
+ * Ownership gate for a Discogs refresh (spec 0018 §8.3, PR #41 finding 1) -
+ * verifies, BEFORE any Discogs call or service-role write, that the
+ * authenticated caller actually owns a collection item whose release
+ * identity is exactly `(provider='discogs', provider_release_id)`. Uses an
+ * RLS-scoped client authenticated as the caller (their own bearer token,
+ * never the service role and never a browser-supplied user id), so
+ * `collection_items` ownership is enforced by the database itself, not by
+ * application logic trusting client input.
+ *
+ * Two narrow, exact-match, indexed queries rather than one embedded-filter
+ * query: the first (`releases`, readable to any authenticated user per its
+ * existing catalog-select policy) resolves the identity to a release row id
+ * with no ownership implication of its own; the second
+ * (`collection_items`, RLS-scoped to `auth.uid() = user_id`) checks whether
+ * THIS caller owns a copy of it. A miss at either step means "not owned" -
+ * rejected identically, so a non-existent release and an existing-but-
+ * unowned one are indistinguishable to the caller.
+ */
+async function verifyOwnsDiscogsRelease(
+  env: Environment,
+  createClientImpl: SupabaseFactory,
+  token: string,
+  providerReleaseId: string,
+): Promise<void> {
+  const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
+  const publishableKey = requiredEnv(env, 'VITE_SUPABASE_PUBLISHABLE_KEY')
+  const userClient = createClientImpl(supabaseUrl, publishableKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  })
+
+  const releaseResult = await userClient
+    .from('releases')
+    .select('id')
+    .eq('source', 'catalog')
+    .eq('provider', 'discogs')
+    .eq('provider_release_id', providerReleaseId)
+    .limit(1)
+    .maybeSingle()
+
+  if (releaseResult.error) {
+    throw new CatalogFunctionError(
+      'database_error',
+      'Could not verify your collection.',
+    )
+  }
+
+  if (!releaseResult.data) {
+    throw new CatalogFunctionError(
+      'not_found',
+      'That record is not in your collection.',
+    )
+  }
+
+  const ownershipResult = await userClient
+    .from('collection_items')
+    .select('id')
+    .eq('release_id', releaseResult.data.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (ownershipResult.error) {
+    throw new CatalogFunctionError(
+      'database_error',
+      'Could not verify your collection.',
+    )
+  }
+
+  if (!ownershipResult.data) {
+    throw new CatalogFunctionError(
+      'not_found',
+      'That record is not in your collection.',
+    )
+  }
+}
+
 async function createCatalogCollectionItem(
   env: Environment,
   createClientImpl: SupabaseFactory,
@@ -603,7 +680,7 @@ async function paceMusicBrainzRequest(): Promise<void> {
  * existing `paceMusicBrainzRequest` already silently has). Entirely
  * independent from MusicBrainz's own pacer/clock.
  */
-async function paceDiscogsRequest(): Promise<void> {
+export async function paceDiscogsRequest(): Promise<void> {
   const now = Date.now()
   const waitMs = Math.max(0, nextDiscogsRequestAt - now)
 
@@ -806,6 +883,17 @@ export async function handleCatalogAdd(
     const parsed = await parseAddOrRefreshRequest(request)
 
     if (parsed.kind === 'refresh') {
+      // Ownership gate BEFORE any Discogs call or write (spec 0018 §8.3,
+      // PR #41 finding 1) - the browser's own claim of ownership is never
+      // trusted; ownership is re-verified against the database, scoped to
+      // this authenticated caller's own token.
+      await verifyOwnsDiscogsRelease(
+        env,
+        dependencies.createClient,
+        user.token,
+        parsed.providerReleaseId,
+      )
+
       const { release, providerFetchedAt } = await fetchAndPersistDiscogsRelease(
         env,
         dependencies,

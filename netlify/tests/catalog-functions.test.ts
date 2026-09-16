@@ -82,6 +82,13 @@ function createDependencies(options: {
   searchError?: Error
   discogsSearchError?: Error
   discogsLookupError?: Error
+  /** Whether the identity `(discogs, discogsReleaseId)` exists in the
+   * shared catalog at all (default true) - PR #41 finding 1. */
+  discogsReleaseExistsInCatalog?: boolean
+  /** Whether the AUTHENTICATED caller owns a collection item for that
+   * release (default true) - PR #41 finding 1. */
+  callerOwnsDiscogsRelease?: boolean
+  ownershipCheckError?: Error
 } = {}) {
   const searchReleases = vi.fn(async () => ({
     candidates: [catalogCandidate()],
@@ -122,6 +129,28 @@ function createDependencies(options: {
   if (options.discogsLookupError) {
     lookupDiscogsRelease.mockRejectedValue(options.discogsLookupError)
   }
+  // The RLS-scoped ownership-check queries (PR #41 finding 1) - a distinct,
+  // narrower pair of query builders from the service-role `releaseQuery` /
+  // `itemQuery` below, since these run against the caller's own token, not
+  // the service role, and never write anything.
+  const releaseIdentityQuery = {
+    select: vi.fn(() => releaseIdentityQuery),
+    eq: vi.fn(() => releaseIdentityQuery),
+    limit: vi.fn(() => releaseIdentityQuery),
+    maybeSingle: vi.fn(async () => ({
+      data: options.discogsReleaseExistsInCatalog === false ? null : { id: 'release-1' },
+      error: options.ownershipCheckError ?? null,
+    })),
+  }
+  const ownershipQuery = {
+    select: vi.fn(() => ownershipQuery),
+    eq: vi.fn(() => ownershipQuery),
+    limit: vi.fn(() => ownershipQuery),
+    maybeSingle: vi.fn(async () => ({
+      data: options.callerOwnsDiscogsRelease === false ? null : { id: 'owned-item-1' },
+      error: options.ownershipCheckError ?? null,
+    })),
+  }
   const authClient = {
     auth: {
       getUser: vi.fn(async () => ({
@@ -131,6 +160,17 @@ function createDependencies(options: {
         error: options.authError ?? null,
       })),
     },
+    from: vi.fn((table: string) => {
+      if (table === 'releases') {
+        return releaseIdentityQuery
+      }
+
+      if (table === 'collection_items') {
+        return ownershipQuery
+      }
+
+      throw new Error(`Unexpected table on authClient: ${table}`)
+    }),
   }
   const releaseQuery = {
     select: vi.fn(() => releaseQuery),
@@ -211,8 +251,10 @@ function createDependencies(options: {
     lookupDiscogsRelease,
     lookupRelease,
     lookupReleaseGroupGenres,
+    ownershipQuery,
     paceDiscogsRequest,
     paceProviderRequest,
+    releaseIdentityQuery,
     releaseQuery,
     searchDiscogsReleases,
     searchReleases,
@@ -1286,8 +1328,9 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
     expect(upsertPayload.provider_fetched_at).toBeNull()
   })
 
-  it('the refresh action re-fetches and persists Discogs metadata without creating a collection item', async () => {
-    const { dependencies, itemQuery, lookupDiscogsRelease, releaseQuery } = createDependencies()
+  it('the refresh action re-fetches and persists Discogs metadata without creating a collection item (owned)', async () => {
+    const { dependencies, itemQuery, lookupDiscogsRelease, ownershipQuery, releaseQuery } =
+      createDependencies()
 
     const response = await handleCatalogAdd(
       authedRequest('http://app.test/api/catalog/add', {
@@ -1303,6 +1346,9 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
     )
 
     expect(response.status).toBe(200)
+    // The ownership gate ran (spec 0018 §8.3, PR #41 finding 1) before the
+    // Discogs call/write below.
+    expect(ownershipQuery.maybeSingle).toHaveBeenCalledOnce()
     expect(lookupDiscogsRelease).toHaveBeenCalledOnce()
     expect(releaseQuery.upsert).toHaveBeenCalledOnce()
     expect(itemQuery.insert).not.toHaveBeenCalled()
@@ -1312,6 +1358,57 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
       genres: ['hip hop'],
     })
     expect(typeof payload.providerFetchedAt).toBe('string')
+  })
+
+  it('the refresh action rejects a caller who does not own the release - zero Discogs calls, zero writes', async () => {
+    const { dependencies, lookupDiscogsRelease, releaseQuery } = createDependencies({
+      callerOwnsDiscogsRelease: false,
+    })
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: discogsReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(404)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'not_found' })
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+    expect(releaseQuery.upsert).not.toHaveBeenCalled()
+  })
+
+  it('the refresh action rejects a release identity that does not exist in the catalog at all - zero Discogs calls, zero writes', async () => {
+    const { dependencies, lookupDiscogsRelease, ownershipQuery, releaseQuery } =
+      createDependencies({
+        discogsReleaseExistsInCatalog: false,
+      })
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: discogsReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(404)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'not_found' })
+    // Short-circuits before even checking ownership - nothing to own.
+    expect(ownershipQuery.maybeSingle).not.toHaveBeenCalled()
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+    expect(releaseQuery.upsert).not.toHaveBeenCalled()
   })
 
   it('the refresh action rejects a non-Discogs provider', async () => {

@@ -684,7 +684,10 @@ function AlbumCard(props: CardProps) {
           </span>
         ) : null}
       </Link>
-      {!unavailable && item.rating ? (
+      {/* Rating is user-owned data, never Discogs content - it stays
+         visible even while provider metadata is masked (spec 0018 §7,
+         PR #41 finding 4). */}
+      {item.rating ? (
         <span className="vi-albumcard__rating">
           <RatingControl value={item.rating} readOnly />
         </span>
@@ -723,7 +726,10 @@ function AlbumRow(props: CardProps & { playsLabel: string }) {
           )}
         </span>
         <span className="vi-albumrow__rating">
-          {!unavailable && item.rating ? <RatingControl value={item.rating} readOnly /> : null}
+          {/* Rating is user-owned data, never Discogs content - it stays
+             visible even while provider metadata is masked (spec 0018 §7,
+             PR #41 finding 4). */}
+          {item.rating ? <RatingControl value={item.rating} readOnly /> : null}
         </span>
         <span className="vi-albumrow__plays">{plays}</span>
       </Link>
