@@ -8,7 +8,7 @@
 **Supersedes:** `docs/roadmaps/2026-08-18-complete-project-roadmap.md` — preserved unchanged as the historical snapshot
 **Scope:** Full project plan from foundation through production-ready final polish, updated to record the project's actual evolution after Milestone 10, including three post-M12 evolutions (Hebrew & Multilingual Record Support; Final Submission Alignment; Discover & MusicBrainz Navigation Enhancement)
 
-**Project status (2026-09-16): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled (PR D) — Discover & MusicBrainz Navigation Enhancement runtime COMPLETE, merged, deployed, and spec §23 human production acceptance COMPLETE; documentation closeout (PR C) still in progress.** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `abff1e86cbc36c754e8645179fa5bbee9ec27afe` (Netlify deploy `6aaa63fe2829c87037fd2cd0`). An 8-step human production smoke test passed 2026-09-16, and the remaining spec 0017 §23 human-only checks were completed in a second round the same day — all 22 of §23's items now have sufficient evidence, and §23 acceptance is COMPLETE; see `docs/verification.md` → "Discover & MusicBrainz Navigation Enhancement Evidence" for the full matrix and both rounds' record. This does not by itself mean spec §27's Definition of Done is fully complete: the documentation closeout (PR C, PR #37) remains open/unmerged, a final independent submission audit has not yet occurred, and a new final-submission tag has not yet been created. See "Post-M12 evolution" below for the full chronology; the pre-enhancement accepted state (2026-09-15, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy `6aa8783d1835a5e433449dd4`) and M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) are preserved as history below and in section 22, and are no longer the current accepted runtime.
+**Project status (2026-09-16): M0–M12 COMPLETE (2026-09-07) — Hebrew & Multilingual Record Support COMPLETE — Final Submission Alignment Findings A and B CLOSED, Findings C–H reconciled (PR D) — Discover & MusicBrainz Navigation Enhancement runtime COMPLETE, merged, deployed, spec §23 human production acceptance COMPLETE, and documentation closeout (PR C) MERGED.** Accepted production runtime is live at `https://vinyl-intelligence.netlify.app`, from merged `main` `abff1e86cbc36c754e8645179fa5bbee9ec27afe` (Netlify deploy `6aaa63fe2829c87037fd2cd0`) — unchanged by PR C, which was docs/assets only and required no redeploy. An 8-step human production smoke test passed 2026-09-16, and the remaining spec 0017 §23 human-only checks were completed in a second round the same day — all 22 of §23's items now have sufficient evidence, and §23 acceptance is COMPLETE; see `docs/verification.md` → "Discover & MusicBrainz Navigation Enhancement Evidence" for the full matrix and both rounds' record. PR C (documentation/screenshot closeout, PR #37) merged as `main` `f347be94daa0e7e4e20e849d8dbcf8b0962840f6`; a final pre-tag audit found 0 BLOCKER / 0 HIGH / 0 MEDIUM, with the only finding being stale post-merge status wording, reconciled here. This does not by itself mean spec §27's Definition of Done is fully complete: a final independent submission audit has not yet occurred, and a new final-submission tag has not yet been created — both remain PENDING. See "Post-M12 evolution" below for the full chronology; the pre-enhancement accepted state (2026-09-15, `main` `81812c1f52d56bea84e142d828dd1e1427a0ec4b`, deploy `6aa8783d1835a5e433449dd4`) and M0–M12's own accepted state (2026-09-07, `main` `c2037b8`, deploy `6a9eaf39`) are preserved as history below and in section 22, and are no longer the current accepted runtime.
 
 ---
 
@@ -211,15 +211,20 @@ Discover. Full detail: `docs/verification.md` → "Discover & MusicBrainz
 Navigation Enhancement Evidence." **All 22 of spec 0017 §23's human
 production acceptance items now have sufficient evidence — §23 acceptance
 is COMPLETE.** This does not, by itself, mean spec §27's full Definition of
-Done is complete: the documentation closeout (PR C, PR #37) remains
-open/unmerged, a final independent submission audit has not yet occurred,
-and a new final-submission tag has not yet been created.
+Done is complete: a final independent submission audit has not yet
+occurred, and a new final-submission tag has not yet been created.
 
 **Documentation closeout (PR C):** this section, plus README/SPEC/User
 Guide/Visual Inspect/API Integrations updates and refreshed Discover/Record
-Detail screenshots, represented in current repository/Git history (PR #37).
-It changes no runtime, test, schema, or configuration file; the accepted
-production runtime remains the PR #36 merge above.
+Detail screenshots, represented in current repository/Git history — merged
+as **PR #37**, merge commit `f347be94daa0e7e4e20e849d8dbcf8b0962840f6`. It
+changed no runtime, test, schema, or configuration file; the accepted
+production runtime remains the PR #36 merge above, unchanged by this
+docs/assets-only merge. A final pre-tag audit of the merged state found 0
+BLOCKER / 0 HIGH / 0 MEDIUM, with the sole finding being stale post-merge
+status wording in five living documents (this roadmap, spec 0017, plan 017,
+the spec index, and `docs/verification.md`) — reconciled in this same
+change.
 
 Historical roadmap (`docs/roadmaps/2026-08-18-complete-project-roadmap.md`)
 untouched throughout this phase as well.

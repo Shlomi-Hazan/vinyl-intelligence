@@ -1,8 +1,9 @@
 # 0017 Discover & MusicBrainz Navigation Enhancement (Specification)
 
 Status: **RUNTIME COMPLETE, MERGED, DEPLOYED; §23 HUMAN PRODUCTION
-ACCEPTANCE COMPLETE — documentation closeout (PR C) still IN PROGRESS/OPEN;
-final independent audit and a new final-submission tag PENDING.** This spec
+ACCEPTANCE COMPLETE; documentation closeout (PR C) MERGED (PR #37, merge
+commit `f347be94daa0e7e4e20e849d8dbcf8b0962840f6`) — a final independent
+submission audit and a new final-submission tag remain PENDING.** This spec
 (PR #34) is merged; it precedes Plan 017's own PR A/B/C execution sequence.
 PR A (the companion plan, PR #35) is merged. PR B (runtime implementation
 + one independent-review correction round — 0 BLOCKER / 0 HIGH / 2 MEDIUM
@@ -15,8 +16,8 @@ MusicBrainz Navigation Enhancement Evidence" for the full evidence matrix
 and both rounds' record. **All 22 of §23's human production acceptance
 items now have sufficient evidence; §23 acceptance is COMPLETE.** This does
 not, by itself, mean spec §27's full Definition of Done is complete — the
-documentation/screenshot closeout (PR C, PR #37) remains open/unmerged, a
-final independent submission audit has not yet occurred, and a new
+documentation/screenshot closeout (PR C, PR #37) is merged, but a final
+independent submission audit has not yet occurred, and a new
 final-submission tag has not yet been created. No schema, dependency, or
 migration change was made by this enhancement. This document's body below,
 including every "Correction from an earlier draft" note, is preserved

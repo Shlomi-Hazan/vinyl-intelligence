@@ -5865,15 +5865,16 @@ production acceptance is COMPLETE / PASS.**
 **This does not, by itself, mean spec §27's Definition of Done is fully
 complete.** Per §27: the runtime is implemented, independently reviewed,
 merged, and deployed (items 1–9); §23 human production acceptance is now
-complete (item 10); but the documentation/screenshot closeout (§24/§25,
-items 11–12) is still open as PR #37 (not yet merged); a final independent
-submission audit (item 14) has not yet occurred; and a new post-enhancement
+complete (item 10); the documentation/screenshot closeout (§24/§25,
+items 11–12) is merged as PR #37 (merge commit
+`f347be94daa0e7e4e20e849d8dbcf8b0962840f6`); but a final independent
+submission audit (item 14) has not yet occurred, and a new post-enhancement
 final-submission tag (item 15) has not yet been created. Current state:
 runtime COMPLETE/MERGED/DEPLOYED; §23 human production acceptance
-COMPLETE/PASS; PR C documentation closeout IN PROGRESS/OPEN; final
-independent audit PENDING; new final-submission tag PENDING.
+COMPLETE/PASS; PR C documentation closeout MERGED; final independent audit
+PENDING; new final-submission tag PENDING.
 
-### Documentation Closeout (PR C, PR #37 — in progress)
+### Documentation Closeout (PR C, PR #37 — merged)
 
 Documentation-only closeout represented by the current repository/Git
 history: README (Discover feature description, screenshots), root `SPEC.md`
@@ -5891,7 +5892,11 @@ new link; refreshed for the same reason). No runtime, test, schema, or
 configuration file changed; the accepted production runtime remains the
 PR #36 merge above (`abff1e86cbc36c754e8645179fa5bbee9ec27afe`, deploy
 `6aaa63fe2829c87037fd2cd0`). **Spec 0017 §23 human production acceptance is
-now complete; this closeout PR itself remains open/unmerged** — it does not
-claim a completion this PR's own scope cannot prove (see the §27 status
-breakdown above: PR C is still IN PROGRESS/OPEN, a final independent audit
-and a new final-submission tag both remain PENDING).
+complete; this closeout PR itself is now merged** as `main`
+`f347be94daa0e7e4e20e849d8dbcf8b0962840f6` — it does not claim a completion
+this PR's own scope cannot prove (see the §27 status breakdown above: a
+final independent audit and a new final-submission tag both remain
+PENDING). A final pre-tag audit of the merged state found 0 BLOCKER / 0
+HIGH / 0 MEDIUM; its sole finding — stale post-merge status wording in this
+section and four other living documents, written while this PR was still
+open — is reconciled by this same paragraph and its surrounding text.
