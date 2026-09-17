@@ -184,23 +184,37 @@ already established for every other Discogs-derived fact:
   URL or any query string, and never required by the browser to display an
   image.
 
-### 7.1 Field names used, and an OPEN human-verification gate
+### 7.1 Field names used — human live-API verification CLOSED / PASS
 
 Both endpoints already used by spec 0018 return image fields; this
-enhancement adds no new endpoint and no seventh Netlify Function. The field
-names below come from the Discogs API's own published field documentation
-and corroborating third-party integration references — the official
-developer pages themselves return HTTP 403 to this project's automated
-fetch tooling, the same persistent, known access constraint spec 0018 §5.2
-already recorded for the Terms of Use document. **This is not a live,
-human-verified confirmation of these response shapes, and this document
-does not claim it is** — a human must independently confirm, against a
-live authenticated response, both (a) that these are the correct field
-names and (b) that each field this implementation actually uses is a
-directly-loadable, unauthenticated image URL before this feature is relied
-upon, mirroring spec 0018 §25's own "reconfirm before implementation"
-pattern for the Terms of Use. This gate stays open across this correction
-round — it is not closed by tightening which fields are used below.
+enhancement adds no new endpoint and no seventh Netlify Function.
+
+**Verification status (human-run, 2026-09-18):** this section originally
+recorded these field names and their public-loadability as an OPEN
+gate — sourced only from the Discogs API's own published field
+documentation and corroborating third-party integration references, since
+the official developer pages return HTTP 403 to this project's automated
+fetch tooling (the same persistent, known access constraint spec 0018 §5.2
+already recorded for the Terms of Use document), never from a live
+authenticated response this project had itself made. That gate is now
+**CLOSED / PASS**, verified by the human directly against the live Discogs
+API:
+
+1. Exact release `26770295` (`GET /releases/26770295`) returns `images[]`
+   with a primary image whose `uri` and `uri150` are both HTTPS.
+2. That primary image URL loads publicly, with no `Authorization` header,
+   and returns HTTP 200 `image/jpeg` — confirming the field-derived URL is
+   a genuinely directly-loadable, unauthenticated image URL, not merely an
+   API resource reference.
+3. `GET /database/search` for `q="כהן מה שאפשר עם מה שנשאר"` returns
+   results carrying both `cover_image` and `thumb`, including release
+   `26770295`.
+
+This confirms exactly the two field pairs this implementation actually
+uses — `cover_image`/`thumb` (search, §7.2) and `images[].uri`/`uri150`
+(exact release, §7.3) — and that URLs derived from them are safe to render
+via a plain, unauthenticated `<img src>` in the browser, satisfying the
+image-licensing/security boundary this spec requires (§7).
 
 - **Database Search** (`GET /database/search`, used for Discogs search
   results): each result item's own `cover_image` (full-size) and `thumb`
@@ -210,17 +224,19 @@ round — it is not closed by tightening which fields are used below.
   carrying `type` (`"primary"` or `"secondary"`), `uri` (full-size),
   `uri150` (150×150 thumbnail), `resource_url`, `width`, `height`.
   **`resource_url` is deliberately NOT used as an `<img>` source by this
-  implementation** — unlike `uri`/`uri150`, this project has not
-  independently confirmed it is always a directly-loadable,
-  unauthenticated image URL (as opposed to, for example, an API resource
-  reference); only `uri`, then `uri150`, are used (§7.3).
+  implementation, and remains unverified/unused** — the verification above
+  covers `uri`/`uri150` only; `resource_url` was not part of what the
+  human confirmed, so it is still excluded on the same "not independently
+  confirmed" basis as before. This is not itself an open gate blocking the
+  feature — it is a deliberate, permanent exclusion; `resource_url` could
+  only be added later behind its own explicit verification.
 - Fetching the metadata (search or exact release) requires the existing
   authenticated, server-only `DISCOGS_TOKEN` call, exactly as every other
   Discogs field already required (spec 0018 §5.1/§9). The resulting image
-  URL, once known, is treated as a plain public CDN URL to be rendered via
-  a normal `<img src>` — the same pattern already established for Cover
-  Art Archive imagery — but this too is covered by the open verification
-  gate above, not asserted as independently confirmed.
+  URL, once known, is a plain public CDN URL rendered via a normal
+  `<img src>` — the same pattern already established for Cover Art
+  Archive imagery — now confirmed directly, not merely asserted by
+  analogy.
 - Every accepted image URL, from either endpoint, must be **HTTPS only**
   (§7.2/§7.3) — `http:`, `javascript:`, `data:`, and any relative/malformed
   value are rejected outright, never partially trusted or silently

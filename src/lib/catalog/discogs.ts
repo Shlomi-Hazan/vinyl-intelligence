@@ -296,11 +296,10 @@ export function normalizeDiscogsSearchResult(
 
   const { label, catalogNumber } = searchLabelAndCatalogNumber(raw)
   // Prefer the full-size `cover_image`; fall back to the 150x150 `thumb`
-  // (spec 0018 follow-up §8 - documented Database Search field names, not
-  // invented; `cleanImageUrl` still independently re-validates each value
-  // as an HTTPS URL rather than trusting the field name alone - live
-  // human verification of this response shape remains an open item, spec
-  // 0019 §7.1).
+  // (spec 0018 follow-up §8) - `cleanImageUrl` still independently
+  // re-validates each value as an HTTPS URL rather than trusting the field
+  // name alone. Both fields, and their public loadability, are confirmed
+  // by human live-API verification (spec 0019 §7.1, 2026-09-18).
   const transientCoverDisplayUrl =
     cleanImageUrl(raw.cover_image) ?? cleanImageUrl(raw.thumb)
 
@@ -440,14 +439,18 @@ function findVinylFormat(value: unknown): Record<string, unknown> | null {
 /**
  * One image entry's best URL (spec 0018 follow-up §9, corrected by PR #42's
  * own finding 3): only `uri` (full-size) and `uri150` (a 150x150
- * thumbnail) - `uri` preferred, `uri150` a last resort. `resource_url` is
- * deliberately NOT used as a browser `<img>` source: it is a documented
- * field on the same entry, but this codebase has not independently
- * verified against a live response that it is always a directly-loadable,
- * unauthenticated image URL (as opposed to, e.g., an API resource
- * reference) - treating an unverified field as safe to render is exactly
- * the kind of assumption this project's own image-licensing/security
- * boundary requires NOT making. Revisit only after that live verification.
+ * thumbnail) - `uri` preferred, `uri150` a last resort. Both fields, and
+ * their public loadability with no `Authorization` header, are confirmed
+ * by human live-API verification (spec 0019 §7.1, 2026-09-18).
+ * `resource_url` is deliberately still NOT used as a browser `<img>`
+ * source: it is a documented field on the same entry, but that
+ * verification did not cover it, and this codebase has not independently
+ * confirmed it is always a directly-loadable, unauthenticated image URL
+ * (as opposed to, e.g., an API resource reference) - treating an
+ * unverified field as safe to render is exactly the kind of assumption
+ * this project's own image-licensing/security boundary requires NOT
+ * making. Revisit only after `resource_url` itself gets the same
+ * verification.
  */
 function imageUrlFromEntry(entry: Record<string, unknown>): string | null {
   return cleanImageUrl(entry.uri) ?? cleanImageUrl(entry.uri150)
