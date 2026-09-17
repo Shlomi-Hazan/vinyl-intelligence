@@ -305,18 +305,36 @@ describe('AlbumDetailPage - Discogs provenance and freshness (spec 0018 §8.4/§
     expect(screen.getByText('Hasivuv')).toBeInTheDocument()
   })
 
-  it('renders Discogs provenance as one compact line, never a separate large standalone block (spec 0018 follow-up §6)', () => {
+  it('renders a DISCOGS / View on Discogs / attribution entry matching MusicBrainz\'s own dt/dd layout (spec 0020 §6)', () => {
     renderDetail(discogsItem())
-    // Both required links live in the SAME paragraph, and there is no
-    // separate "Discogs" <dt> row in the metadata list.
-    const line = screen.getByText(/Data provided by/).closest('p')
-    expect(line).toHaveClass('vi-discogs-attribution')
+    const dt = screen.getByText('Discogs', { selector: 'dt' })
+    const dd = dt.nextElementSibling as HTMLElement
     expect(
-      within(line as HTMLElement).getByRole('link', { name: /^View on Discogs/ }),
+      within(dd).getByRole('link', { name: /^View on Discogs.*opens in a new tab/ }),
     ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('term', { name: 'Discogs' }) ?? screen.queryByText('Discogs', { selector: 'dt' }),
-    ).toBeNull()
+    // The attribution mark is its own line directly under the link, inside
+    // the same dd - the full (non-compact) variant, not the inline
+    // "View on Discogs ↗ · Data provided by Discogs." line PR #42 used.
+    const attribution = within(dd).getByText(/Data provided by/).closest('p')
+    expect(attribution).toHaveClass('vi-discogs-attribution')
+    expect(attribution).not.toHaveClass('vi-discogs-attribution--compact')
+  })
+
+  it('renders the same dt/dd shape for MusicBrainz and Discogs provenance', () => {
+    const mbItem = catalogItem()
+    mbItem.release.provider_release_id = '11111111-1111-4111-8111-111111111111'
+    const { unmount } = renderDetail(mbItem)
+    const mbDt = screen.getByText('MusicBrainz', { selector: 'dt' })
+    expect(mbDt.nextElementSibling?.querySelector('a')).toHaveTextContent(
+      /^View on MusicBrainz/,
+    )
+    unmount()
+
+    renderDetail(discogsItem())
+    const discogsDt = screen.getByText('Discogs', { selector: 'dt' })
+    expect(discogsDt.nextElementSibling?.querySelector('a')).toHaveTextContent(
+      /^View on Discogs/,
+    )
   })
 
   it('a fresh Discogs release with a persisted provider image shows it as artwork (spec 0018 follow-up §11)', () => {

@@ -1127,6 +1127,7 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
 
     expect(response.status).toBe(200)
     expect(searchDiscogsReleases).toHaveBeenCalledWith({
+      mode: 'all',
       query: 'כהן מה שאפשר עם מה שנשאר',
       token: env.DISCOGS_TOKEN,
       userAgent: env.DISCOGS_USER_AGENT,
@@ -1153,8 +1154,8 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
     expect(payload).not.toHaveProperty('hasMore')
   })
 
-  it.each(['mode=all', 'offset=0', 'limit=5'])(
-    'rejects a Discogs search combined with %s',
+  it.each(['offset=0', 'limit=5'])(
+    'rejects a Discogs search combined with %s (spec 0020 §2 - still no pagination)',
     async (extraParam) => {
       const { dependencies, searchDiscogsReleases } = createDependencies()
 
@@ -1169,6 +1170,41 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
       expect(searchDiscogsReleases).not.toHaveBeenCalled()
     },
   )
+
+  it.each(['all', 'artist', 'album'])(
+    'accepts a Discogs search with mode=%s and forwards it (spec 0020 §2)',
+    async (mode) => {
+      const { dependencies, searchDiscogsReleases } = createDependencies()
+
+      const response = await handleCatalogSearch(
+        authedRequest(`http://app.test/api/catalog/search?provider=discogs&q=pink&mode=${mode}`),
+        env,
+        dependencies,
+      )
+
+      expect(response.status).toBe(200)
+      expect(searchDiscogsReleases).toHaveBeenCalledWith({
+        mode,
+        query: 'pink',
+        token: env.DISCOGS_TOKEN,
+        userAgent: env.DISCOGS_USER_AGENT,
+      })
+    },
+  )
+
+  it('rejects a Discogs search with an unrecognized mode value (spec 0020 §2)', async () => {
+    const { dependencies, searchDiscogsReleases } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?provider=discogs&q=pink&mode=bogus'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(searchDiscogsReleases).not.toHaveBeenCalled()
+  })
 
   it('rejects an unrecognized provider value', async () => {
     const { dependencies, searchReleases } = createDependencies()

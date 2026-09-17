@@ -225,12 +225,15 @@ export async function addCatalogReleaseToCollection(
  * The explicit, user-triggered Discogs fallback search (spec 0018 §6/§8):
  * `GET /api/catalog/search?provider=discogs&q=...`. A genuinely distinct
  * response shape from `CatalogSearchResponse` - never forced into it.
+ * `mode` (spec 0020 §2) defaults to `'all'`, mirroring the MusicBrainz
+ * search request shape - Discogs search still has no offset/limit.
  */
 export async function searchDiscogsCatalog(
   client: BrowserSupabaseClient,
   query: string,
+  mode: SearchMode = 'all',
 ): Promise<DiscogsSearchResponse> {
-  const params = new URLSearchParams({ provider: 'discogs', q: query.trim() })
+  const params = new URLSearchParams({ mode, provider: 'discogs', q: query.trim() })
 
   return requestCatalog<DiscogsSearchResponse>(
     client,

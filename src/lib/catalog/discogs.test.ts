@@ -67,6 +67,30 @@ describe('URL builders', () => {
     const url = buildDiscogsReleaseLookupUrl('26770295')
     expect(url.toString()).toBe('https://api.discogs.com/releases/26770295')
   })
+
+  it('mode "all" (or omitted) sends q, not artist/release_title (spec 0020 §2)', () => {
+    const url = buildDiscogsSearchUrl('query')
+    expect(url.searchParams.get('q')).toBe('query')
+    expect(url.searchParams.has('artist')).toBe(false)
+    expect(url.searchParams.has('release_title')).toBe(false)
+    expect(url.searchParams.get('type')).toBe('release')
+  })
+
+  it('mode "artist" sends artist, not q (spec 0020 §2)', () => {
+    const url = buildDiscogsSearchUrl('query', 'artist')
+    expect(url.searchParams.get('artist')).toBe('query')
+    expect(url.searchParams.has('q')).toBe(false)
+    expect(url.searchParams.has('release_title')).toBe(false)
+    expect(url.searchParams.get('type')).toBe('release')
+  })
+
+  it('mode "album" sends release_title, not q (spec 0020 §2)', () => {
+    const url = buildDiscogsSearchUrl('query', 'album')
+    expect(url.searchParams.get('release_title')).toBe('query')
+    expect(url.searchParams.has('q')).toBe(false)
+    expect(url.searchParams.has('artist')).toBe(false)
+    expect(url.searchParams.get('type')).toBe('release')
+  })
 })
 
 describe('normalizeDiscogsSearchResult (display-only, never split)', () => {
@@ -360,6 +384,21 @@ describe('searchDiscogsReleases', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe(
       `Discogs token=${token}`,
     )
+  })
+
+  it('threads mode through to the Database Search URL (spec 0020 §2)', async () => {
+    const fetchImpl = fakeFetch({ results: [] })
+    await searchDiscogsReleases({
+      fetchImpl,
+      mode: 'artist',
+      query: 'query',
+      token,
+      userAgent,
+    })
+
+    const [url] = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0] as [URL]
+    expect(url.searchParams.get('artist')).toBe('query')
+    expect(url.searchParams.has('q')).toBe(false)
   })
 
   it('drops non-Vinyl results before the UI ever sees them', async () => {

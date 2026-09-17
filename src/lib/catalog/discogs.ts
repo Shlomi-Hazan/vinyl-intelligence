@@ -5,7 +5,7 @@ import {
   RELEASE_YEAR_MAX,
   RELEASE_YEAR_MIN,
 } from './catalogFieldLimits.ts'
-import type { CatalogCandidate, CatalogErrorCode } from './types.ts'
+import type { CatalogCandidate, CatalogErrorCode, SearchMode } from './types.ts'
 
 const DISCOGS_API_BASE_URL = 'https://api.discogs.com'
 const DISCOGS_PROVIDER = 'discogs'
@@ -153,10 +153,26 @@ async function fetchDiscogsJson(
   }
 }
 
-export function buildDiscogsSearchUrl(query: string): URL {
+/**
+ * `mode` selects which Discogs Database Search parameter carries `query`
+ * (spec 0020 §2) - `all` keeps the general `q` parameter unchanged; `artist`
+ * and `album` use Discogs's own field-scoped `artist`/`release_title`
+ * parameters instead, mirroring the MusicBrainz mode mapping's intent
+ * without sharing its implementation (Discogs and MusicBrainz search
+ * remain fully separate integrations). `type=release` is sent
+ * unconditionally in every mode, unchanged from before this parameter
+ * existed.
+ */
+export function buildDiscogsSearchUrl(query: string, mode: SearchMode = 'all'): URL {
   const url = new URL(`${DISCOGS_API_BASE_URL}/database/search`)
 
-  url.searchParams.set('q', query)
+  if (mode === 'artist') {
+    url.searchParams.set('artist', query)
+  } else if (mode === 'album') {
+    url.searchParams.set('release_title', query)
+  } else {
+    url.searchParams.set('q', query)
+  }
   url.searchParams.set('type', 'release')
   url.searchParams.set('per_page', DISCOGS_SEARCH_PER_PAGE.toString())
 
@@ -320,20 +336,24 @@ export function normalizeDiscogsSearchResult(
 
 export type DiscogsSearchOptions = DiscogsFetchOptions & {
   query: string
+  /** Defaults to `'all'` (spec 0020 §2) - see `buildDiscogsSearchUrl`. */
+  mode?: SearchMode
 }
 
 /**
- * `GET /database/search?q=...&type=release&per_page=10` (spec 0018 §8). A
- * cheap, non-authoritative Vinyl pre-filter runs on the raw flat `format`
- * array before normalization; the authoritative Vinyl gate remains
- * `lookupDiscogsRelease` (below), run again before any persistence. Returns
- * at most 5 surviving results.
+ * `GET /database/search?q=...&type=release&per_page=10` (spec 0018 §8),
+ * or `artist=...`/`release_title=...` in place of `q` when `mode` is
+ * `'artist'`/`'album'` (spec 0020 §2). A cheap, non-authoritative Vinyl
+ * pre-filter runs on the raw flat `format` array before normalization; the
+ * authoritative Vinyl gate remains `lookupDiscogsRelease` (below), run
+ * again before any persistence. Returns at most 5 surviving results.
  */
 export async function searchDiscogsReleases({
   query,
+  mode,
   ...fetchOptions
 }: DiscogsSearchOptions): Promise<DiscogsSearchResponse> {
-  const payload = await fetchDiscogsJson(buildDiscogsSearchUrl(query), fetchOptions)
+  const payload = await fetchDiscogsJson(buildDiscogsSearchUrl(query, mode), fetchOptions)
 
   if (!isRecord(payload) || !Array.isArray(payload.results)) {
     throw new DiscogsError(

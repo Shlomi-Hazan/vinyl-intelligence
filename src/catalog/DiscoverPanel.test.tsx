@@ -826,6 +826,29 @@ describe('DiscoverPanel - Search on MusicBrainz (spec 0017 §12)', () => {
   })
 })
 
+describe('DiscoverPanel - Search on Discogs (spec 0020 §5)', () => {
+  it('opens the generic search URL when no term has been typed', async () => {
+    renderPanel()
+    await switchToDiscogs()
+    const link = screen.getByRole('link', { name: /^Search on Discogs/ })
+    expect(link).toHaveAttribute('href', 'https://www.discogs.com/search/?type=release')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
+  it('includes the currently-typed term', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByRole('searchbox'), 'portishead')
+    await switchToDiscogs()
+    const link = screen.getByRole('link', { name: /^Search on Discogs/ })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://www.discogs.com/search/?q=portishead&type=release',
+    )
+  })
+})
+
 describe('DiscoverPanel - external-link accessibility (spec 0017 §19)', () => {
   it('the existing per-candidate MusicBrainz link announces "(opens in a new tab)"', async () => {
     searchCatalogPage.mockResolvedValue(page([candidate()]))
@@ -1158,12 +1181,131 @@ describe('DiscoverPanel - one primary catalog-search area (spec 0018 follow-up �
     expect(searchCatalogPage).not.toHaveBeenCalled()
   })
 
-  it('hides the MusicBrainz-only All/Artist/Album modes when Discogs is selected', async () => {
+  it('shows Discogs its own All/Artist/Album modes, independent of MusicBrainz (spec 0020 §2)', async () => {
     renderPanel()
     await switchToDiscogs()
-    expect(screen.queryByRole('radiogroup', { name: 'Search mode' })).toBeNull()
+    // Exactly one "Search mode" radiogroup is shown at a time - Discogs's
+    // own, not MusicBrainz's (which is hidden while Discogs is selected).
+    expect(screen.getAllByRole('radiogroup', { name: 'Search mode' })).toHaveLength(1)
+    expect(
+      screen.getByRole('radiogroup', { name: 'Search mode' }).querySelector(
+        '[aria-checked="true"]',
+      ),
+    ).toHaveTextContent('All')
     expect(screen.queryByRole('link', { name: 'Search on MusicBrainz' })).toBeNull()
-    expect(screen.getByText(/More pressings and regional releases/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^Search on Discogs/ })).toBeInTheDocument()
+    expect(screen.getByText('Extra pressings and regional releases.')).toBeInTheDocument()
+    expect(screen.queryByText(/More pressings and regional releases/)).toBeNull()
+  })
+
+  it('changing the Discogs mode does not search and clears existing Discogs results, without touching MusicBrainz', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate({ title: 'MB Result' })]))
+    searchDiscogsCatalog.mockResolvedValue({
+      results: [discogsResult({ displayTitle: 'Discogs Result' })],
+    })
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(screen.getByLabelText('Search the catalog'), 'query')
+    await user.keyboard('{Enter}')
+    await screen.findByText('MB Result')
+
+    await switchToDiscogs()
+    await user.click(screen.getByLabelText('Search the catalog'))
+    await user.keyboard('{Enter}')
+    await screen.findByText('Discogs Result')
+
+    searchDiscogsCatalog.mockClear()
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
+
+    expect(searchDiscogsCatalog).not.toHaveBeenCalled()
+    expect(screen.queryByText('Discogs Result')).toBeNull()
+
+    await user.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    expect(screen.getByText('MB Result')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it.each([
+    ['Artist', 'artist'],
+    ['Album', 'album'],
+  ])('a Discogs search under %s mode calls searchDiscogsCatalog with mode=%s', async (label, mode) => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    const user = userEvent.setup()
+    renderPanel()
+
+    await switchToDiscogs()
+    await user.click(screen.getByRole('radio', { name: label }))
+    await user.type(screen.getByLabelText('Search the catalog'), 'query')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() =>
+      expect(searchDiscogsCatalog).toHaveBeenCalledWith(expect.anything(), 'query', mode),
+    )
+  })
+
+  it('clicking a Discogs example runs a Discogs search under the current mode', async () => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    const user = userEvent.setup()
+    renderPanel()
+
+    await switchToDiscogs()
+    await user.click(screen.getByRole('button', { name: 'Alice Coltrane' }))
+
+    await waitFor(() =>
+      expect(searchDiscogsCatalog).toHaveBeenCalledWith(
+        expect.anything(),
+        'Alice Coltrane',
+        'all',
+      ),
+    )
+    expect(screen.getByLabelText('Search the catalog')).toHaveValue('Alice Coltrane')
+  })
+
+  it('a Discogs mode change invalidates an in-flight search - the stale response never appears and a new-mode search runs immediately (PR #43 correction)', async () => {
+    let resolveFirst: (v: { results: import('../lib/catalog/discogs.ts').DiscogsSearchResultItem[] }) => void =
+      () => {}
+    searchDiscogsCatalog.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveFirst = resolve)),
+    )
+    const user = userEvent.setup()
+    renderPanel()
+
+    // 1. start a Discogs "All" search that never resolves on its own.
+    await switchToDiscogs(user)
+    await user.type(screen.getByLabelText('Search the catalog'), 'portishead')
+    await user.keyboard('{Enter}')
+    await waitFor(() =>
+      expect(searchDiscogsCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead', 'all'),
+    )
+
+    // 2. switch to Artist mode before the "All" request resolves.
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
+
+    // 3. the stale "All" request now resolves.
+    resolveFirst({
+      results: [discogsResult({ providerReleaseId: 'stale', displayTitle: 'Stale All Result' })],
+    })
+
+    // 4. its results must never appear, and the panel must not be stuck on
+    // a loading state the stale request's own `finally` failed to clear.
+    await waitFor(() => expect(screen.queryByText('Stale All Result')).toBeNull())
+    expect(screen.getByText(/Search Discogs for a release/i)).toBeInTheDocument()
+
+    // 5. submit a new search immediately - it must not be blocked by the
+    // stale request's guard.
+    searchDiscogsCatalog.mockResolvedValueOnce({
+      results: [discogsResult({ providerReleaseId: 'fresh', displayTitle: 'Fresh Artist Result' })],
+    })
+    await user.click(screen.getByLabelText('Search the catalog'))
+    await user.keyboard('{Enter}')
+
+    // 6. the new-mode request/result works normally.
+    await waitFor(() =>
+      expect(searchDiscogsCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead', 'artist'),
+    )
+    expect(await screen.findByText('Fresh Artist Result')).toBeInTheDocument()
+    expect(screen.queryByText('Stale All Result')).toBeNull()
   })
 
   it('preserves the typed query when switching providers', async () => {

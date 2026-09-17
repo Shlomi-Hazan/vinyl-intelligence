@@ -1591,6 +1591,16 @@ a.vi-histrow__title:hover {
   color: var(--text);
   font-weight: 600;
 }
+/* The full Discogs attribution variant now renders inside a `dd` (spec 0020
+   §6) - `.vi-album__meta dd`'s own color/font-weight are otherwise more
+   specific than `.vi-discogs-attribution` alone, so this restates them here
+   to keep the attribution visually secondary (faint, regular weight) even
+   in this context, unchanged everywhere else it already appears. */
+.vi-album__meta dd .vi-discogs-attribution {
+  color: var(--text-faint);
+  font-weight: 400;
+  margin-top: 0.35em;
+}
 .vi-album__personal {
   display: flex;
   flex-wrap: wrap;
