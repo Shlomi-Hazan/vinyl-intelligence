@@ -35,6 +35,7 @@ function candidate(overrides: Partial<CatalogCandidate> = {}): CatalogCandidate 
     score: 100,
     title: 'The Dark Side of the Moon',
     transientCoverDisplayUrl: null,
+    providerImageUrl: null,
     ...overrides,
   }
 }

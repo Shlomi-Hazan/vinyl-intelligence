@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-09-15.
+Last updated: 2026-09-17.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -5913,3 +5913,42 @@ action after PR #38 merges). That pre-tag audit found 0 BLOCKER / 0 HIGH /
 section and four other living documents, written while this PR was still
 open — is reconciled by PR #38 (this status reconciliation) and this same
 paragraph's surrounding text.
+
+### Discogs Discover UX and Provider Artwork — Image Field Human Live-API Verification (spec 0019, 2026-09-17)
+
+`docs/specs/0018-discogs-secondary-catalog-provider.md` (PR #41, merged
+`main` `b73d7a79769ddd7a1d4a109945eda301fca5f605`, migration applied,
+deployed) and its follow-up `docs/specs/0019-discogs-discover-ux-and-artwork.md`
+(PR #42, branch `feature/discogs-discover-ux-artwork`) added Discogs
+provider artwork. Spec 0019 §7.1 explicitly recorded the Discogs image
+field names/shapes as sourced only from published documentation and
+corroborating references — never a live authenticated response this
+project had itself made — since the official Discogs developer pages
+return HTTP 403 to this project's automated fetch tooling (the same known
+constraint spec 0018 §5.2 already recorded for the Terms of Use). That gate
+is now **CLOSED / PASS**, verified by the human directly against the live
+Discogs API (2026-09-17):
+
+1. Exact release `26770295` (`GET /releases/26770295`) returns `images[]`
+   with a primary image whose `uri` and `uri150` are both HTTPS.
+2. That primary image URL loads publicly, with no `Authorization` header,
+   and returns HTTP 200 `image/jpeg`.
+3. `GET /database/search` for `q="כהן מה שאפשר עם מה שנשאר"` returns
+   results carrying both `cover_image` and `thumb`, including release
+   `26770295`.
+
+This confirms exactly the field pairs the implementation uses —
+`cover_image`/`thumb` (search results, transient display only) and
+`images[].uri`/`uri150` (exact release, persisted as `provider_image_url`)
+— and that the resulting URLs are genuinely directly-loadable,
+unauthenticated image URLs, safe to render via a plain `<img src>` with no
+`DISCOGS_TOKEN` exposure. `resource_url` remains deliberately excluded
+(never verified, never used) — this closure does not extend to it. Spec
+0019 §7.1 was updated in place to record this closure; the section's prior
+"open gate" wording is preserved as history, not deleted, immediately above
+the closure note.
+
+No code/runtime behavior changed as a result of this verification — the
+implementation already only used the now-confirmed fields
+(`cover_image`/`thumb`/`uri`/`uri150`), HTTPS-only, per PR #42's own
+review-correction round.

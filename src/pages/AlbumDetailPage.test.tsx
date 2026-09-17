@@ -305,6 +305,46 @@ describe('AlbumDetailPage - Discogs provenance and freshness (spec 0018 §8.4/§
     expect(screen.getByText('Hasivuv')).toBeInTheDocument()
   })
 
+  it('renders Discogs provenance as one compact line, never a separate large standalone block (spec 0018 follow-up §6)', () => {
+    renderDetail(discogsItem())
+    // Both required links live in the SAME paragraph, and there is no
+    // separate "Discogs" <dt> row in the metadata list.
+    const line = screen.getByText(/Data provided by/).closest('p')
+    expect(line).toHaveClass('vi-discogs-attribution')
+    expect(
+      within(line as HTMLElement).getByRole('link', { name: /^View on Discogs/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('term', { name: 'Discogs' }) ?? screen.queryByText('Discogs', { selector: 'dt' }),
+    ).toBeNull()
+  })
+
+  it('a fresh Discogs release with a persisted provider image shows it as artwork (spec 0018 follow-up §11)', () => {
+    const { container } = renderDetail(
+      discogsItem({
+        release: {
+          ...discogsItem().release,
+          provider_image_url: 'https://i.discogs.com/abc/release.jpeg',
+        },
+      }),
+    )
+    const img = container.querySelector('img.vi-art__img')
+    expect(img).toHaveAttribute('src', 'https://i.discogs.com/abc/release.jpeg')
+  })
+
+  it('a masked Discogs release never shows its provider image, even if one was persisted', () => {
+    const { container } = renderDetail(
+      discogsItem({
+        discogsUnavailable: true,
+        release: {
+          ...discogsItem().release,
+          provider_image_url: 'https://i.discogs.com/abc/release.jpeg',
+        },
+      }),
+    )
+    expect(container.querySelector('img.vi-art__img')).toBeNull()
+  })
+
   it('a masked (discogsUnavailable) item shows a placeholder title/artist and hides every provider-derived field', () => {
     const item = discogsItem({ discogsUnavailable: true })
     renderDetail(item)

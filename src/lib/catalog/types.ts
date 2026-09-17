@@ -20,6 +20,16 @@ export type CatalogCandidate = {
   country: string | null
   format: string | null
   transientCoverDisplayUrl: string | null
+  /**
+   * A provider-hosted image URL meant to be PERSISTED as owned-release
+   * artwork (spec 0018 follow-up §9-§11) - distinct from
+   * `transientCoverDisplayUrl` (a search-result-only display hint, never
+   * persisted). Always `null` for MusicBrainz (which derives artwork from
+   * the Cover Art Archive by mbid at render time, never a persisted URL);
+   * populated only by a Discogs exact-release lookup, and only when the
+   * release actually has a usable image - missing artwork is valid.
+   */
+  providerImageUrl: string | null
   derivedProviderPageUrl: string
 }
 
@@ -51,6 +61,7 @@ export type CatalogCollectionItem = {
     format: string | null
     genres: string[]
     updated_at: string
+    provider_image_url?: string | null
   }
 }
 

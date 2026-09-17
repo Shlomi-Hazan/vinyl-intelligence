@@ -75,11 +75,17 @@ function artworkProps(
       seedId: rec.collectionItemId,
       releaseMbid: null as string | null,
       releaseGroupMbid: null as string | null,
+      providerImageUrl: null as string | null,
       customCoverPath: null as string | null,
       customCoverVersion: null as string | number | null,
     }
   }
   const isDiscogs = ownedItem.release.provider === 'discogs'
+  // VIN's own server-side pass already excludes a stale/unavailable item
+  // from candidates entirely (spec 0018 §12), so `ownedItem.discogsUnavailable`
+  // should never be true here - still gated defensively (finding 5's own
+  // discipline), never trusting the owned item's artwork blindly.
+  const unavailable = ownedItem.discogsUnavailable === true
   return {
     artist: rec.artist,
     title: rec.title,
@@ -88,6 +94,8 @@ function artworkProps(
     releaseGroupMbid: !isDiscogs
       ? ownedItem.release.provider_release_group_id ?? null
       : null,
+    providerImageUrl:
+      isDiscogs && !unavailable ? ownedItem.release.provider_image_url ?? null : null,
     customCoverPath: ownedItem.custom_cover_path
       ? customCoverPath(userId, ownedItem.id)
       : null,
@@ -203,6 +211,7 @@ export function CuratorRecommendationCard({
             decorativeText={false}
             releaseMbid={art.releaseMbid}
             releaseGroupMbid={art.releaseGroupMbid}
+            providerImageUrl={art.providerImageUrl}
             customCoverPath={art.customCoverPath}
             client={client}
             customCoverVersion={art.customCoverVersion}

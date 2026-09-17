@@ -158,6 +158,40 @@ describe('CuratorRecommendationCard - Discogs-backed owned item (spec 0018)', ()
     })
   }
 
+  it('shows the owned Discogs item persisted provider image as artwork (spec 0018 follow-up §11-§12)', () => {
+    renderCard({
+      ownedItem: discogsOwned({
+        release: {
+          ...discogsOwned().release,
+          provider_image_url: 'https://i.discogs.com/abc/release.jpeg',
+        },
+      }),
+    })
+    const cover = screen.getByRole('img', {
+      name: nameIgnoringBidi('Pink Floyd - Wish You Were Here'),
+    })
+    expect(cover.querySelector('img.vi-art__img')).toHaveAttribute(
+      'src',
+      'https://i.discogs.com/abc/release.jpeg',
+    )
+  })
+
+  it('never shows the provider image for a masked/unavailable owned Discogs item', () => {
+    renderCard({
+      ownedItem: discogsOwned({
+        discogsUnavailable: true,
+        release: {
+          ...discogsOwned().release,
+          provider_image_url: 'https://i.discogs.com/abc/release.jpeg',
+        },
+      }),
+    })
+    const cover = screen.getByRole('img', {
+      name: nameIgnoringBidi('Pink Floyd - Wish You Were Here (no cover art)'),
+    })
+    expect(cover.querySelector('img.vi-art__img')).toBeNull()
+  })
+
   it('never feeds a Discogs release id to AlbumArtwork as an MBID', () => {
     renderCard({ ownedItem: discogsOwned() })
     // No CAA lookup for a Discogs-backed item and no custom cover in this

@@ -872,6 +872,34 @@ describe('CollectionBrowser - Discogs artwork gating, masking, and attribution (
     )
   })
 
+  it('a fresh Discogs item with a persisted provider image shows it as artwork (spec 0018 follow-up §11)', () => {
+    const { container } = renderBrowser([
+      discogsItem({ provider_image_url: 'https://i.discogs.com/abc/release.jpeg' }),
+    ])
+    expect(container.querySelector('img.vi-art__img')).toHaveAttribute(
+      'src',
+      'https://i.discogs.com/abc/release.jpeg',
+    )
+  })
+
+  it('a MASKED Discogs item never shows its provider image, even if one was persisted', () => {
+    const masked = {
+      ...discogsItem({ provider_image_url: 'https://i.discogs.com/abc/release.jpeg' }),
+      discogsUnavailable: true,
+    } as CollectionItemWithRelease
+    const { container } = renderBrowser([masked])
+    expect(container.querySelector('img.vi-art__img')).toBeNull()
+  })
+
+  it('a Discogs id never reaches Cover Art Archive, even when a provider image is also present', () => {
+    const { container } = renderBrowser([
+      discogsItem({ provider_image_url: 'https://i.discogs.com/abc/release.jpeg' }),
+    ])
+    const img = container.querySelector('img.vi-art__img')
+    expect(img).toHaveAttribute('src', 'https://i.discogs.com/abc/release.jpeg')
+    expect(img?.getAttribute('src')).not.toContain('coverartarchive.org')
+  })
+
   it('a masked item shows the placeholder title, hides artist/meta, and offers a Retry action', () => {
     const masked = { ...discogsItem(), discogsUnavailable: true } as CollectionItemWithRelease
     renderBrowser([masked])

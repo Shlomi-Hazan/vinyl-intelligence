@@ -155,4 +155,75 @@ describe('AlbumArtwork', () => {
       expect(img(container)?.getAttribute('src')).toContain(`/release/${REL}/front-250`),
     )
   })
+
+  it('a Discogs provider image is used when no CAA mbid is given (spec 0018 follow-up §11)', () => {
+    const { container } = render(
+      <AlbumArtwork
+        artist="A"
+        title="B"
+        providerImageUrl="https://i.discogs.com/abc/release.jpeg"
+      />,
+    )
+    expect(img(container)?.getAttribute('src')).toBe('https://i.discogs.com/abc/release.jpeg')
+    expect(screen.getByRole('img', { name: nameIgnoringBidi('A - B') })).toBeInTheDocument()
+  })
+
+  it('a provider image takes precedence over CAA (never both passed by a real caller, but the ordering itself is tested)', () => {
+    const { container } = render(
+      <AlbumArtwork
+        artist="A"
+        title="B"
+        providerImageUrl="https://i.discogs.com/abc/release.jpeg"
+        releaseMbid={REL}
+      />,
+    )
+    expect(img(container)?.getAttribute('src')).toBe('https://i.discogs.com/abc/release.jpeg')
+  })
+
+  it('advances from a failed provider image to CAA, then to the branded fallback', () => {
+    const { container } = render(
+      <AlbumArtwork
+        artist="A"
+        title="B"
+        providerImageUrl="https://i.discogs.com/abc/release.jpeg"
+        releaseMbid={REL}
+      />,
+    )
+    fireEvent.error(img(container) as HTMLImageElement)
+    expect(img(container)?.getAttribute('src')).toBe(
+      `https://coverartarchive.org/release/${REL}/front-250`,
+    )
+    fireEvent.error(img(container) as HTMLImageElement)
+    expect(img(container)).toBeNull()
+  })
+
+  it('custom signed cover takes precedence over a Discogs provider image', async () => {
+    const createSignedUrl = vi
+      .fn()
+      .mockResolvedValue({ data: { signedUrl: 'blob:signed-cover' }, error: null })
+    const client = {
+      storage: { from: () => ({ createSignedUrl }) },
+    } as unknown as BrowserSupabaseClient
+
+    const { container } = render(
+      <AlbumArtwork
+        artist="A"
+        title="B"
+        providerImageUrl="https://i.discogs.com/abc/release.jpeg"
+        customCoverPath="uid/item/cover.webp"
+        client={client}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(img(container)?.getAttribute('src')).toBe('blob:signed-cover'),
+    )
+  })
+
+  it('renders only the branded fallback when providerImageUrl is null/absent', () => {
+    const { container } = render(
+      <AlbumArtwork artist="A" title="B" providerImageUrl={null} />,
+    )
+    expect(img(container)).toBeNull()
+  })
 })

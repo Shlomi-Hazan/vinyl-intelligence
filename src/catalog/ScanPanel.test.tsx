@@ -62,6 +62,7 @@ function candidate(over: Partial<CatalogCandidate> = {}): CatalogCandidate {
     format: 'CD',
     score: 99,
     transientCoverDisplayUrl: null,
+    providerImageUrl: null,
     derivedProviderPageUrl: 'https://musicbrainz.org/release/1',
     ...over,
   }

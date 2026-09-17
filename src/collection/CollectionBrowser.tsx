@@ -573,6 +573,9 @@ function artProps(item: CardProps['item'], userId: string, client: BrowserSupaba
     seedId: item.release.id,
     releaseMbid: !isDiscogs ? item.release.provider_release_id ?? null : null,
     releaseGroupMbid: !isDiscogs ? item.release.provider_release_group_id ?? null : null,
+    // Fresh Discogs artwork only (spec 0018 follow-up §10-§11) - never the
+    // stale/masked image, and never for a MusicBrainz row.
+    providerImageUrl: isDiscogs && !unavailable ? item.release.provider_image_url ?? null : null,
     customCoverPath: item.custom_cover_path
       ? customCoverPath(userId, item.id)
       : null,

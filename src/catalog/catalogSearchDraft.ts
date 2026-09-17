@@ -105,6 +105,7 @@ function parseCandidate(value: unknown): CatalogCandidate | null {
     || !isStringOrNull(candidate.country)
     || !isStringOrNull(candidate.format)
     || !isStringOrNull(candidate.transientCoverDisplayUrl)
+    || !isStringOrNull(candidate.providerImageUrl)
     || typeof candidate.derivedProviderPageUrl !== 'string'
   ) {
     return null
@@ -123,6 +124,7 @@ function parseCandidate(value: unknown): CatalogCandidate | null {
     country: candidate.country,
     format: candidate.format,
     transientCoverDisplayUrl: candidate.transientCoverDisplayUrl,
+    providerImageUrl: candidate.providerImageUrl,
     derivedProviderPageUrl: candidate.derivedProviderPageUrl,
   }
 }

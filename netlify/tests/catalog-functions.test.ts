@@ -40,10 +40,11 @@ function catalogCandidate(): CatalogCandidate {
     score: 100,
     title: 'The Dark Side of the Moon',
     transientCoverDisplayUrl: null,
+    providerImageUrl: null,
   }
 }
 
-function discogsCandidate(): CatalogCandidate {
+function discogsCandidate(overrides: Partial<CatalogCandidate> = {}): CatalogCandidate {
   return {
     artist: 'כהן',
     catalogNumber: 'HSV005',
@@ -58,6 +59,8 @@ function discogsCandidate(): CatalogCandidate {
     score: null,
     title: 'מה שאפשר עם מה שנשאר',
     transientCoverDisplayUrl: null,
+    providerImageUrl: 'https://i.discogs.com/abc123/release-26770295.jpeg',
+    ...overrides,
   }
 }
 
@@ -455,6 +458,7 @@ describe('catalog Netlify functions', () => {
         label: 'Harvest',
         provider: 'musicbrainz',
         provider_fetched_at: null,
+        provider_image_url: null,
         provider_release_group_id: providerReleaseGroupId,
         provider_release_id: providerReleaseId,
         release_year: 1973,
@@ -1273,6 +1277,8 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
       label: 'Hasivuv',
       provider: 'discogs',
       provider_release_id: discogsReleaseId,
+      // The exact image URL is persisted (spec 0018 follow-up §9/§13).
+      provider_image_url: 'https://i.discogs.com/abc123/release-26770295.jpeg',
       source: 'catalog',
     })
     expect(typeof upsertPayload.provider_fetched_at).toBe('string')
@@ -1354,7 +1360,11 @@ describe('Discogs secondary catalog provider (spec 0018)', () => {
     expect(itemQuery.insert).not.toHaveBeenCalled()
     const payload = await readJson(response)
     expect(payload).toMatchObject({
-      candidate: { provider: 'discogs', providerReleaseId: discogsReleaseId },
+      candidate: {
+        provider: 'discogs',
+        providerReleaseId: discogsReleaseId,
+        providerImageUrl: 'https://i.discogs.com/abc123/release-26770295.jpeg',
+      },
       genres: ['hip hop'],
     })
     expect(typeof payload.providerFetchedAt).toBe('string')

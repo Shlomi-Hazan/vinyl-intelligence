@@ -15,14 +15,21 @@ import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
  *
  * Precedence (advance to the next tier on <img> error, NEVER loop):
  *   1. user custom cover  - short-TTL signed URL (needs `customCoverPath` + `client`)
- *   2. Cover Art Archive release front       (from `releaseMbid`)
- *   3. Cover Art Archive release-group front (from `releaseGroupMbid`)
- *   4. branded CSS/SVG fallback              (always renders underneath)
+ *   2. Discogs provider image - a persisted URL (from `providerImageUrl`),
+ *      the caller's responsibility to pass only when the item is a
+ *      currently-fresh Discogs-backed row (spec 0018 follow-up §10-§11)
+ *   3. Cover Art Archive release front       (from `releaseMbid`)
+ *   4. Cover Art Archive release-group front (from `releaseGroupMbid`)
+ *   5. branded CSS/SVG fallback              (always renders underneath)
  *
  * The branded fallback is always painted as the box background, so a missing /
  * slow / broken image never shows a broken-image glyph and never shifts layout
- * (the box is a fixed 1:1 aspect ratio). Tiers 2-3 are plain `<img src>` values
- * built client-side - no backend call, no persisted URL, no proxy.
+ * (the box is a fixed 1:1 aspect ratio). Tiers 3-4 are plain `<img src>` values
+ * built client-side - no backend call, no persisted URL, no proxy. Tier 2 is
+ * the one persisted URL this component ever renders directly, and it is
+ * mutually exclusive with tiers 3-4 in practice: a Discogs row never carries
+ * `releaseMbid`/`releaseGroupMbid`, and a MusicBrainz row never carries
+ * `providerImageUrl`.
  */
 
 export type AlbumArtworkSize = 'thumb' | 'grid' | 'hero'
@@ -34,10 +41,19 @@ export type AlbumArtworkProps = {
   seedId?: string
   size?: AlbumArtworkSize
   className?: string
-  /** MusicBrainz release MBID (tier 2). */
+  /** MusicBrainz release MBID (tier 3). */
   releaseMbid?: string | null
-  /** MusicBrainz release-group MBID (tier 3). */
+  /** MusicBrainz release-group MBID (tier 4). */
   releaseGroupMbid?: string | null
+  /**
+   * A Discogs-sourced image URL (tier 2, spec 0018 follow-up §8-§11) - either
+   * a persisted owned-release image (the caller's responsibility to pass
+   * only when the item is Discogs-backed AND currently fresh, never
+   * `discogsUnavailable`) or a transient Discogs search-result thumbnail
+   * (never persisted). This component has no persistence or freshness logic
+   * of its own; it only ever renders whatever URL the caller passes.
+   */
+  providerImageUrl?: string | null
   /** Canonical custom-cover storage path (tier 1); requires `client` to sign. */
   customCoverPath?: string | null
   /** Supabase client - only needed to mint the tier-1 signed URL. */
@@ -73,6 +89,7 @@ export function AlbumArtwork({
   className,
   releaseMbid,
   releaseGroupMbid,
+  providerImageUrl,
   customCoverPath,
   client,
   customCoverVersion,
@@ -92,6 +109,9 @@ export function AlbumArtwork({
   const sources: string[] = []
   if (signed.status === 'ready' && signed.url) {
     sources.push(signed.url)
+  }
+  if (providerImageUrl) {
+    sources.push(providerImageUrl)
   }
   const relUrl = caaReleaseFrontUrl(releaseMbid, CAA_SIZE[size])
   if (relUrl) {

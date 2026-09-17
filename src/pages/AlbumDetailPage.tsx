@@ -13,7 +13,6 @@ import { Icon } from '../ui/Icon.tsx'
 import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { musicBrainzReleaseUrl } from '../lib/catalog/musicbrainzIdentity.ts'
 import { discogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
-import { DiscogsAttribution } from '../catalog/DiscogsAttribution.tsx'
 import { refreshDiscogsCollectionItem } from '../lib/catalog/client.ts'
 import { useClient } from '../app/useClient.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
@@ -197,6 +196,9 @@ export function AlbumDetailPage() {
             size="hero"
             releaseMbid={!isDiscogs ? release.provider_release_id ?? null : null}
             releaseGroupMbid={!isDiscogs ? release.provider_release_group_id ?? null : null}
+            providerImageUrl={
+              isDiscogs && !discogsUnavailable ? release.provider_image_url ?? null : null
+            }
             customCoverPath={
               item.custom_cover_path ? customCoverPath(userId, item.id) : null
             }
@@ -226,7 +228,7 @@ export function AlbumDetailPage() {
             </div>
           ) : null}
 
-          {meta.length > 0 || providerReleaseUrl ? (
+          {meta.length > 0 || (providerReleaseUrl && !isDiscogs) ? (
             <dl className="vi-album__meta">
               {meta.map((entry) => (
                 <div key={entry.k}>
@@ -236,7 +238,7 @@ export function AlbumDetailPage() {
                   </dd>
                 </div>
               ))}
-              {providerReleaseUrl ? (
+              {providerReleaseUrl && !isDiscogs ? (
                 <div>
                   <dt>{providerLabel}</dt>
                   <dd>
@@ -249,13 +251,30 @@ export function AlbumDetailPage() {
                       View on {providerLabel}
                       <span className="vi-visually-hidden"> (opens in a new tab)</span>
                     </a>
-                    {isDiscogs ? <DiscogsAttribution releaseUrl={providerReleaseUrl} /> : null}
                   </dd>
                 </div>
               ) : null}
             </dl>
-          ) : !discogsUnavailable ? (
+          ) : !discogsUnavailable && !providerReleaseUrl ? (
             <p className="vi-hint">No catalog details recorded.</p>
+          ) : null}
+
+          {/* Discogs provenance is deliberately kept out of the metadata
+             definition list and visually secondary - a single compact line,
+             never a large standalone "DISCOGS / View on Discogs / Data
+             provided by Discogs" block (spec 0018 follow-up §6). */}
+          {providerReleaseUrl && isDiscogs ? (
+            <p className="vi-discogs-attribution">
+              <a href={providerReleaseUrl} target="_blank" rel="noreferrer">
+                View on Discogs
+                <span className="vi-visually-hidden"> (opens in a new tab)</span>
+              </a>
+              <span aria-hidden="true"> ↗</span> ·{' '}
+              <a href={providerReleaseUrl} target="_blank" rel="noreferrer">
+                Data provided by Discogs
+              </a>
+              .
+            </p>
           ) : null}
 
           <FavouriteAndRating item={item} client={client} onSaved={invalidate} />

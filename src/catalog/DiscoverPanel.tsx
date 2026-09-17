@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
-import { DiscogsSearchPanel } from './DiscogsSearchPanel.tsx'
+import { DiscogsAttribution } from './DiscogsAttribution.tsx'
 import { Dialog } from '../ui/Dialog.tsx'
 import { Button, Field, Input, SegmentedRadioGroup, SearchInput } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -15,19 +15,24 @@ import {
 import {
   addCatalogReleaseToCollection,
   lookupCatalogRelease,
+  lookupDiscogsCatalogRelease,
   searchCatalogPage,
+  searchDiscogsCatalog,
 } from '../lib/catalog/client.ts'
 import {
   musicBrainzWebSearchUrl,
   parseMusicBrainzReleaseUrl,
 } from '../lib/catalog/musicbrainzIdentity.ts'
+import { parseDiscogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
+import { isDiscogsRowFresh, msUntilStale } from '../lib/catalog/discogsFreshness.ts'
 import { isExactCatalogReleaseOwned } from '../lib/catalog/ownedRelease.ts'
 import {
   addManualCollectionItem,
   type ManualReleaseInput,
 } from '../lib/supabase/collection.ts'
 import type { LoadPhase } from '../app/collection-data-context.ts'
-import type { CatalogCandidate, SearchMode } from '../lib/catalog/types.ts'
+import type { DiscogsSearchResultItem } from '../lib/catalog/discogs.ts'
+import type { CatalogCandidate, CatalogProvider, SearchMode } from '../lib/catalog/types.ts'
 import type { CollectionItemWithRelease } from '../lib/supabase/collection.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 
@@ -43,6 +48,14 @@ const MODE_OPTIONS: { value: SearchMode; label: string }[] = [
   { value: 'album', label: 'Album' },
 ]
 
+// One primary catalog-search area, MusicBrainz default (spec 0018 follow-up
+// §1) - an explicit, prominent, always-visible choice, never a buried
+// fallback toggle.
+const PROVIDER_OPTIONS: { value: CatalogProvider; label: string }[] = [
+  { value: 'musicbrainz', label: 'MusicBrainz' },
+  { value: 'discogs', label: 'Discogs' },
+]
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'That did not work. Try again.'
 }
@@ -55,6 +68,17 @@ function candidateMetaParts(c: CatalogCandidate): string[] {
     c.catalogNumber,
     c.country,
     c.format,
+  ].filter((x): x is string => Boolean(x))
+}
+
+/** The separate meta fields for a Discogs search result, in display order. */
+function discogsResultMetaParts(r: DiscogsSearchResultItem): string[] {
+  return [
+    r.releaseYear?.toString() ?? null,
+    r.country,
+    r.formatSummary,
+    r.label,
+    r.catalogNumber,
   ].filter((x): x is string => Boolean(x))
 }
 
@@ -84,6 +108,13 @@ type Phase = 'initial' | 'loading' | 'results' | 'no-results' | 'error'
 
 type ExactUrlPhase = 'idle' | 'invalid' | 'loading' | 'result' | 'error'
 
+/** A pending "add another copy?" confirmation only ever needs identity - the
+ * dialog itself renders no candidate preview, so this is deliberately the
+ * minimal shape both a full `CatalogCandidate` (MusicBrainz, or a Discogs
+ * exact-URL result) and a bare Discogs search-result item satisfy without
+ * constructing a fake candidate object (spec 0018 follow-up §3-§4). */
+type PendingDuplicate = Pick<CatalogCandidate, 'provider' | 'providerReleaseId'>
+
 export function DiscoverPanel({
   client,
   userId,
@@ -94,6 +125,10 @@ export function DiscoverPanel({
   const restored = useRef(loadCatalogSearchDraft(userId)).current
   const [query, setQuery] = useState(restored?.draftQuery ?? '')
   const [mode, setMode] = useState<SearchMode>(restored?.mode ?? 'all')
+  // The active provider (spec 0018 follow-up §1) - MusicBrainz by default,
+  // switching never fires a request by itself, and the typed query survives
+  // a switch since it is shared state, not reset here.
+  const [provider, setProvider] = useState<CatalogProvider>('musicbrainz')
   const [candidates, setCandidates] = useState<CatalogCandidate[]>(
     restored?.result?.candidates ?? [],
   )
@@ -108,25 +143,28 @@ export function DiscoverPanel({
     restored?.result?.submittedQuery ?? '',
   )
   const [searchError, setSearchError] = useState<string | null>(null)
+  // Shared across MusicBrainz candidates, Discogs exact-URL candidates, and
+  // Discogs search results alike - the three id spaces never collide
+  // (a MusicBrainz MBID and a Discogs numeric id cannot be equal), so one
+  // in-flight/error map is simpler than three separate ones.
   const [addingId, setAddingId] = useState<string | null>(null)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
   const [showManual, setShowManual] = useState(false)
-  // Discogs fallback (spec 0018 §6): its own, fully independent toggle and
-  // panel state - never auto-triggered by a MusicBrainz search.
-  const [showDiscogs, setShowDiscogs] = useState(false)
   // Local confirmation state for "Add another copy" of an already-owned
   // release (spec 0016 Finding B / §21.7 - dialog/confirmation state is
   // local to this panel, never shared with ScanPanel). Reused identically
-  // (spec 0017 §16) whether the candidate came from a normal search, Load
-  // More, or the exact-URL lookup below.
-  const [confirmingCandidate, setConfirmingCandidate] = useState<CatalogCandidate | null>(
+  // (spec 0017 §16, spec 0018 follow-up §4) whether the candidate came from
+  // a MusicBrainz search, Load More, either provider's exact-URL lookup, or
+  // a Discogs search result.
+  const [confirmingCandidate, setConfirmingCandidate] = useState<PendingDuplicate | null>(
     null,
   )
   const inProgress = useRef(false)
   const lastResult = useRef(restored?.result ?? null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // --- Pagination (spec 0017 §7-§8) ---
+  // --- Pagination (spec 0017 §7-§8) - MusicBrainz only; Discogs's own
+  // secondary search intentionally has no pagination (spec 0018 §8). ---
   const [offset, setOffset] = useState(restored?.result?.offset ?? 0)
   const [hasMore, setHasMore] = useState(restored?.result?.hasMore ?? false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -151,6 +189,116 @@ export function DiscoverPanel({
   const [exactUrlError, setExactUrlError] = useState<string | null>(null)
   const [exactCandidate, setExactCandidate] = useState<CatalogCandidate | null>(null)
   const exactUrlInProgress = useRef(false)
+
+  // --- Discogs secondary search (spec 0018 follow-up §1/§3/§4) - its own
+  // independent state, sharing only the top-level `query` text and the
+  // `add`/`confirmingCandidate` machinery above. Never auto-triggered. ---
+  const [discogsPhase, setDiscogsPhase] = useState<Phase>('initial')
+  const [discogsResults, setDiscogsResults] = useState<DiscogsSearchResultItem[]>([])
+  const [discogsSubmittedQuery, setDiscogsSubmittedQuery] = useState('')
+  const [discogsSearchError, setDiscogsSearchError] = useState<string | null>(null)
+  const discogsInProgress = useRef(false)
+  // The exact moment `discogsResults` was fetched (spec 0018 follow-up §7 -
+  // finding 1: transient Discogs data must expire at 6h, same as persisted
+  // owned-release data). `null` whenever there are no live results to
+  // expire. Read by the expiry effect below via `discogsResultsFetchedAtRef`.
+  const [discogsResultsFetchedAt, setDiscogsResultsFetchedAt] = useState<string | null>(
+    null,
+  )
+  const discogsResultsFetchedAtRef = useRef<string | null>(null)
+
+  // --- Exact Discogs release URL lookup (spec 0018 follow-up §5) - the
+  // Discogs analog of the MusicBrainz exact-URL state above, fully
+  // independent of it. ---
+  const [discogsExactUrlInput, setDiscogsExactUrlInput] = useState('')
+  const [discogsExactUrlPhase, setDiscogsExactUrlPhase] = useState<ExactUrlPhase>('idle')
+  const [discogsExactUrlError, setDiscogsExactUrlError] = useState<string | null>(null)
+  const [discogsExactCandidate, setDiscogsExactCandidate] = useState<CatalogCandidate | null>(
+    null,
+  )
+  const discogsExactUrlInProgress = useRef(false)
+  // The exact moment `discogsExactCandidate` was fetched - the same
+  // transient six-hour boundary as `discogsResultsFetchedAt` above, tracked
+  // independently since the two are fully independent surfaces.
+  const [discogsExactFetchedAt, setDiscogsExactFetchedAt] = useState<string | null>(null)
+  const discogsExactFetchedAtRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    discogsResultsFetchedAtRef.current = discogsResultsFetchedAt
+  }, [discogsResultsFetchedAt])
+  useEffect(() => {
+    discogsExactFetchedAtRef.current = discogsExactFetchedAt
+  }, [discogsExactFetchedAt])
+
+  /**
+   * Expires transient Discogs data older than six hours (spec 0018 follow-up
+   * §7 finding 1) - the exact same freshness boundary already used for
+   * persisted owned-release data (`isDiscogsRowFresh`/`msUntilStale`,
+   * `discogsFreshness.ts`), applied here to ephemeral React state instead of
+   * a database row. Clears (never re-fetches) each independently: search
+   * results and the exact-URL preview candidate can expire at different
+   * times. Called from the one-shot timer below AND from the
+   * visibilitychange handler, so a backgrounded tab's throttled/paused timer
+   * can never leave stale data visible after the tab becomes visible again.
+   */
+  const expireStaleDiscogsTransientData = useCallback(() => {
+    const resultsFetchedAt = discogsResultsFetchedAtRef.current
+    if (resultsFetchedAt && !isDiscogsRowFresh('discogs', resultsFetchedAt)) {
+      setDiscogsResults([])
+      setDiscogsPhase('initial')
+      setDiscogsSubmittedQuery('')
+      setDiscogsSearchError(null)
+      setDiscogsResultsFetchedAt(null)
+    }
+
+    const exactFetchedAt = discogsExactFetchedAtRef.current
+    if (exactFetchedAt && !isDiscogsRowFresh('discogs', exactFetchedAt)) {
+      setDiscogsExactCandidate(null)
+      setDiscogsExactUrlPhase('idle')
+      setDiscogsExactUrlError(null)
+      setDiscogsExactFetchedAt(null)
+    }
+  }, [])
+
+  // The one-shot expiry timer (mirrors `CollectionDataProvider.tsx`'s exact
+  // floor-free pattern) - re-computed whenever either fetched-at timestamp
+  // changes, scheduled for exactly the soonest remaining deadline plus 1ms
+  // (the six-hour boundary itself is fresh-inclusive, so the timer must fire
+  // 1ms past it to observe genuine staleness - discogsFreshness.ts). No
+  // polling; at most one pending timer for both surfaces combined.
+  useEffect(() => {
+    const pending = [discogsResultsFetchedAt, discogsExactFetchedAt].filter(
+      (value): value is string => value !== null,
+    )
+
+    if (pending.length === 0) {
+      return
+    }
+
+    const delay = Math.min(...pending.map((value) => msUntilStale('discogs', value) + 1))
+    const timeoutId = window.setTimeout(expireStaleDiscogsTransientData, delay)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [discogsResultsFetchedAt, discogsExactFetchedAt, expireStaleDiscogsTransientData])
+
+  // Visibility-resume (spec 0018 §8.2's established pattern, applied here to
+  // transient Discogs data): closes the gap where a backgrounded tab's
+  // `setTimeout` was throttled/paused past its scheduled delay. Synchronous
+  // on resume - stale transient data is never displayed even for one frame
+  // after the tab becomes visible again. Never triggers a re-fetch.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        expireStaleDiscogsTransientData()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [expireStaleDiscogsTransientData])
 
   // Bumps the request-generation counter and releases every in-flight guard
   // that bump makes stale - search's own `inProgress` guard AND Load More's
@@ -188,6 +336,19 @@ export function DiscoverPanel({
     // focus the input so the user can type immediately
     window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [invalidatePendingWork, userId])
+
+  const resetDiscogsSearch = useCallback(() => {
+    discogsInProgress.current = false
+    setQuery('')
+    setDiscogsResults([])
+    setDiscogsSubmittedQuery('')
+    setDiscogsSearchError(null)
+    setDiscogsResultsFetchedAt(null)
+    setAddErrors({})
+    setShowManual(false)
+    setDiscogsPhase('initial')
+    window.setTimeout(() => searchRef.current?.focus(), 0)
+  }, [])
 
   const handleModeChange = useCallback(
     (next: SearchMode) => {
@@ -334,7 +495,51 @@ export function DiscoverPanel({
     }
   }, [candidates, client, hasMore, loadingMore, mode, offset, query, submittedQuery, userId])
 
-  async function add(candidate: CatalogCandidate) {
+  const runDiscogsSearch = useCallback(
+    async (raw?: string) => {
+      if (discogsInProgress.current) {
+        return
+      }
+      const q = (raw ?? query).trim()
+      setDiscogsSearchError(null)
+      setAddErrors({})
+      if (q.length < 2) {
+        setDiscogsSearchError('Enter at least 2 characters.')
+        return
+      }
+      discogsInProgress.current = true
+      setDiscogsPhase('loading')
+      try {
+        const response = await searchDiscogsCatalog(client, q)
+        setDiscogsResults(response.results)
+        setDiscogsSubmittedQuery(q)
+        setDiscogsPhase(response.results.length > 0 ? 'results' : 'no-results')
+        // The receipt time for the six-hour transient-data expiry boundary
+        // (spec 0018 follow-up §7 finding 1) - recorded even for a
+        // zero-result page, so a subsequent expiry correctly clears back to
+        // the initial "search again" state rather than leaving a stale
+        // empty-results phase displayed indefinitely.
+        setDiscogsResultsFetchedAt(new Date().toISOString())
+      } catch (error) {
+        setDiscogsResults([])
+        setDiscogsSearchError(errorMessage(error))
+        setDiscogsPhase('error')
+        setDiscogsResultsFetchedAt(null)
+      } finally {
+        discogsInProgress.current = false
+      }
+    },
+    [client, query],
+  )
+
+  /**
+   * The single persisting add path for every provider and every entry point
+   * (a MusicBrainz candidate, a Discogs exact-URL candidate, or a bare
+   * Discogs search-result item) - the server independently re-fetches and
+   * validates before persisting regardless of which of these called it
+   * (spec 0018 follow-up §3). Never trusts browser-held metadata.
+   */
+  async function add(candidate: Pick<CatalogCandidate, 'provider' | 'providerReleaseId'>) {
     // Ownership data is only authoritative when the collection load is
     // 'ready' - never allow a write while it is loading (including a
     // post-add reload's stale window) or errored, even if a stale/disabled
@@ -370,7 +575,9 @@ export function DiscoverPanel({
   /** Confirms "Add another copy" of an already-owned release: closes the
    * dialog immediately (so a rapid repeated click cannot hit the same
    * confirm button twice) and reuses the existing `add` path - exactly
-   * one add request per intentional confirmation. */
+   * one add request per intentional confirmation. The server performs its
+   * own exact provider lookup again regardless of provider (spec 0018
+   * follow-up §4) - never trusts cached/search metadata. */
   function confirmAddAnotherCopy() {
     if (!confirmingCandidate || addingId || collectionStatus !== 'ready') {
       return
@@ -425,15 +632,73 @@ export function DiscoverPanel({
     }
   }
 
-  /** The shared per-candidate card, reused identically by the results
-   * list, Load More's appended entries, and the exact-URL lookup's single
-   * result (spec 0017 §10.3 point 5 - "no new candidate-rendering
-   * component," only reuse of the existing one from more call sites). */
+  /** The Discogs analog of `submitExactUrl` (spec 0018 follow-up §5): the
+   * exact lookup here is a genuine read-only preview, useful because the
+   * user explicitly requested one specific release - the persisting add
+   * still performs its own second, independent, authoritative lookup. */
+  async function submitDiscogsExactUrl() {
+    if (discogsExactUrlInProgress.current) {
+      return
+    }
+    const trimmed = discogsExactUrlInput.trim()
+
+    if (!trimmed) {
+      setDiscogsExactUrlPhase('idle')
+      setDiscogsExactUrlError(null)
+      return
+    }
+
+    const parsed = parseDiscogsReleaseUrl(trimmed)
+
+    if (!parsed) {
+      setDiscogsExactUrlPhase('invalid')
+      setDiscogsExactUrlError('That doesn’t look like a Discogs release URL.')
+      return
+    }
+
+    discogsExactUrlInProgress.current = true
+    setDiscogsExactUrlPhase('loading')
+    setDiscogsExactUrlError(null)
+
+    try {
+      const result = await lookupDiscogsCatalogRelease(client, parsed.providerReleaseId)
+      const candidate = result.candidates[0]
+
+      if (!candidate) {
+        setDiscogsExactUrlPhase('error')
+        setDiscogsExactUrlError('That release could not be verified on Discogs.')
+        setDiscogsExactFetchedAt(null)
+        return
+      }
+
+      setDiscogsExactCandidate(candidate)
+      setDiscogsExactUrlPhase('result')
+      // The receipt time for the six-hour transient-data expiry boundary
+      // (spec 0018 follow-up §7 finding 1) - the same boundary applied to
+      // the search results above.
+      setDiscogsExactFetchedAt(new Date().toISOString())
+    } catch (error) {
+      setDiscogsExactUrlPhase('error')
+      setDiscogsExactUrlError(errorMessage(error))
+      setDiscogsExactFetchedAt(null)
+    } finally {
+      discogsExactUrlInProgress.current = false
+    }
+  }
+
+  /** The shared per-candidate card, reused identically by the MusicBrainz
+   * results list, Load More's appended entries, and EITHER provider's
+   * exact-URL lookup result (spec 0017 §10.3 point 5 / spec 0018 follow-up
+   * §5 - "no new candidate-rendering component," only reuse of the existing
+   * one from more call sites). A `CatalogCandidate` always carries separate
+   * artist/title regardless of provider (spec 0018 follow-up §14). */
   function renderCandidate(c: CatalogCandidate) {
     const collectionReady = collectionStatus === 'ready'
+    const isDiscogs = c.provider === 'discogs'
     const owned =
       collectionReady && isExactCatalogReleaseOwned(c.provider, c.providerReleaseId, ownedItems)
     const metaParts = candidateMetaParts(c)
+    const providerLabel = isDiscogs ? 'Discogs' : 'MusicBrainz'
     return (
       <li key={c.providerReleaseId}>
         <article className="vi-candidate" data-owned={owned}>
@@ -443,10 +708,9 @@ export function DiscoverPanel({
               artist={c.artist}
               title={c.title}
               seedId={c.providerReleaseId}
-              releaseMbid={c.provider !== 'discogs' ? c.providerReleaseId : null}
-              releaseGroupMbid={
-                c.provider !== 'discogs' ? c.providerReleaseGroupId : null
-              }
+              releaseMbid={!isDiscogs ? c.providerReleaseId : null}
+              releaseGroupMbid={!isDiscogs ? c.providerReleaseGroupId : null}
+              providerImageUrl={isDiscogs ? c.providerImageUrl : null}
             />
           </span>
           <div className="vi-candidate__body">
@@ -461,6 +725,7 @@ export function DiscoverPanel({
                 <BidiJoin parts={metaParts} />
               </p>
             ) : null}
+            {isDiscogs ? <DiscogsAttribution releaseUrl={c.derivedProviderPageUrl} compact /> : null}
             <div className="vi-candidate__actions">
               {!collectionReady ? (
                 <Button variant="secondary" size="sm" disabled>
@@ -477,7 +742,12 @@ export function DiscoverPanel({
                     variant="secondary"
                     size="sm"
                     disabled={addingId === c.providerReleaseId}
-                    onClick={() => setConfirmingCandidate(c)}
+                    onClick={() =>
+                      setConfirmingCandidate({
+                        provider: c.provider,
+                        providerReleaseId: c.providerReleaseId,
+                      })
+                    }
                   >
                     {addingId === c.providerReleaseId
                       ? 'Adding…'
@@ -502,7 +772,7 @@ export function DiscoverPanel({
                 target="_blank"
                 rel="noreferrer"
               >
-                MusicBrainz
+                {providerLabel}
                 <span className="vi-visually-hidden"> (opens in a new tab)</span>
               </a>
             </div>
@@ -517,7 +787,103 @@ export function DiscoverPanel({
     )
   }
 
-  const searched = phase !== 'initial'
+  /** The Discogs search-RESULT card (spec 0018 follow-up §3/§14): visually
+   * parity with `renderCandidate` (cover / title / meta / attribution /
+   * action), but genuinely distinct internally - `displayTitle` stays the
+   * provider's own combined search string, never heuristically split, and
+   * the not-owned action adds directly with no client-side preview/confirm
+   * step (the server performs its own exact lookup before persisting). */
+  function renderDiscogsResult(r: DiscogsSearchResultItem) {
+    const collectionReady = collectionStatus === 'ready'
+    const owned =
+      collectionReady && isExactCatalogReleaseOwned('discogs', r.providerReleaseId, ownedItems)
+    const metaParts = discogsResultMetaParts(r)
+    return (
+      <li key={r.providerReleaseId}>
+        <article className="vi-candidate" data-owned={owned}>
+          <span className="vi-candidate__art">
+            <AlbumArtwork
+              size="thumb"
+              artist=""
+              title={r.displayTitle}
+              seedId={r.providerReleaseId}
+              releaseMbid={null}
+              releaseGroupMbid={null}
+              providerImageUrl={r.transientCoverDisplayUrl}
+              decorativeText={false}
+            />
+          </span>
+          <div className="vi-candidate__body">
+            <h3 className="vi-candidate__title">
+              <BidiText>{r.displayTitle}</BidiText>
+            </h3>
+            {metaParts.length > 0 ? (
+              <p className="vi-candidate__meta">
+                <BidiJoin parts={metaParts} />
+              </p>
+            ) : null}
+            <DiscogsAttribution releaseUrl={r.derivedProviderPageUrl} compact />
+            <div className="vi-candidate__actions">
+              {!collectionReady ? (
+                <Button variant="secondary" size="sm" disabled>
+                  {collectionStatus === 'loading'
+                    ? 'Checking collection…'
+                    : 'Collection unavailable'}
+                </Button>
+              ) : owned ? (
+                <>
+                  <span className="vi-candidate__owned">
+                    <Icon name="check" size={15} /> In your collection
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={addingId === r.providerReleaseId}
+                    onClick={() =>
+                      setConfirmingCandidate({
+                        provider: 'discogs',
+                        providerReleaseId: r.providerReleaseId,
+                      })
+                    }
+                  >
+                    {addingId === r.providerReleaseId ? 'Adding…' : 'Add another copy'}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={addingId === r.providerReleaseId}
+                  onClick={() =>
+                    void add({ provider: 'discogs', providerReleaseId: r.providerReleaseId })
+                  }
+                >
+                  {addingId === r.providerReleaseId ? 'Adding…' : 'Add to collection'}
+                </Button>
+              )}
+              <a
+                className="vi-btn vi-btn--ghost vi-btn--sm"
+                href={r.derivedProviderPageUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Discogs
+                <span className="vi-visually-hidden"> (opens in a new tab)</span>
+              </a>
+            </div>
+            {addErrors[r.providerReleaseId] ? (
+              <p className="vi-error-text" role="alert">
+                {addErrors[r.providerReleaseId]}
+              </p>
+            ) : null}
+          </div>
+        </article>
+      </li>
+    )
+  }
+
+  const searched = provider === 'musicbrainz' ? phase !== 'initial' : discogsPhase !== 'initial'
+  const confirmingDiscogs = confirmingCandidate?.provider === 'discogs'
 
   return (
     <div className="vi-discover">
@@ -527,7 +893,7 @@ export function DiscoverPanel({
           placeholder="Artist and album, e.g. Portishead Dummy"
           value={query}
           onChange={setQuery}
-          onSubmit={() => void runSearch()}
+          onSubmit={() => void (provider === 'musicbrainz' ? runSearch() : runDiscogsSearch())}
           inputRef={searchRef}
         />
         {searched ? (
@@ -535,191 +901,287 @@ export function DiscoverPanel({
             variant="ghost"
             size="sm"
             iconBefore="close"
-            onClick={resetSearch}
+            onClick={provider === 'musicbrainz' ? resetSearch : resetDiscogsSearch}
           >
             New search
           </Button>
         ) : null}
       </div>
 
-      <div className="vi-discover__modes">
+      <div className="vi-discover__providers">
         <SegmentedRadioGroup
-          label="Search mode"
-          value={mode}
-          onChange={handleModeChange}
-          options={MODE_OPTIONS}
+          label="Catalog provider"
+          value={provider}
+          onChange={setProvider}
+          options={PROVIDER_OPTIONS}
         />
-        <a
-          className="vi-btn vi-btn--ghost vi-btn--sm"
-          href={musicBrainzWebSearchUrl(query || null)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Search on MusicBrainz
-          <span className="vi-visually-hidden"> (opens in a new tab)</span>
-        </a>
       </div>
 
-      {searched && submittedQuery ? (
+      {provider === 'musicbrainz' ? (
+        <div className="vi-discover__modes">
+          <SegmentedRadioGroup
+            label="Search mode"
+            value={mode}
+            onChange={handleModeChange}
+            options={MODE_OPTIONS}
+          />
+          <a
+            className="vi-btn vi-btn--ghost vi-btn--sm"
+            href={musicBrainzWebSearchUrl(query || null)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Search on MusicBrainz
+            <span className="vi-visually-hidden"> (opens in a new tab)</span>
+          </a>
+        </div>
+      ) : (
+        <p className="vi-hint vi-discover__discogshint">
+          More pressings and regional releases. Discogs and MusicBrainz
+          results are shown separately and are never combined or matched
+          against each other - adding the same release through both
+          providers creates two separate collection entries.
+        </p>
+      )}
+
+      {provider === 'musicbrainz' && searched && submittedQuery ? (
         <p className="vi-hint vi-discover__current">
           Showing results for &ldquo;<BidiText>{submittedQuery}</BidiText>&rdquo;
           &middot; press Enter to run it again
         </p>
       ) : null}
-
-      {phase === 'initial' ? (
-        <div className="vi-discover__hint">
-          <p>Search MusicBrainz for a release, confirm the right edition, and add it.</p>
-          <div className="vi-discover__examples">
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex}
-                type="button"
-                className="vi-chip"
-                onClick={() => {
-                  setQuery(ex)
-                  void runSearch(ex)
-                }}
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {phase === 'loading' ? (
-        <div className="vi-candidate__list" aria-busy="true">
-          <SkeletonAlbumCard />
-          <SkeletonAlbumCard />
-          <SkeletonAlbumCard />
-        </div>
-      ) : null}
-
-      {phase === 'error' && searchError ? (
-        <div className="vi-errorstate" role="alert">
-          <Icon name="alert" size={20} />
-          <p>{searchError}</p>
-          <Button variant="secondary" size="sm" onClick={() => void runSearch()}>
-            Try again
-          </Button>
-        </div>
-      ) : null}
-      {phase !== 'error' && searchError ? (
-        <p className="vi-error-text" role="alert">
-          {searchError}
+      {provider === 'discogs' && searched && discogsSubmittedQuery ? (
+        <p className="vi-hint vi-discover__current">
+          Showing Discogs results for &ldquo;<BidiText>{discogsSubmittedQuery}</BidiText>
+          &rdquo; &middot; press Enter to run it again
         </p>
       ) : null}
 
-      {phase === 'no-results' ? (
-        <div className="vi-discover__empty" role="status">
-          <p>No catalog matches for that search.</p>
-          <p className="vi-hint">
-            Try different words, or add the record manually below.
-          </p>
-        </div>
-      ) : null}
-
-      {phase === 'results' ? (
+      {provider === 'musicbrainz' ? (
         <>
-          <ul
-            className="vi-candidate__list"
-            aria-label="Catalog results"
-            ref={resultsListRef}
-            tabIndex={-1}
-          >
-            {candidates.map((c) => renderCandidate(c))}
-          </ul>
-          {hasMore && !loadMoreError ? (
-            <div className="vi-discover__loadmore">
-              <Button
-                ref={loadMoreButtonRef}
-                variant="secondary"
-                size="sm"
-                disabled={loadingMore}
-                aria-busy={loadingMore}
-                onClick={() => void loadMore()}
-              >
-                {loadingMore ? 'Loading…' : 'Load more results'}
-              </Button>
+          {phase === 'initial' ? (
+            <div className="vi-discover__hint">
+              <p>Search MusicBrainz for a release, confirm the right edition, and add it.</p>
+              <div className="vi-discover__examples">
+                {EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    className="vi-chip"
+                    onClick={() => {
+                      setQuery(ex)
+                      void runSearch(ex)
+                    }}
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
-          {loadMoreError ? (
+
+          {phase === 'loading' ? (
+            <div className="vi-candidate__list" aria-busy="true">
+              <SkeletonAlbumCard />
+              <SkeletonAlbumCard />
+              <SkeletonAlbumCard />
+            </div>
+          ) : null}
+
+          {phase === 'error' && searchError ? (
             <div className="vi-errorstate" role="alert">
-              <Icon name="alert" size={18} />
-              <p>{loadMoreError}</p>
-              <Button variant="secondary" size="sm" onClick={() => void loadMore()}>
-                Retry
+              <Icon name="alert" size={20} />
+              <p>{searchError}</p>
+              <Button variant="secondary" size="sm" onClick={() => void runSearch()}>
+                Try again
               </Button>
             </div>
           ) : null}
-        </>
-      ) : null}
+          {phase !== 'error' && searchError ? (
+            <p className="vi-error-text" role="alert">
+              {searchError}
+            </p>
+          ) : null}
 
-      <div className="vi-discover__exacturl">
-        <Field
-          label="Know the exact release?"
-          htmlFor="vi-discover-exacturl"
-          error={
-            exactUrlPhase === 'invalid' || exactUrlPhase === 'error'
-              ? exactUrlError
-              : null
-          }
-        >
-          <form
-            className="vi-discover__exacturl-row"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void submitExactUrl()
-            }}
-          >
-            <Input
-              id="vi-discover-exacturl"
-              type="url"
-              inputMode="url"
-              value={exactUrlInput}
-              onChange={(e) => setExactUrlInput(e.target.value)}
-              placeholder="https://musicbrainz.org/release/..."
-            />
-            <Button
-              type="submit"
-              variant="secondary"
-              size="sm"
-              disabled={exactUrlPhase === 'loading'}
-              aria-busy={exactUrlPhase === 'loading'}
+          {phase === 'no-results' ? (
+            <div className="vi-discover__empty" role="status">
+              <p>No catalog matches for that search.</p>
+              <p className="vi-hint">
+                Try different words, or add the record manually below.
+              </p>
+            </div>
+          ) : null}
+
+          {phase === 'results' ? (
+            <>
+              <ul
+                className="vi-candidate__list"
+                aria-label="Catalog results"
+                ref={resultsListRef}
+                tabIndex={-1}
+              >
+                {candidates.map((c) => renderCandidate(c))}
+              </ul>
+              {hasMore && !loadMoreError ? (
+                <div className="vi-discover__loadmore">
+                  <Button
+                    ref={loadMoreButtonRef}
+                    variant="secondary"
+                    size="sm"
+                    disabled={loadingMore}
+                    aria-busy={loadingMore}
+                    onClick={() => void loadMore()}
+                  >
+                    {loadingMore ? 'Loading…' : 'Load more results'}
+                  </Button>
+                </div>
+              ) : null}
+              {loadMoreError ? (
+                <div className="vi-errorstate" role="alert">
+                  <Icon name="alert" size={18} />
+                  <p>{loadMoreError}</p>
+                  <Button variant="secondary" size="sm" onClick={() => void loadMore()}>
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          <div className="vi-discover__exacturl">
+            <Field
+              label="Know the exact release?"
+              htmlFor="vi-discover-exacturl"
+              error={
+                exactUrlPhase === 'invalid' || exactUrlPhase === 'error'
+                  ? exactUrlError
+                  : null
+              }
             >
-              {exactUrlPhase === 'loading' ? 'Finding…' : 'Find exact release'}
-            </Button>
-          </form>
-        </Field>
+              <form
+                className="vi-discover__exacturl-row"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void submitExactUrl()
+                }}
+              >
+                <Input
+                  id="vi-discover-exacturl"
+                  type="url"
+                  inputMode="url"
+                  value={exactUrlInput}
+                  onChange={(e) => setExactUrlInput(e.target.value)}
+                  placeholder="https://musicbrainz.org/release/..."
+                />
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="sm"
+                  disabled={exactUrlPhase === 'loading'}
+                  aria-busy={exactUrlPhase === 'loading'}
+                >
+                  {exactUrlPhase === 'loading' ? 'Finding…' : 'Find exact release'}
+                </Button>
+              </form>
+            </Field>
 
-        {exactUrlPhase === 'result' && exactCandidate ? (
-          <ul className="vi-candidate__list" aria-label="Exact release">
-            {renderCandidate(exactCandidate)}
-          </ul>
-        ) : null}
-      </div>
-
-      <div className="vi-discover__discogs">
-        {showDiscogs ? (
-          <div className="vi-discogs-search-host">
-            <h3 style={{ fontFamily: 'var(--font-display)' }}>Search Discogs</h3>
-            <DiscogsSearchPanel
-              client={client}
-              ownedItems={ownedItems}
-              collectionStatus={collectionStatus}
-              onCollectionChanged={onCollectionChanged}
-            />
-            <Button variant="ghost" size="sm" onClick={() => setShowDiscogs(false)}>
-              Close Discogs search
-            </Button>
+            {exactUrlPhase === 'result' && exactCandidate ? (
+              <ul className="vi-candidate__list" aria-label="Exact release">
+                {renderCandidate(exactCandidate)}
+              </ul>
+            ) : null}
           </div>
-        ) : (
-          <Button variant="ghost" size="sm" onClick={() => setShowDiscogs(true)}>
-            Can't find it? Search Discogs
-          </Button>
-        )}
-      </div>
+        </>
+      ) : (
+        <>
+          {discogsPhase === 'initial' ? (
+            <div className="vi-discover__hint">
+              <p>Search Discogs for a release, confirm it&rsquo;s the right pressing, and add it.</p>
+            </div>
+          ) : null}
+
+          {discogsPhase === 'loading' ? (
+            <div className="vi-candidate__list" aria-busy="true">
+              <SkeletonAlbumCard />
+              <SkeletonAlbumCard />
+            </div>
+          ) : null}
+
+          {discogsPhase === 'error' && discogsSearchError ? (
+            <div className="vi-errorstate" role="alert">
+              <Icon name="alert" size={20} />
+              <p>{discogsSearchError}</p>
+              <Button variant="secondary" size="sm" onClick={() => void runDiscogsSearch()}>
+                Try again
+              </Button>
+            </div>
+          ) : null}
+          {discogsPhase !== 'error' && discogsSearchError ? (
+            <p className="vi-error-text" role="alert">
+              {discogsSearchError}
+            </p>
+          ) : null}
+
+          {discogsPhase === 'no-results' ? (
+            <div className="vi-discover__empty" role="status">
+              <p>No Vinyl matches found on Discogs for that search.</p>
+              <p className="vi-hint">
+                Try different words, or add the record manually below.
+              </p>
+            </div>
+          ) : null}
+
+          {discogsPhase === 'results' ? (
+            <ul className="vi-candidate__list" aria-label="Discogs results">
+              {discogsResults.map((r) => renderDiscogsResult(r))}
+            </ul>
+          ) : null}
+
+          <div className="vi-discover__exacturl">
+            <Field
+              label="Know the exact release?"
+              htmlFor="vi-discover-discogs-exacturl"
+              error={
+                discogsExactUrlPhase === 'invalid' || discogsExactUrlPhase === 'error'
+                  ? discogsExactUrlError
+                  : null
+              }
+            >
+              <form
+                className="vi-discover__exacturl-row"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void submitDiscogsExactUrl()
+                }}
+              >
+                <Input
+                  id="vi-discover-discogs-exacturl"
+                  type="url"
+                  inputMode="url"
+                  value={discogsExactUrlInput}
+                  onChange={(e) => setDiscogsExactUrlInput(e.target.value)}
+                  placeholder="https://www.discogs.com/release/26770295-..."
+                />
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="sm"
+                  disabled={discogsExactUrlPhase === 'loading'}
+                  aria-busy={discogsExactUrlPhase === 'loading'}
+                >
+                  {discogsExactUrlPhase === 'loading' ? 'Finding…' : 'Find exact release'}
+                </Button>
+              </form>
+            </Field>
+
+            {discogsExactUrlPhase === 'result' && discogsExactCandidate ? (
+              <ul className="vi-candidate__list" aria-label="Exact Discogs release">
+                {renderCandidate(discogsExactCandidate)}
+              </ul>
+            ) : null}
+          </div>
+        </>
+      )}
 
       <div className="vi-discover__manual">
         {showManual ? (
@@ -746,8 +1208,8 @@ export function DiscoverPanel({
           title="Add another copy?"
         >
           <p>
-            You already own this release. Add another physical copy to your
-            collection?
+            You already own this{confirmingDiscogs ? ' Discogs' : ''} release. Add
+            another physical copy to your collection?
           </p>
           <div className="vi-dialog__actions">
             <Button

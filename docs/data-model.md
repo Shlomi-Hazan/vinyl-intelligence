@@ -27,13 +27,19 @@ trusted-backend writes. Table privileges are granted only to `authenticated`
 ### `releases` (shared catalog metadata)
 `id uuid pk`, `created_by uuid references profiles(id) on delete set null`,
 `source text not null default 'manual'` (`'manual'` = user-entered/editable,
-`'catalog'` = MusicBrainz/read-only), `artist text not null`,
+`'catalog'` = MusicBrainz or Discogs/read-only), `artist text not null`,
 `title text not null`, `release_year integer`, `label text`,
 `catalog_number text`, `country text`, `format text`,
-`genres text[] not null default '{}'`, `provider text`,
+`genres text[] not null default '{}'`, `provider text`
+(`'musicbrainz' | 'discogs'` for a catalog row, `null` for manual),
 `provider_release_id text`, `provider_release_group_id text`,
-`created_at`, `updated_at`. No `cover_url` - artwork is resolved at display time
-from `provider_release_id` / `provider_release_group_id` via Cover Art Archive.
+`provider_fetched_at timestamptz` (spec 0018 §12 - Discogs's six-hour
+content-freshness marker; always `null` for MusicBrainz/manual),
+`provider_image_url text` (spec 0018 follow-up §7-§9 - a persisted Discogs
+provider image URL, never image bytes; always `null` for MusicBrainz,
+which instead resolves artwork at display time from `provider_release_id` /
+`provider_release_group_id` via Cover Art Archive; nullable even for a
+Discogs row - missing artwork is valid), `created_at`, `updated_at`.
 `service_role`: SELECT/INSERT/UPDATE (no DELETE).
 
 ### `collection_items` (per-user ownership)

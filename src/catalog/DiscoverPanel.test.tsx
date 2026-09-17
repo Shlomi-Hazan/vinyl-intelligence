@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act } from 'react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DiscoverPanel } from './DiscoverPanel.tsx'
 import { buildUserSessionKey } from '../lib/session/sessionDraft.ts'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
@@ -58,6 +59,7 @@ function candidate(over: Partial<CatalogCandidate> = {}): CatalogCandidate {
     format: 'LP',
     score: 100,
     transientCoverDisplayUrl: null,
+    providerImageUrl: null,
     derivedProviderPageUrl: 'https://musicbrainz.org/release/1',
     ...over,
   }
@@ -1110,24 +1112,435 @@ describe('DiscoverPanel - ownership gated on authoritative collection-load statu
   })
 })
 
-describe('DiscoverPanel - Discogs fallback entry point (spec 0018 §6)', () => {
-  it('is closed by default and never searches Discogs on mount', () => {
+function discogsResult(
+  over: Partial<import('../lib/catalog/discogs.ts').DiscogsSearchResultItem> = {},
+): import('../lib/catalog/discogs.ts').DiscogsSearchResultItem {
+  return {
+    provider: 'discogs',
+    providerReleaseId: '26770295',
+    providerReleaseGroupId: '3058367',
+    displayTitle: 'כהן - מה שאפשר עם מה שנשאר',
+    releaseYear: 2023,
+    country: 'Israel',
+    formatSummary: 'Vinyl, LP, Album',
+    label: 'Hasivuv',
+    catalogNumber: 'HSV005',
+    transientCoverDisplayUrl: null,
+    derivedProviderPageUrl: 'https://www.discogs.com/release/26770295',
+    ...over,
+  }
+}
+
+async function switchToDiscogs(user: ReturnType<typeof userEvent.setup> = userEvent.setup()) {
+  await user.click(screen.getByRole('radio', { name: 'Discogs' }))
+  return user
+}
+
+describe('DiscoverPanel - one primary catalog-search area (spec 0018 follow-up §1)', () => {
+  it('shows MusicBrainz selected by default', () => {
     renderPanel()
-    expect(screen.queryByRole('heading', { name: 'Search Discogs' })).toBeNull()
+    expect(screen.getByRole('radio', { name: 'MusicBrainz' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    expect(screen.getByRole('radio', { name: 'Discogs' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+    // MusicBrainz-only modes are shown by default.
+    expect(screen.getByRole('radiogroup', { name: 'Search mode' })).toBeInTheDocument()
+  })
+
+  it('switching to Discogs makes no request by itself', async () => {
+    renderPanel()
+    await switchToDiscogs()
+    expect(searchDiscogsCatalog).not.toHaveBeenCalled()
+    expect(searchCatalogPage).not.toHaveBeenCalled()
+  })
+
+  it('hides the MusicBrainz-only All/Artist/Album modes when Discogs is selected', async () => {
+    renderPanel()
+    await switchToDiscogs()
+    expect(screen.queryByRole('radiogroup', { name: 'Search mode' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Search on MusicBrainz' })).toBeNull()
+    expect(screen.getByText(/More pressings and regional releases/)).toBeInTheDocument()
+  })
+
+  it('preserves the typed query when switching providers', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByLabelText('Search the catalog'), 'portishead')
+    await switchToDiscogs()
+    expect(screen.getByLabelText('Search the catalog')).toHaveValue('portishead')
+    await user.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    expect(screen.getByLabelText('Search the catalog')).toHaveValue('portishead')
+  })
+
+  it('a MusicBrainz search only ever calls the MusicBrainz search function', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate()]))
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByLabelText('Search the catalog'), 'portishead')
+    await user.keyboard('{Enter}')
+    await screen.findByRole('article')
+    expect(searchCatalogPage).toHaveBeenCalledOnce()
     expect(searchDiscogsCatalog).not.toHaveBeenCalled()
   })
 
-  it('opens the Discogs search panel on demand and can be closed again', async () => {
+  it('MusicBrainz and Discogs results stay in fully separate lists, never merged', async () => {
+    searchCatalogPage.mockResolvedValue(page([candidate({ title: 'MB Result' })]))
+    searchDiscogsCatalog.mockResolvedValue({
+      results: [discogsResult({ displayTitle: 'Discogs Result' })],
+    })
     const user = userEvent.setup()
     renderPanel()
 
-    await user.click(screen.getByRole('button', { name: "Can't find it? Search Discogs" }))
-    expect(screen.getByRole('heading', { name: 'Search Discogs' })).toBeInTheDocument()
-    // opening the panel alone never triggers a Discogs request - it is
-    // strictly user-triggered per search submit (spec 0018 §6).
-    expect(searchDiscogsCatalog).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText('Search the catalog'), 'query')
+    await user.keyboard('{Enter}')
+    await screen.findByText('MB Result')
+    expect(screen.queryByText('Discogs Result')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Close Discogs search' }))
-    expect(screen.queryByRole('heading', { name: 'Search Discogs' })).toBeNull()
+    await switchToDiscogs()
+    await user.click(screen.getByLabelText('Search the catalog'))
+    await user.keyboard('{Enter}')
+    await screen.findByText('Discogs Result')
+    // switching back shows the MusicBrainz result was preserved, not lost
+    await user.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    expect(screen.getByText('MB Result')).toBeInTheDocument()
+  })
+})
+
+describe('DiscoverPanel - Discogs add flow (spec 0018 follow-up §3/§4)', () => {
+  it('an unowned Discogs result adds directly - no preview popup, one add call', async () => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    addCatalogReleaseToCollection.mockResolvedValue({ id: 'item-1' })
+    const user = userEvent.setup()
+    const { onCollectionChanged } = renderPanel()
+
+    await switchToDiscogs()
+    await user.type(screen.getByLabelText('Search the catalog'), 'כהן')
+    await user.keyboard('{Enter}')
+    await user.click(await screen.findByRole('button', { name: 'Add to collection' }))
+
+    await waitFor(() => expect(onCollectionChanged).toHaveBeenCalled())
+    // No client-side preview/exact-lookup call for the normal first-add path.
+    expect(lookupDiscogsCatalogRelease).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // The add request carries only provider identity - never the browser's
+    // own search-result metadata (spec 0018 follow-up §3).
+    expect(addCatalogReleaseToCollection).toHaveBeenCalledWith(expect.anything(), {
+      provider: 'discogs',
+      providerReleaseId: '26770295',
+    })
+  })
+
+  it('an owned Discogs result shows the duplicate-copy confirmation, never an immediate add', async () => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    const user = userEvent.setup()
+    renderPanel([
+      ownedItem({ provider: 'discogs', provider_release_id: '26770295' }),
+    ])
+
+    await switchToDiscogs()
+    await user.type(screen.getByLabelText('Search the catalog'), 'כהן')
+    await user.keyboard('{Enter}')
+
+    expect(await screen.findByText('In your collection')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add another copy' }))
+
+    expect(screen.getByText(/You already own this Discogs release/)).toBeInTheDocument()
+    expect(addCatalogReleaseToCollection).not.toHaveBeenCalled()
+  })
+
+  it('confirming the Discogs duplicate copy invokes the same authoritative add path', async () => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    addCatalogReleaseToCollection.mockResolvedValue({ id: 'item-2' })
+    const user = userEvent.setup()
+    const { onCollectionChanged } = renderPanel([
+      ownedItem({ provider: 'discogs', provider_release_id: '26770295' }),
+    ])
+
+    await switchToDiscogs()
+    await user.type(screen.getByLabelText('Search the catalog'), 'כהן')
+    await user.keyboard('{Enter}')
+    await user.click(await screen.findByRole('button', { name: 'Add another copy' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Add another copy' }))
+
+    await waitFor(() =>
+      expect(addCatalogReleaseToCollection).toHaveBeenCalledWith(expect.anything(), {
+        provider: 'discogs',
+        providerReleaseId: '26770295',
+      }),
+    )
+    expect(onCollectionChanged).toHaveBeenCalled()
+  })
+
+  it('a failed Discogs add shows a scoped, recoverable error on that result', async () => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    addCatalogReleaseToCollection.mockRejectedValue(new Error('Discogs is unavailable'))
+    const user = userEvent.setup()
+    renderPanel()
+
+    await switchToDiscogs()
+    await user.type(screen.getByLabelText('Search the catalog'), 'כהן')
+    await user.keyboard('{Enter}')
+    await user.click(await screen.findByRole('button', { name: 'Add to collection' }))
+
+    expect(await screen.findByText('Discogs is unavailable')).toBeInTheDocument()
+  })
+
+  it('an empty/no-Vinyl-match Discogs search shows an honest empty state', async () => {
+    searchDiscogsCatalog.mockResolvedValue({ results: [] })
+    const user = userEvent.setup()
+    renderPanel()
+
+    await switchToDiscogs()
+    await user.type(screen.getByLabelText('Search the catalog'), 'obscure query')
+    await user.keyboard('{Enter}')
+
+    expect(
+      await screen.findByText(/No Vinyl matches found on Discogs/),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('DiscoverPanel - exact Discogs release URL (spec 0018 follow-up §5)', () => {
+  it('a valid Discogs release URL renders one exact result via a read-only lookup', async () => {
+    lookupDiscogsCatalogRelease.mockResolvedValue(
+      page([candidate({ provider: 'discogs', providerReleaseId: '26770295', artist: 'כהן' })]),
+    )
+    const user = userEvent.setup()
+    renderPanel()
+    await switchToDiscogs()
+
+    await user.type(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      'https://www.discogs.com/release/26770295',
+    )
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    expect(await screen.findByText('כהן')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Exact Discogs release' })).toBeInTheDocument()
+    expect(lookupDiscogsCatalogRelease).toHaveBeenCalledWith(expect.anything(), '26770295')
+  })
+
+  it('a valid Discogs release URL with a slug works identically', async () => {
+    lookupDiscogsCatalogRelease.mockResolvedValue(page([candidate({ provider: 'discogs' })]))
+    const user = userEvent.setup()
+    renderPanel()
+    await switchToDiscogs()
+
+    await user.type(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      'https://www.discogs.com/release/26770295-Some-Artist-Some-Title',
+    )
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    expect(lookupDiscogsCatalogRelease).toHaveBeenCalledWith(expect.anything(), '26770295')
+  })
+
+  it('rejects a master/artist/unrelated Discogs URL as invalid, without calling the lookup', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await switchToDiscogs()
+
+    await user.type(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      'https://www.discogs.com/master/26770295',
+    )
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    expect(
+      screen.getByText(/doesn.t look like a Discogs release URL/),
+    ).toBeInTheDocument()
+    expect(lookupDiscogsCatalogRelease).not.toHaveBeenCalled()
+  })
+
+  it('adding the exact Discogs result still goes through the authoritative persisting add path', async () => {
+    lookupDiscogsCatalogRelease.mockResolvedValue(
+      page([candidate({ provider: 'discogs', providerReleaseId: '26770295' })]),
+    )
+    addCatalogReleaseToCollection.mockResolvedValue({ id: 'item-1' })
+    const user = userEvent.setup()
+    renderPanel()
+    await switchToDiscogs()
+
+    await user.type(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      'https://www.discogs.com/release/26770295',
+    )
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+    await user.click(await screen.findByRole('button', { name: 'Add to collection' }))
+
+    await waitFor(() =>
+      expect(addCatalogReleaseToCollection).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          provider: 'discogs',
+          providerReleaseId: '26770295',
+        }),
+      ),
+    )
+  })
+
+  it('an exact Discogs release link is labeled "Discogs", not "MusicBrainz"', async () => {
+    lookupDiscogsCatalogRelease.mockResolvedValue(page([candidate({ provider: 'discogs' })]))
+    const user = userEvent.setup()
+    renderPanel()
+    await switchToDiscogs()
+
+    await user.type(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      'https://www.discogs.com/release/26770295',
+    )
+    await user.click(screen.getByRole('button', { name: 'Find exact release' }))
+
+    const links = await screen.findAllByRole('link', { name: /Discogs.*opens in a new tab/ })
+    expect(links.length).toBeGreaterThan(0)
+  })
+})
+
+describe('DiscoverPanel - transient Discogs data expires at 6h (spec 0018 follow-up §7 finding 1)', () => {
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** `fireEvent` dispatches DOM events synchronously with no internal
+   * delay/rAF machinery, unlike `userEvent` - reliable under
+   * `vi.useFakeTimers()`. The subsequent async work (the mocked provider
+   * call + resulting state update) is flushed with two `Promise.resolve()`
+   * ticks inside `act()`, NOT `waitFor` - `waitFor`'s own internal polling
+   * uses `setTimeout` and would otherwise hang forever under fake timers
+   * with nothing ever advancing them while it waits. */
+  async function searchAndGetFreshResult() {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    renderPanel()
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    fireEvent.change(screen.getByLabelText('Search the catalog'), {
+      target: { value: 'כהן' },
+    })
+    await act(async () => {
+      fireEvent.submit(screen.getByRole('search'))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('כהן - מה שאפשר עם מה שנשאר')).toBeInTheDocument()
+  }
+
+  async function getFreshExactPreview() {
+    lookupDiscogsCatalogRelease.mockResolvedValue(
+      page([
+        candidate({ provider: 'discogs', providerReleaseId: '26770295', title: 'Exact Title' }),
+      ]),
+    )
+    renderPanel()
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    fireEvent.change(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      { target: { value: 'https://www.discogs.com/release/26770295' } },
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Find exact release' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('Exact Title')).toBeInTheDocument()
+  }
+
+  it('a search result just below 6h old is still shown', async () => {
+    await searchAndGetFreshResult()
+    vi.advanceTimersByTime(SIX_HOURS_MS - 1000)
+    expect(screen.getByText('כהן - מה שאפשר עם מה שנשאר')).toBeInTheDocument()
+  })
+
+  it('a search result exactly 6h old is still shown (boundary inclusive)', async () => {
+    await searchAndGetFreshResult()
+    vi.advanceTimersByTime(SIX_HOURS_MS)
+    expect(screen.getByText('כהן - מה שאפשר עם מה שנשאר')).toBeInTheDocument()
+  })
+
+  it('immediately after 6h, the search result is cleared and no automatic re-fetch happens', async () => {
+    await searchAndGetFreshResult()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    expect(screen.queryByText('כהן - מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+    expect(searchDiscogsCatalog).toHaveBeenCalledOnce()
+    // Back to the initial hint - the user must explicitly search again.
+    expect(screen.getByText(/Search Discogs for a release/)).toBeInTheDocument()
+  })
+
+  it('switching to MusicBrainz and back after expiry does not resurrect the stale search result', async () => {
+    await searchAndGetFreshResult()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    expect(screen.queryByText('כהן - מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+  })
+
+  it('a visibility resume after expiry synchronously clears the stale search result, even if the timer itself was throttled', async () => {
+    await searchAndGetFreshResult()
+    // Simulate a backgrounded tab: the clock advances well past expiry
+    // without any pending timer actually firing (as a throttled/paused
+    // background-tab timer would behave), then the tab becomes visible.
+    vi.setSystemTime(new Date(Date.now() + SIX_HOURS_MS + 1))
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(screen.queryByText('כהן - מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+  })
+
+  it('the exact Discogs URL preview just below 6h old is still shown', async () => {
+    await getFreshExactPreview()
+    vi.advanceTimersByTime(SIX_HOURS_MS - 1000)
+    expect(screen.getByText('Exact Title')).toBeInTheDocument()
+  })
+
+  it('the exact Discogs URL preview exactly 6h old is still shown (boundary inclusive)', async () => {
+    await getFreshExactPreview()
+    vi.advanceTimersByTime(SIX_HOURS_MS)
+    expect(screen.getByText('Exact Title')).toBeInTheDocument()
+  })
+
+  it('immediately after 6h, the exact Discogs URL preview is cleared and no automatic re-fetch happens', async () => {
+    await getFreshExactPreview()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    expect(screen.queryByText('Exact Title')).not.toBeInTheDocument()
+    expect(lookupDiscogsCatalogRelease).toHaveBeenCalledOnce()
+  })
+
+  it('switching to MusicBrainz and back after exact-preview expiry does not resurrect it', async () => {
+    await getFreshExactPreview()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    expect(screen.queryByText('Exact Title')).not.toBeInTheDocument()
+  })
+
+  it('a visibility resume after exact-preview expiry synchronously clears it', async () => {
+    await getFreshExactPreview()
+    vi.setSystemTime(new Date(Date.now() + SIX_HOURS_MS + 1))
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(screen.queryByText('Exact Title')).not.toBeInTheDocument()
   })
 })

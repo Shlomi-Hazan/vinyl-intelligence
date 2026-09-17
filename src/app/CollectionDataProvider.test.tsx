@@ -66,7 +66,10 @@ function discogsItem(
   } as CollectionItemWithRelease
 }
 
-function discogsRefreshResponse(providerFetchedAt: string) {
+function discogsRefreshResponse(
+  providerFetchedAt: string,
+  overrides: Partial<{ providerImageUrl: string | null }> = {},
+) {
   return {
     candidate: {
       artist: 'כהן',
@@ -82,6 +85,8 @@ function discogsRefreshResponse(providerFetchedAt: string) {
       score: null,
       title: 'מה שאפשר עם מה שנשאר',
       transientCoverDisplayUrl: null,
+      providerImageUrl: 'https://i.discogs.com/refreshed/release.jpeg',
+      ...overrides,
     },
     genres: ['hip hop'],
     providerFetchedAt,
@@ -98,6 +103,7 @@ function Probe() {
       <span data-testid="error">{data.error ?? '-'}</span>
       <span data-testid="unavailable">{String(item?.discogsUnavailable ?? false)}</span>
       <span data-testid="fetched-at">{item?.release?.provider_fetched_at ?? '-'}</span>
+      <span data-testid="image-url">{item?.release?.provider_image_url ?? '-'}</span>
       <button type="button" onClick={data.reload}>
         reload
       </button>
@@ -311,6 +317,33 @@ describe('CollectionDataProvider - Discogs six-hour freshness (spec 0018 §8)', 
 
     expect(screen.getByTestId('unavailable')).toHaveTextContent('false')
     expect(screen.getByTestId('fetched-at')).toHaveTextContent(newFetchedAt)
+    // The refreshed provider image is tied to the SAME successful fetch as
+    // the new provider_fetched_at (spec 0018 follow-up §10/§13).
+    expect(screen.getByTestId('image-url')).toHaveTextContent(
+      'https://i.discogs.com/refreshed/release.jpeg',
+    )
+  })
+
+  it('a failed refresh leaves the provider image unavailable (item stays masked, no stale image shown)', async () => {
+    const fetchedAt = new Date(Date.now() - SIX_HOURS_MS - 1).toISOString()
+    loadCollection.mockResolvedValueOnce([discogsItem({ provider_fetched_at: fetchedAt })])
+    loadListeningEvents.mockResolvedValueOnce([])
+    refreshDiscogsCollectionItem.mockRejectedValueOnce(new Error('Discogs unavailable'))
+
+    render(
+      <CollectionDataProvider client={client} userId="u1">
+        <Probe />
+      </CollectionDataProvider>,
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId('unavailable')).toHaveTextContent('true')
+    expect(screen.getByTestId('image-url')).toHaveTextContent('-')
   })
 
   it('a visibilitychange to "visible" re-runs mask-then-revalidate for an item that went stale while hidden', async () => {

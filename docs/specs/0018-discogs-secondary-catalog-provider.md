@@ -1,6 +1,21 @@
 # 0018 Discogs Secondary Catalog Provider (Specification)
 
-Status: **SPECIFICATION PROPOSED — NOT IMPLEMENTED.** No runtime, schema,
+**Status update (2026-09-18):** PR B (this spec's runtime + migration) was
+implemented, independently reviewed, corrected, and merged to `main` as PR
+#41 (`b73d7a79769ddd7a1d4a109945eda301fca5f605`), migration
+`20260917120000_add_discogs_catalog_provider.sql` applied to the hosted
+project, and that `main` deployed to production. The body of this document
+below is preserved exactly as originally written and reflects what was
+known/decided at spec time — it is NOT rewritten to match what shipped.
+Real production acceptance immediately afterward changed several of this
+spec's own UX/scope decisions (the Discover placement of Discogs search in
+§8/§17, the confirm-before-persist add flow in §9, the "no exact Discogs
+URL import" decision in §8, and the "images entirely out of scope" decision
+in §14) — those supersessions are recorded in
+`docs/specs/0019-discogs-discover-ux-and-artwork.md`, not by editing the
+history below.
+
+Original status at spec time: **SPECIFICATION PROPOSED — NOT IMPLEMENTED.** No runtime, schema,
 migration, dependency, or environment change has been made. This document is
 the primary behavioral contract; a companion implementation plan
 (`docs/plans/018-...`) is required and must be human-approved before any
