@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   collectionStats,
   decadeDistribution,
+  insightsIncludeFreshDiscogsData,
   listeningStats,
   recentlyAdded,
   recentlyPlayed,
@@ -222,5 +223,58 @@ describe('topGenres', () => {
       { genre: 'rock', count: 3 },
       { genre: 'jazz', count: 2 },
     ])
+  })
+})
+
+describe('discogsUnavailable exclusion (spec 0018 §8.4)', () => {
+  function discogs(id: string, over: Partial<CollectionItemWithRelease> = {}) {
+    return {
+      ...item(id, { year: 1975, genres: ['jazz'] }),
+      release: {
+        ...item(id, { year: 1975, genres: ['jazz'] }).release,
+        provider: 'discogs' as const,
+        provider_release_id: '1',
+      },
+      ...over,
+    } as CollectionItemWithRelease
+  }
+
+  it('decadeDistribution excludes a masked item entirely - it never counts toward the total or a slice', () => {
+    const items = [
+      discogs('01', { discogsUnavailable: true }),
+      item('02', { year: 1975 }),
+      item('03', { year: 1995 }),
+      item('04', { year: 1996 }),
+      item('05', { year: 1997 }),
+    ]
+    // Only 02/03/04/05 count (4 dated items, meeting MIN_INSIGHT_ITEMS) - the
+    // masked one is excluded, not merely unattributed, and never inflates the
+    // denominator even though 5 items are owned.
+    expect(decadeDistribution(items)).toEqual([
+      { decade: '1970s', count: 1, pct: 25 },
+      { decade: '1990s', count: 3, pct: 75 },
+    ])
+  })
+
+  it("topGenres excludes a masked item's CATALOG genre but keeps its personal genres", () => {
+    const items = [
+      discogs('01', { discogsUnavailable: true, personal_genres: ['soul'] }),
+      item('02', { genres: ['jazz'] }),
+      item('03', { genres: ['jazz'] }),
+      item('04', { genres: ['jazz'] }),
+    ]
+    const result = topGenres(items, 5)
+    expect(result.find((g) => g.genre === 'jazz')).toEqual({ genre: 'jazz', count: 3 })
+    // '01' contributes only its personal genre 'soul' - its catalog genre
+    // ('jazz', masked) never reaches this computation at all.
+    expect(result.find((g) => g.genre === 'soul')).toEqual({ genre: 'soul', count: 1 })
+  })
+
+  it('insightsIncludeFreshDiscogsData is true only when a currently-fresh Discogs item contributed data', () => {
+    expect(insightsIncludeFreshDiscogsData([discogs('01')])).toBe(true)
+    expect(
+      insightsIncludeFreshDiscogsData([discogs('01', { discogsUnavailable: true })]),
+    ).toBe(false)
+    expect(insightsIncludeFreshDiscogsData([item('02')])).toBe(false)
   })
 })

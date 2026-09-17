@@ -9,11 +9,38 @@ import {
 } from '../functions/_shared/curator-handlers.mts'
 import { CuratorError } from '../../src/lib/curator/types.ts'
 
+// Spec 0018 §12/§21: VIN's candidate-fact plumbing must be freshness-safe -
+// verified here with a mocked/fixture Discogs adapter + persistence helper.
+// No real Discogs/OpenRouter call is ever exercised by this test file.
+const mockLookupDiscogsRelease = vi.fn()
+const mockUpsertCatalogRelease = vi.fn(async () => ({ id: 'refreshed-release-1' }))
+
+vi.mock('../../src/lib/catalog/discogs.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/lib/catalog/discogs.ts')>()
+  return {
+    ...actual,
+    lookupDiscogsRelease: (...args: unknown[]) => mockLookupDiscogsRelease(...args),
+  }
+})
+vi.mock('../functions/_shared/catalogPersistence.mts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../functions/_shared/catalogPersistence.mts')>()
+  return {
+    ...actual,
+    upsertCatalogRelease: (...args: unknown[]) => {
+      void args
+      return mockUpsertCatalogRelease()
+    },
+  }
+})
+
 const env = {
   VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
   VITE_SUPABASE_PUBLISHABLE_KEY: 'publishable-key',
   SUPABASE_SERVICE_ROLE_KEY: 'service-key',
   OPENROUTER_API_KEY: 'or-secret',
+  DISCOGS_TOKEN: 'discogs-test-token',
+  DISCOGS_USER_AGENT: 'VinylIntelligence/0.0.0 (test@example.com)',
 }
 
 const userId = '00000000-0000-4000-8000-0000000000e1'
@@ -169,6 +196,8 @@ function createDependencies(options: Options = {}) {
     }
     return options.recentIntentCount ?? 0
   })
+  // PR #41 finding 2: the injected pacer never actually waits in tests.
+  const paceDiscogsRequest = vi.fn(async () => undefined)
 
   const deps: CuratorFunctionDependencies = {
     createClient: vi.fn(() => supabase) as unknown as CuratorFunctionDependencies['createClient'],
@@ -178,6 +207,7 @@ function createDependencies(options: Options = {}) {
     recordModelCall,
     countRecentIntentCalls,
     now: () => 1_800_000_000_000,
+    paceDiscogsRequest,
   }
 
   return {
@@ -186,6 +216,7 @@ function createDependencies(options: Options = {}) {
     extractRefinement,
     selectRecommendations,
     recordModelCall,
+    paceDiscogsRequest,
     countRecentIntentCalls,
     supabase,
     capturedSelects,
@@ -802,5 +833,288 @@ describe('curator refine - pipeline + something-else', () => {
     expect(JSON.stringify(refineArgs)).not.toContain('notes')
     expect(refineArgs.previousRequest).toBe('give me 90s rock')
     expect(refineArgs.request).toBe('only favorites')
+  })
+})
+
+describe('loadOwnedCollection - Discogs freshness-safe plumbing (spec 0018 §12)', () => {
+  function discogsReleaseRow(overrides: Record<string, unknown> = {}) {
+    return {
+      artist: 'כהן',
+      title: 'מה שאפשר עם מה שנשאר',
+      release_year: 2023,
+      genres: ['hip hop'],
+      provider: 'discogs',
+      provider_release_id: '26770295',
+      provider_fetched_at: new Date().toISOString(),
+      ...overrides,
+    }
+  }
+
+  it('a fresh Discogs row is used as-is - no Discogs call, no persistence write', async () => {
+    mockLookupDiscogsRelease.mockClear()
+    mockUpsertCatalogRelease.mockClear()
+    const ctx = createDependencies({
+      collectionRows: [{ ...collectionRow('d1'), release: discogsReleaseRow() }],
+    })
+
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+
+    expect(json.status).toBe('ok')
+    expect(mockLookupDiscogsRelease).not.toHaveBeenCalled()
+    expect(mockUpsertCatalogRelease).not.toHaveBeenCalled()
+    const candidate = [
+      ...ctx.selectRecommendations.mock.calls[0][0].candidatesById.values(),
+    ][0]
+    expect(candidate.artist).toBe('כהן')
+  })
+
+  it('a stale Discogs row is revalidated and the REFRESHED facts feed the candidate', async () => {
+    mockLookupDiscogsRelease.mockReset()
+    mockUpsertCatalogRelease.mockClear()
+    mockLookupDiscogsRelease.mockResolvedValue({
+      candidate: {
+        artist: 'כהן (מעודכן)',
+        catalogNumber: 'HSV005',
+        country: 'Israel',
+        derivedProviderPageUrl: 'https://www.discogs.com/release/26770295',
+        format: 'Vinyl',
+        label: 'Hasivuv',
+        provider: 'discogs',
+        providerReleaseGroupId: '3058367',
+        providerReleaseId: '26770295',
+        releaseYear: 2023,
+        score: null,
+        title: 'מה שאפשר עם מה שנשאר (מעודכן)',
+        transientCoverDisplayUrl: null,
+      },
+      genres: ['hip hop'],
+    })
+
+    const staleFetchedAt = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('d2'),
+          release: discogsReleaseRow({ provider_fetched_at: staleFetchedAt }),
+        },
+      ],
+    })
+
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+
+    expect(json.status).toBe('ok')
+    expect(mockLookupDiscogsRelease).toHaveBeenCalledWith({
+      providerReleaseId: '26770295',
+      token: env.DISCOGS_TOKEN,
+      userAgent: env.DISCOGS_USER_AGENT,
+    })
+    expect(mockUpsertCatalogRelease).toHaveBeenCalledOnce()
+    const candidate = [
+      ...ctx.selectRecommendations.mock.calls[0][0].candidatesById.values(),
+    ][0]
+    expect(candidate.artist).toBe('כהן (מעודכן)')
+    // PR #41 finding 2: paced before the Discogs call, same discipline as
+    // the catalog Netlify Functions.
+    expect(ctx.paceDiscogsRequest).toHaveBeenCalledOnce()
+    expect(ctx.paceDiscogsRequest.mock.invocationCallOrder[0]).toBeLessThan(
+      mockLookupDiscogsRelease.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('paces multiple stale rows sequentially - one pace call per revalidation, in order, concurrency 1', async () => {
+    mockLookupDiscogsRelease.mockReset()
+    mockUpsertCatalogRelease.mockClear()
+    mockLookupDiscogsRelease.mockImplementation(async ({ providerReleaseId }) => ({
+      candidate: {
+        artist: `Refreshed ${providerReleaseId}`,
+        catalogNumber: null,
+        country: null,
+        derivedProviderPageUrl: `https://www.discogs.com/release/${providerReleaseId}`,
+        format: null,
+        label: null,
+        provider: 'discogs',
+        providerReleaseGroupId: null,
+        providerReleaseId,
+        releaseYear: 2023,
+        score: null,
+        title: `Refreshed title ${providerReleaseId}`,
+        transientCoverDisplayUrl: null,
+      },
+      genres: [],
+    }))
+
+    const staleFetchedAt = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('d6'),
+          release: discogsReleaseRow({
+            provider_release_id: '111',
+            provider_fetched_at: staleFetchedAt,
+          }),
+        },
+        {
+          ...collectionRow('d7'),
+          release: discogsReleaseRow({
+            provider_release_id: '222',
+            provider_fetched_at: staleFetchedAt,
+          }),
+        },
+        {
+          ...collectionRow('d8'),
+          release: discogsReleaseRow({
+            provider_release_id: '333',
+            provider_fetched_at: staleFetchedAt,
+          }),
+        },
+      ],
+    })
+
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+
+    expect(json.status).toBe('ok')
+    // One pace call per stale row revalidated - never batched, never skipped.
+    expect(ctx.paceDiscogsRequest).toHaveBeenCalledTimes(3)
+    expect(mockLookupDiscogsRelease).toHaveBeenCalledTimes(3)
+
+    // Sequential, concurrency 1: each row's own pace -> lookup pair
+    // completes (in call order) strictly before the next row's pace call
+    // begins - never interleaved/parallel.
+    const paceOrders = ctx.paceDiscogsRequest.mock.invocationCallOrder
+    const lookupOrders = mockLookupDiscogsRelease.mock.invocationCallOrder
+    expect(paceOrders[0]).toBeLessThan(lookupOrders[0])
+    expect(lookupOrders[0]).toBeLessThan(paceOrders[1])
+    expect(paceOrders[1]).toBeLessThan(lookupOrders[1])
+    expect(lookupOrders[1]).toBeLessThan(paceOrders[2])
+    expect(paceOrders[2]).toBeLessThan(lookupOrders[2])
+
+    // No automatic retry: exactly one lookup attempt per row, regardless of
+    // outcome.
+    const attemptedIds = mockLookupDiscogsRelease.mock.calls.map(
+      (call) => (call[0] as { providerReleaseId: string }).providerReleaseId,
+    )
+    expect(attemptedIds).toEqual(['111', '222', '333'])
+  })
+
+  it('a failed revalidation excludes the item entirely from this request (never supplies stale metadata)', async () => {
+    mockLookupDiscogsRelease.mockReset()
+    mockLookupDiscogsRelease.mockRejectedValue(new Error('Discogs unavailable'))
+
+    const staleFetchedAt = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('d3'),
+          release: discogsReleaseRow({ provider_fetched_at: staleFetchedAt }),
+        },
+      ],
+    })
+
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+
+    // The one and only owned item was excluded -> no candidates at all.
+    // PR #41 finding 3: this returns the existing no_match response BEFORE
+    // any OpenRouter/model call - not even the intent-extraction call, since
+    // there is nothing left to interpret against.
+    expect(json.status).toBe('no_match')
+    expect(ctx.extractIntent).not.toHaveBeenCalled()
+    expect(ctx.selectRecommendations).not.toHaveBeenCalled()
+  })
+
+  it('a stale Discogs row with no provider_release_id is excluded without attempting a lookup', async () => {
+    mockLookupDiscogsRelease.mockClear()
+    const staleFetchedAt = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('d4'),
+          release: discogsReleaseRow({
+            provider_fetched_at: staleFetchedAt,
+            provider_release_id: null,
+          }),
+        },
+      ],
+    })
+
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+
+    expect(json.status).toBe('no_match')
+    expect(mockLookupDiscogsRelease).not.toHaveBeenCalled()
+    // PR #41 finding 3: zero model calls, not one.
+    expect(ctx.extractIntent).not.toHaveBeenCalled()
+    expect(ctx.selectRecommendations).not.toHaveBeenCalled()
+  })
+
+  it('a null provider_fetched_at Discogs row is treated as stale, never fresh', async () => {
+    mockLookupDiscogsRelease.mockReset()
+    mockLookupDiscogsRelease.mockRejectedValue(new Error('Discogs unavailable'))
+
+    const ctx = createDependencies({
+      collectionRows: [
+        {
+          ...collectionRow('d5'),
+          release: discogsReleaseRow({ provider_fetched_at: null }),
+        },
+      ],
+    })
+
+    const response = await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const json = await response.json()
+
+    expect(mockLookupDiscogsRelease).toHaveBeenCalledOnce()
+    expect(json.status).toBe('no_match')
+    // PR #41 finding 3: zero model calls, not one.
+    expect(ctx.extractIntent).not.toHaveBeenCalled()
+    expect(ctx.selectRecommendations).not.toHaveBeenCalled()
+  })
+
+  it('applies to refine too: zero model calls when every candidate is excluded, echoing the prior intent unchanged', async () => {
+    mockLookupDiscogsRelease.mockReset()
+    mockLookupDiscogsRelease.mockRejectedValue(new Error('Discogs unavailable'))
+    const staleFetchedAt = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    const previousIntent = validIntent({
+      includeGenres: ['rock'],
+      decades: [1990],
+      avoidRecentlyPlayed: true,
+    })
+
+    const { json, extractRefinement, selectRecommendations } = await runRefine(
+      {
+        request: 'only favorites',
+        context: validContext({ previousIntent }),
+      },
+      {
+        collectionRows: [
+          {
+            ...collectionRow('d9'),
+            release: discogsReleaseRow({ provider_fetched_at: staleFetchedAt }),
+          },
+        ],
+      },
+    )
+
+    expect(json.status).toBe('no_match')
+    // PR #41 finding 3: the existing no_match response, returned BEFORE any
+    // OpenRouter/model call.
+    expect(extractRefinement).not.toHaveBeenCalled()
+    expect(selectRecommendations).not.toHaveBeenCalled()
+    // PR #41 final correction: no refinement model ran, so the prior
+    // conversational intent was never revised - it is echoed back exactly,
+    // never overwritten with a fabricated neutral intent.
+    expect(json.interpretedIntent).toEqual(previousIntent)
+  })
+
+  it('the release select gains provider/provider_release_id/provider_fetched_at', async () => {
+    const ctx = createDependencies()
+    await handleCuratorRecommend(request({ request: 'x' }), env, ctx.deps)
+    const itemsSelect = ctx.capturedSelects.collection_items?.[0] ?? ''
+    expect(itemsSelect).toContain('provider')
+    expect(itemsSelect).toContain('provider_release_id')
+    expect(itemsSelect).toContain('provider_fetched_at')
   })
 })

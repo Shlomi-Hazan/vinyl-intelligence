@@ -8,6 +8,8 @@ import { Dialog } from '../ui/Dialog.tsx'
 import { Button } from '../ui/primitives.tsx'
 import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { Icon } from '../ui/Icon.tsx'
+import { DiscogsAttribution } from '../catalog/DiscogsAttribution.tsx'
+import { discogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
 import { useClient } from '../app/useClient.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
 import { useToast } from '../ui/useToast.ts'
@@ -39,6 +41,14 @@ function errorText(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+/** A masked (`discogsUnavailable`) item's title is never displayed (spec 0018 §8.4). */
+function safeTitle(item: CollectionItemWithRelease | undefined): string | null {
+  if (!item) {
+    return null
+  }
+  return item.discogsUnavailable ? null : item.release.title
+}
+
 function timeOfDay(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) {
@@ -57,12 +67,16 @@ type RowProps = {
 }
 
 function HistoryEventRow({ event, item, client, userId, onEdit, onDelete }: RowProps) {
-  const artist = item?.release.artist ?? ''
-  const title = item?.release.title ?? 'Record no longer in your collection'
+  const unavailable = item?.discogsUnavailable === true
+  const isDiscogs = item?.release.provider === 'discogs'
+  const artist = unavailable ? '' : item?.release.artist ?? ''
+  const title = unavailable
+    ? 'Record details unavailable'
+    : item?.release.title ?? 'Record no longer in your collection'
 
   // Each dynamic run is isolated separately so a Hebrew artist + English title
   // (or the reverse) reads correctly; the " - " separator is chrome.
-  const headingRuns = item ? (
+  const headingRuns = item && !unavailable ? (
     <>
       <BidiText>{artist}</BidiText>
       {artist ? ' - ' : ''}
@@ -72,16 +86,23 @@ function HistoryEventRow({ event, item, client, userId, onEdit, onDelete }: RowP
     <BidiText>{title}</BidiText>
   )
 
+  const discogsUrl =
+    item?.release.provider === 'discogs' && !unavailable && item.release.provider_release_id
+      ? discogsReleaseUrl(item.release.provider_release_id)
+      : null
+
   return (
     <li className="vi-histrow">
       <div className="vi-histrow__art">
         <AlbumArtwork
           artist={artist || 'Unknown artist'}
-          title={item?.release.title ?? 'Unknown album'}
+          title={unavailable ? 'Unknown album' : item?.release.title ?? 'Unknown album'}
           seedId={event.collection_item_id}
           size="thumb"
-          releaseMbid={item?.release.provider_release_id ?? null}
-          releaseGroupMbid={item?.release.provider_release_group_id ?? null}
+          releaseMbid={!isDiscogs ? item?.release.provider_release_id ?? null : null}
+          releaseGroupMbid={
+            !isDiscogs ? item?.release.provider_release_group_id ?? null : null
+          }
           customCoverPath={
             item?.custom_cover_path ? customCoverPath(userId, item.id) : null
           }
@@ -103,6 +124,7 @@ function HistoryEventRow({ event, item, client, userId, onEdit, onDelete }: RowP
         <time className="vi-histrow__time mono" dateTime={event.listened_at}>
           {timeOfDay(event.listened_at)}
         </time>
+        {discogsUrl ? <DiscogsAttribution releaseUrl={discogsUrl} compact /> : null}
       </div>
 
       <div className="vi-histrow__actions">
@@ -210,7 +232,7 @@ export function HistoryPage() {
       {editing ? (
         <EditTimeDialog
           event={editing}
-          title={itemById.get(editing.collection_item_id)?.release.title ?? null}
+          title={safeTitle(itemById.get(editing.collection_item_id))}
           onClose={() => setEditing(null)}
           onSave={async (iso) => {
             await updateListeningEventTime(client, editing.id, iso)
@@ -223,7 +245,7 @@ export function HistoryPage() {
 
       {deleting ? (
         <DeleteEventDialog
-          title={itemById.get(deleting.collection_item_id)?.release.title ?? null}
+          title={safeTitle(itemById.get(deleting.collection_item_id))}
           onClose={() => setDeleting(null)}
           onConfirm={async () => {
             await deleteListeningEvent(client, deleting.id)

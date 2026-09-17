@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addCatalogReleaseToCollection,
   lookupCatalogRelease,
+  lookupDiscogsCatalogRelease,
+  refreshDiscogsCollectionItem,
   searchCatalog,
   searchCatalogPage,
+  searchDiscogsCatalog,
 } from './client.ts'
 import { CatalogClientError } from './types.ts'
 import type { BrowserSupabaseClient } from '../supabase/client.ts'
@@ -234,6 +237,70 @@ describe('catalog browser client', () => {
         headers: expect.objectContaining({
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
+        }),
+        method: 'POST',
+      }),
+    )
+  })
+
+  it('sends an explicit Discogs search request', async () => {
+    const fetchMock = mockFetch({ results: [] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await searchDiscogsCatalog(createClient(), 'כהן מה שאפשר עם מה שנשאר')
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [string]
+    expect(url).toContain('/api/catalog/search?')
+    expect(url).toContain('provider=discogs')
+    // URLSearchParams encodes the query the same way as every other search
+    // helper in this module (space -> '+', not '%20') - decode round-trip
+    // rather than assume a specific escaping.
+    const params = new URLSearchParams(url.split('?')[1])
+    expect(params.get('q')).toBe('כהן מה שאפשר עם מה שנשאר')
+  })
+
+  it('sends the read-only Discogs exact-preview lookup', async () => {
+    const fetchMock = mockFetch({ candidates: [], hasMore: false, offset: 0 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await lookupDiscogsCatalogRelease(createClient(), '26770295')
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [string]
+    expect(url).toBe('/api/catalog/search?provider=discogs&releaseId=26770295')
+  })
+
+  it('sends a Discogs refresh action to the existing add endpoint', async () => {
+    const fetchMock = mockFetch({
+      candidate: {
+        artist: 'כהן',
+        catalogNumber: 'HSV005',
+        country: 'Israel',
+        derivedProviderPageUrl: 'https://www.discogs.com/release/26770295',
+        format: 'Vinyl, LP, Album',
+        label: 'Hasivuv',
+        provider: 'discogs',
+        providerReleaseGroupId: '3058367',
+        providerReleaseId: '26770295',
+        releaseYear: 2023,
+        score: null,
+        title: 'מה שאפשר עם מה שנשאר',
+        transientCoverDisplayUrl: null,
+      },
+      genres: ['hip hop'],
+      providerFetchedAt: '2026-09-16T12:00:00.000Z',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await refreshDiscogsCollectionItem(createClient(), '26770295')
+
+    expect(result.providerFetchedAt).toBe('2026-09-16T12:00:00.000Z')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/catalog/add',
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: '26770295',
         }),
         method: 'POST',
       }),

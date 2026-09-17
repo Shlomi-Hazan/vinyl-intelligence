@@ -8,9 +8,12 @@ import {
   handleCatalogSearch,
 } from '../functions/_shared/catalog-handlers.mts'
 import { MusicBrainzError } from '../../src/lib/catalog/musicbrainz.ts'
+import { DiscogsError } from '../../src/lib/catalog/discogs.ts'
 import type { CatalogCandidate } from '../../src/lib/catalog/types.ts'
 
 const env = {
+  DISCOGS_TOKEN: 'discogs-test-token',
+  DISCOGS_USER_AGENT: 'VinylIntelligence/0.0.0 (test@example.com)',
   MUSICBRAINZ_USER_AGENT: 'VinylIntelligence/0.0.0 (test@example.com)',
   SUPABASE_SERVICE_ROLE_KEY: 'service-key',
   VITE_SUPABASE_PUBLISHABLE_KEY: 'publishable-key',
@@ -19,6 +22,8 @@ const env = {
 const providerReleaseId = '11111111-1111-4111-8111-111111111111'
 const providerReleaseGroupId = '22222222-2222-4222-8222-222222222222'
 const verifiedUserId = '00000000-0000-4000-8000-0000000000a1'
+const discogsReleaseId = '26770295'
+const discogsMasterId = '3058367'
 
 function catalogCandidate(): CatalogCandidate {
   return {
@@ -34,6 +39,24 @@ function catalogCandidate(): CatalogCandidate {
     releaseYear: 1973,
     score: 100,
     title: 'The Dark Side of the Moon',
+    transientCoverDisplayUrl: null,
+  }
+}
+
+function discogsCandidate(): CatalogCandidate {
+  return {
+    artist: 'כהן',
+    catalogNumber: 'HSV005',
+    country: 'Israel',
+    derivedProviderPageUrl: `https://www.discogs.com/release/${discogsReleaseId}`,
+    format: 'Vinyl, 2×, LP, Album',
+    label: 'Hasivuv',
+    provider: 'discogs',
+    providerReleaseGroupId: discogsMasterId,
+    providerReleaseId: discogsReleaseId,
+    releaseYear: 2023,
+    score: null,
+    title: 'מה שאפשר עם מה שנשאר',
     transientCoverDisplayUrl: null,
   }
 }
@@ -57,6 +80,15 @@ function createDependencies(options: {
   collectionInsertError?: Error
   releaseUpsertError?: Error
   searchError?: Error
+  discogsSearchError?: Error
+  discogsLookupError?: Error
+  /** Whether the identity `(discogs, discogsReleaseId)` exists in the
+   * shared catalog at all (default true) - PR #41 finding 1. */
+  discogsReleaseExistsInCatalog?: boolean
+  /** Whether the AUTHENTICATED caller owns a collection item for that
+   * release (default true) - PR #41 finding 1. */
+  callerOwnsDiscogsRelease?: boolean
+  ownershipCheckError?: Error
 } = {}) {
   const searchReleases = vi.fn(async () => ({
     candidates: [catalogCandidate()],
@@ -68,6 +100,57 @@ function createDependencies(options: {
   const lookupReleaseGroupGenres = vi.fn(async (): Promise<string[]> => [])
   const paceProviderRequest = vi.fn(async () => undefined)
   const delay = vi.fn(async () => undefined)
+  const searchDiscogsReleases = vi.fn(async () => ({
+    results: [
+      {
+        catalogNumber: 'HSV005',
+        country: 'Israel',
+        derivedProviderPageUrl: `https://www.discogs.com/release/${discogsReleaseId}`,
+        displayTitle: 'כהן - מה שאפשר עם מה שנשאר',
+        formatSummary: 'Vinyl, LP, Album',
+        label: 'Hasivuv',
+        provider: 'discogs' as const,
+        providerReleaseGroupId: discogsMasterId,
+        providerReleaseId: discogsReleaseId,
+        releaseYear: 2023,
+      },
+    ],
+  }))
+  const lookupDiscogsRelease = vi.fn(async () => ({
+    candidate: discogsCandidate(),
+    genres: ['hip hop'],
+  }))
+  const paceDiscogsRequest = vi.fn(async () => undefined)
+
+  if (options.discogsSearchError) {
+    searchDiscogsReleases.mockRejectedValue(options.discogsSearchError)
+  }
+
+  if (options.discogsLookupError) {
+    lookupDiscogsRelease.mockRejectedValue(options.discogsLookupError)
+  }
+  // The RLS-scoped ownership-check queries (PR #41 finding 1) - a distinct,
+  // narrower pair of query builders from the service-role `releaseQuery` /
+  // `itemQuery` below, since these run against the caller's own token, not
+  // the service role, and never write anything.
+  const releaseIdentityQuery = {
+    select: vi.fn(() => releaseIdentityQuery),
+    eq: vi.fn(() => releaseIdentityQuery),
+    limit: vi.fn(() => releaseIdentityQuery),
+    maybeSingle: vi.fn(async () => ({
+      data: options.discogsReleaseExistsInCatalog === false ? null : { id: 'release-1' },
+      error: options.ownershipCheckError ?? null,
+    })),
+  }
+  const ownershipQuery = {
+    select: vi.fn(() => ownershipQuery),
+    eq: vi.fn(() => ownershipQuery),
+    limit: vi.fn(() => ownershipQuery),
+    maybeSingle: vi.fn(async () => ({
+      data: options.callerOwnsDiscogsRelease === false ? null : { id: 'owned-item-1' },
+      error: options.ownershipCheckError ?? null,
+    })),
+  }
   const authClient = {
     auth: {
       getUser: vi.fn(async () => ({
@@ -77,6 +160,17 @@ function createDependencies(options: {
         error: options.authError ?? null,
       })),
     },
+    from: vi.fn((table: string) => {
+      if (table === 'releases') {
+        return releaseIdentityQuery
+      }
+
+      if (table === 'collection_items') {
+        return ownershipQuery
+      }
+
+      throw new Error(`Unexpected table on authClient: ${table}`)
+    }),
   }
   const releaseQuery = {
     select: vi.fn(() => releaseQuery),
@@ -139,9 +233,12 @@ function createDependencies(options: {
   const dependencies = {
     createClient,
     delay,
+    lookupDiscogsRelease,
     lookupRelease,
     lookupReleaseGroupGenres,
+    paceDiscogsRequest,
     paceProviderRequest,
+    searchDiscogsReleases,
     searchReleases,
   } as unknown as NonNullable<Parameters<typeof handleCatalogSearch>[2]>
 
@@ -151,10 +248,15 @@ function createDependencies(options: {
     delay,
     dependencies,
     itemQuery,
+    lookupDiscogsRelease,
     lookupRelease,
     lookupReleaseGroupGenres,
+    ownershipQuery,
+    paceDiscogsRequest,
     paceProviderRequest,
+    releaseIdentityQuery,
     releaseQuery,
+    searchDiscogsReleases,
     searchReleases,
     serviceClient,
   }
@@ -352,6 +454,7 @@ describe('catalog Netlify functions', () => {
         format: 'LP',
         label: 'Harvest',
         provider: 'musicbrainz',
+        provider_fetched_at: null,
         provider_release_group_id: providerReleaseGroupId,
         provider_release_id: providerReleaseId,
         release_year: 1973,
@@ -989,5 +1092,374 @@ describe('catalog search - modes, pagination, and exact lookup (spec 0017)', () 
     expect(response.status).toBe(503)
     expect(searchReleases).toHaveBeenCalledTimes(1)
     expect(delay).not.toHaveBeenCalled()
+  })
+})
+
+describe('Discogs secondary catalog provider (spec 0018)', () => {
+  it('a plain search defaults to MusicBrainz - no Discogs call before an explicit fallback', async () => {
+    const { dependencies, searchDiscogsReleases, searchReleases } = createDependencies()
+
+    await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(searchReleases).toHaveBeenCalledOnce()
+    expect(searchDiscogsReleases).not.toHaveBeenCalled()
+  })
+
+  it('an explicit provider=discogs search calls the Discogs adapter with its own pacer and token', async () => {
+    const { dependencies, paceDiscogsRequest, paceProviderRequest, searchDiscogsReleases } =
+      createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(
+        `http://app.test/api/catalog/search?provider=discogs&q=${encodeURIComponent('כהן מה שאפשר עם מה שנשאר')}`,
+      ),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(searchDiscogsReleases).toHaveBeenCalledWith({
+      query: 'כהן מה שאפשר עם מה שנשאר',
+      token: env.DISCOGS_TOKEN,
+      userAgent: env.DISCOGS_USER_AGENT,
+    })
+    expect(paceDiscogsRequest).toHaveBeenCalledOnce()
+    expect(paceProviderRequest).not.toHaveBeenCalled()
+    await expect(readJson(response)).resolves.toMatchObject({
+      results: [{ provider: 'discogs', providerReleaseId: discogsReleaseId }],
+    })
+  })
+
+  it('returns a genuinely distinct response shape from CatalogSearchResponse (no candidates/offset/hasMore keys)', async () => {
+    const { dependencies } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?provider=discogs&q=pink'),
+      env,
+      dependencies,
+    )
+
+    const payload = await readJson(response)
+    expect(payload).toHaveProperty('results')
+    expect(payload).not.toHaveProperty('candidates')
+    expect(payload).not.toHaveProperty('hasMore')
+  })
+
+  it.each(['mode=all', 'offset=0', 'limit=5'])(
+    'rejects a Discogs search combined with %s',
+    async (extraParam) => {
+      const { dependencies, searchDiscogsReleases } = createDependencies()
+
+      const response = await handleCatalogSearch(
+        authedRequest(`http://app.test/api/catalog/search?provider=discogs&q=pink&${extraParam}`),
+        env,
+        dependencies,
+      )
+
+      expect(response.status).toBe(400)
+      await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+      expect(searchDiscogsReleases).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects an unrecognized provider value', async () => {
+    const { dependencies, searchReleases } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?provider=bogus&q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'invalid_query' })
+    expect(searchReleases).not.toHaveBeenCalled()
+  })
+
+  it('sanitizes a Discogs provider failure without leaking the token or a raw payload', async () => {
+    const { dependencies } = createDependencies({
+      discogsSearchError: new Error('should not be exposed'),
+    })
+
+    const response = await handleCatalogSearch(
+      authedRequest('http://app.test/api/catalog/search?provider=discogs&q=pink'),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(500)
+    const payload = await readJson(response)
+    expect(JSON.stringify(payload)).not.toContain(env.DISCOGS_TOKEN)
+  })
+
+  it('the read-only exact-preview lookup (provider=discogs&releaseId=...) performs zero database writes', async () => {
+    const { dependencies, lookupDiscogsRelease, paceDiscogsRequest, serviceClient } =
+      createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?provider=discogs&releaseId=${discogsReleaseId}`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(lookupDiscogsRelease).toHaveBeenCalledWith({
+      providerReleaseId: discogsReleaseId,
+      token: env.DISCOGS_TOKEN,
+      userAgent: env.DISCOGS_USER_AGENT,
+    })
+    expect(paceDiscogsRequest).toHaveBeenCalledOnce()
+    expect(serviceClient.from).not.toHaveBeenCalled()
+    await expect(readJson(response)).resolves.toEqual({
+      candidates: [discogsCandidate()],
+      hasMore: false,
+      offset: 0,
+    })
+  })
+
+  it('rejects a Discogs releaseId that does not match the numeric Discogs id pattern (never the MusicBrainz UUID pattern)', async () => {
+    const { dependencies, lookupDiscogsRelease } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?provider=discogs&releaseId=${providerReleaseId}`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+  })
+
+  it('rejects a MusicBrainz releaseId against the Discogs numeric pattern being used for a musicbrainz lookup is unaffected (regression)', async () => {
+    const { dependencies, lookupRelease } = createDependencies()
+
+    const response = await handleCatalogSearch(
+      authedRequest(`http://app.test/api/catalog/search?releaseId=${providerReleaseId}`),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    expect(lookupRelease).toHaveBeenCalledOnce()
+  })
+
+  function discogsAddRequest() {
+    return authedRequest('http://app.test/api/catalog/add', {
+      body: JSON.stringify({ provider: 'discogs', providerReleaseId: discogsReleaseId }),
+      method: 'POST',
+    })
+  }
+
+  it('adding a Discogs candidate performs a second, independent, persisting lookup and persists provider_fetched_at', async () => {
+    const { dependencies, itemQuery, lookupDiscogsRelease, releaseQuery } = createDependencies()
+
+    const response = await handleCatalogAdd(discogsAddRequest(), env, dependencies)
+
+    expect(response.status).toBe(200)
+    expect(lookupDiscogsRelease).toHaveBeenCalledWith({
+      providerReleaseId: discogsReleaseId,
+      token: env.DISCOGS_TOKEN,
+      userAgent: env.DISCOGS_USER_AGENT,
+    })
+    const upsertPayload = releaseQuery.upsert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(upsertPayload).toMatchObject({
+      artist: 'כהן',
+      catalog_number: 'HSV005',
+      genres: ['hip hop'],
+      label: 'Hasivuv',
+      provider: 'discogs',
+      provider_release_id: discogsReleaseId,
+      source: 'catalog',
+    })
+    expect(typeof upsertPayload.provider_fetched_at).toBe('string')
+    expect(itemQuery.insert).toHaveBeenCalledWith({
+      release_id: 'release-1',
+      user_id: verifiedUserId,
+    })
+  })
+
+  it('a non-Vinyl / not-found Discogs release is rejected with a clear, honest error, never added', async () => {
+    const { dependencies, itemQuery } = createDependencies({
+      discogsLookupError: new DiscogsError(
+        'not_found',
+        'This Discogs release is not available as Vinyl, or the release could not be verified.',
+      ),
+    })
+
+    const response = await handleCatalogAdd(discogsAddRequest(), env, dependencies)
+
+    expect(response.status).toBe(404)
+    expect(itemQuery.insert).not.toHaveBeenCalled()
+  })
+
+  it('a rejected Discogs provider identity (e.g. a MusicBrainz-shaped id) never reaches the lookup', async () => {
+    const { dependencies, lookupDiscogsRelease } = createDependencies()
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({ provider: 'discogs', providerReleaseId }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+  })
+
+  it('a MusicBrainz add is unaffected (regression): providerFetchedAt persists as null', async () => {
+    const { dependencies, releaseQuery } = createDependencies()
+
+    await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({ provider: 'musicbrainz', providerReleaseId }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    const upsertPayload = releaseQuery.upsert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(upsertPayload.provider_fetched_at).toBeNull()
+  })
+
+  it('the refresh action re-fetches and persists Discogs metadata without creating a collection item (owned)', async () => {
+    const { dependencies, itemQuery, lookupDiscogsRelease, ownershipQuery, releaseQuery } =
+      createDependencies()
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: discogsReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(200)
+    // The ownership gate ran (spec 0018 §8.3, PR #41 finding 1) before the
+    // Discogs call/write below.
+    expect(ownershipQuery.maybeSingle).toHaveBeenCalledOnce()
+    expect(lookupDiscogsRelease).toHaveBeenCalledOnce()
+    expect(releaseQuery.upsert).toHaveBeenCalledOnce()
+    expect(itemQuery.insert).not.toHaveBeenCalled()
+    const payload = await readJson(response)
+    expect(payload).toMatchObject({
+      candidate: { provider: 'discogs', providerReleaseId: discogsReleaseId },
+      genres: ['hip hop'],
+    })
+    expect(typeof payload.providerFetchedAt).toBe('string')
+  })
+
+  it('the refresh action rejects a caller who does not own the release - zero Discogs calls, zero writes', async () => {
+    const { dependencies, lookupDiscogsRelease, releaseQuery } = createDependencies({
+      callerOwnsDiscogsRelease: false,
+    })
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: discogsReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(404)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'not_found' })
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+    expect(releaseQuery.upsert).not.toHaveBeenCalled()
+  })
+
+  it('the refresh action rejects a release identity that does not exist in the catalog at all - zero Discogs calls, zero writes', async () => {
+    const { dependencies, lookupDiscogsRelease, ownershipQuery, releaseQuery } =
+      createDependencies({
+        discogsReleaseExistsInCatalog: false,
+      })
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: discogsReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(404)
+    await expect(readJson(response)).resolves.toMatchObject({ code: 'not_found' })
+    // Short-circuits before even checking ownership - nothing to own.
+    expect(ownershipQuery.maybeSingle).not.toHaveBeenCalled()
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+    expect(releaseQuery.upsert).not.toHaveBeenCalled()
+  })
+
+  it('the refresh action rejects a non-Discogs provider', async () => {
+    const { dependencies, lookupDiscogsRelease } = createDependencies()
+
+    const response = await handleCatalogAdd(
+      authedRequest('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'musicbrainz',
+          providerReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(400)
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+  })
+
+  it('the refresh action requires authentication', async () => {
+    const { dependencies, lookupDiscogsRelease } = createDependencies({
+      authError: new Error('expired token'),
+    })
+
+    const response = await handleCatalogAdd(
+      new Request('http://app.test/api/catalog/add', {
+        body: JSON.stringify({
+          action: 'refresh',
+          provider: 'discogs',
+          providerReleaseId: discogsReleaseId,
+        }),
+        method: 'POST',
+      }),
+      env,
+      dependencies,
+    )
+
+    expect(response.status).toBe(401)
+    expect(lookupDiscogsRelease).not.toHaveBeenCalled()
+  })
+
+  it('never leaks DISCOGS_TOKEN in a response body for any Discogs code path', async () => {
+    const { dependencies } = createDependencies({
+      discogsLookupError: new DiscogsError('provider_unavailable', 'Discogs request failed.'),
+    })
+
+    const response = await handleCatalogAdd(discogsAddRequest(), env, dependencies)
+    const payload = await readJson(response)
+    expect(JSON.stringify(payload)).not.toContain(env.DISCOGS_TOKEN)
   })
 })

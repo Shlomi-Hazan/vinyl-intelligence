@@ -5,6 +5,9 @@ import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { classifyScript } from '../lib/i18n/script.ts'
 import { canonicalizeGenre } from '../lib/genre/canonical.ts'
 import { customCoverPath } from '../lib/collection/customCover.ts'
+import { DiscogsAttribution } from '../catalog/DiscogsAttribution.tsx'
+import { discogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
+import { refreshDiscogsCollectionItem } from '../lib/catalog/client.ts'
 import { RatingControl, SegmentedControl, Select } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { useToast } from '../ui/useToast.ts'
@@ -114,7 +117,15 @@ function sortOptionLabel(
  * the first effective genre. Each is a distinct dynamic field so the caller
  * isolates them individually (never as one joined string).
  */
+/**
+ * Provider-derived fields are treated as absent for a masked
+ * (`discogsUnavailable`) item (spec 0018 §8.4) - never displayed, even
+ * transiently.
+ */
 function metaParts(item: CollectionItemWithRelease): string[] {
+  if (item.discogsUnavailable) {
+    return []
+  }
   const year = item.release.release_year
   const genre = effectiveGenres(item)[0]
   return [year ? String(year) : null, genre].filter(
@@ -512,6 +523,7 @@ export function CollectionBrowser({
                 busy={busyId === item.id}
                 onToggleFavorite={() => toggleFavorite(item)}
                 onLogListen={() => logListen(item)}
+                onMutated={onMutated}
               />
             </li>
           ))}
@@ -531,6 +543,7 @@ export function CollectionBrowser({
                 )}
                 onToggleFavorite={() => toggleFavorite(item)}
                 onLogListen={() => logListen(item)}
+                onMutated={onMutated}
               />
             </li>
           ))}
@@ -547,21 +560,82 @@ type CardProps = {
   busy: boolean
   onToggleFavorite: () => void
   onLogListen: () => void
+  /** Reloads the shared collection - used after a manual Discogs Retry. */
+  onMutated: () => void
 }
 
 function artProps(item: CardProps['item'], userId: string, client: BrowserSupabaseClient) {
+  const isDiscogs = item.release.provider === 'discogs'
+  const unavailable = item.discogsUnavailable === true
   return {
-    artist: item.release.artist,
-    title: item.release.title,
+    artist: unavailable ? 'Unknown artist' : item.release.artist,
+    title: unavailable ? 'Unknown album' : item.release.title,
     seedId: item.release.id,
-    releaseMbid: item.release.provider_release_id ?? null,
-    releaseGroupMbid: item.release.provider_release_group_id ?? null,
+    releaseMbid: !isDiscogs ? item.release.provider_release_id ?? null : null,
+    releaseGroupMbid: !isDiscogs ? item.release.provider_release_group_id ?? null : null,
     customCoverPath: item.custom_cover_path
       ? customCoverPath(userId, item.id)
       : null,
     client,
     customCoverVersion: item.custom_cover_updated_at ?? null,
   }
+}
+
+const UNAVAILABLE_PLACEHOLDER = 'Catalog details unavailable'
+
+/**
+ * The identity-only Discogs link + compact attribution for a fresh
+ * Discogs-backed item (spec 0018 §7/§13) - never rendered for a masked item
+ * (nothing to attribute) or a non-Discogs item.
+ */
+function DiscogsCardAttribution({ item }: { item: CardProps['item'] }) {
+  if (item.release.provider !== 'discogs' || item.discogsUnavailable) {
+    return null
+  }
+  const releaseUrl =
+    item.release.provider_release_id
+      ? discogsReleaseUrl(item.release.provider_release_id)
+      : null
+  return releaseUrl ? <DiscogsAttribution releaseUrl={releaseUrl} compact /> : null
+}
+
+function RetryDiscogsButton({
+  item,
+  client,
+  onRetried,
+}: {
+  item: CardProps['item']
+  client: BrowserSupabaseClient
+  onRetried: () => void
+}) {
+  const [retrying, setRetrying] = useState(false)
+  const providerReleaseId = item.release.provider_release_id
+
+  return (
+    <button
+      type="button"
+      className="vi-btn vi-btn--ghost vi-btn--sm"
+      disabled={retrying}
+      onClick={async (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (!providerReleaseId || retrying) {
+          return
+        }
+        setRetrying(true)
+        try {
+          await refreshDiscogsCollectionItem(client, providerReleaseId)
+          onRetried()
+        } catch {
+          /* the item stays masked - the next load/timer pass will retry too */
+        } finally {
+          setRetrying(false)
+        }
+      }}
+    >
+      {retrying ? 'Retrying…' : 'Retry'}
+    </button>
+  )
 }
 
 function QuickActions({ item, busy, onToggleFavorite, onLogListen }: CardProps) {
@@ -592,21 +666,35 @@ function QuickActions({ item, busy, onToggleFavorite, onLogListen }: CardProps) 
 }
 
 function AlbumCard(props: CardProps) {
-  const { item, userId, client } = props
+  const { item, userId, client, onMutated } = props
+  const unavailable = item.discogsUnavailable === true
   return (
     <div className="vi-albumcard">
       <Link to={`/collection/${item.id}`} className="vi-albumcard__link">
         <AlbumArtwork size="grid" {...artProps(item, userId, client)} />
         {/* the truncation container IS the <bdi> so the ellipsis is direction-aware */}
-        <BidiText className="vi-albumcard__title">{item.release.title}</BidiText>
-        <span className="vi-albumcard__meta">
-          <BidiJoin parts={[item.release.artist, ...metaParts(item)]} />
-        </span>
+        {unavailable ? (
+          <span className="vi-albumcard__title">{UNAVAILABLE_PLACEHOLDER}</span>
+        ) : (
+          <BidiText className="vi-albumcard__title">{item.release.title}</BidiText>
+        )}
+        {!unavailable ? (
+          <span className="vi-albumcard__meta">
+            <BidiJoin parts={[item.release.artist, ...metaParts(item)]} />
+          </span>
+        ) : null}
       </Link>
+      {/* Rating is user-owned data, never Discogs content - it stays
+         visible even while provider metadata is masked (spec 0018 §7,
+         PR #41 finding 4). */}
       {item.rating ? (
         <span className="vi-albumcard__rating">
           <RatingControl value={item.rating} readOnly />
         </span>
+      ) : null}
+      <DiscogsCardAttribution item={item} />
+      {unavailable ? (
+        <RetryDiscogsButton item={item} client={client} onRetried={onMutated} />
       ) : null}
       <QuickActions {...props} />
     </div>
@@ -614,27 +702,41 @@ function AlbumCard(props: CardProps) {
 }
 
 function AlbumRow(props: CardProps & { playsLabel: string }) {
-  const { item, userId, client, playsLabel: plays } = props
+  const { item, userId, client, onMutated, playsLabel: plays } = props
+  const unavailable = item.discogsUnavailable === true
   return (
     <div className="vi-albumrow">
       <Link to={`/collection/${item.id}`} className="vi-albumrow__link">
         <span className="vi-albumrow__art">
           <AlbumArtwork size="thumb" {...artProps(item, userId, client)} />
         </span>
-        <BidiText className="vi-albumrow__title">{item.release.title}</BidiText>
-        <BidiText className="vi-albumrow__artist">{item.release.artist}</BidiText>
+        {unavailable ? (
+          <span className="vi-albumrow__title">{UNAVAILABLE_PLACEHOLDER}</span>
+        ) : (
+          <>
+            <BidiText className="vi-albumrow__title">{item.release.title}</BidiText>
+            <BidiText className="vi-albumrow__artist">{item.release.artist}</BidiText>
+          </>
+        )}
         <span className="vi-albumrow__meta">
-          {metaParts(item).length > 0 ? (
+          {!unavailable && metaParts(item).length > 0 ? (
             <BidiJoin parts={metaParts(item)} />
           ) : (
             '—'
           )}
         </span>
         <span className="vi-albumrow__rating">
+          {/* Rating is user-owned data, never Discogs content - it stays
+             visible even while provider metadata is masked (spec 0018 §7,
+             PR #41 finding 4). */}
           {item.rating ? <RatingControl value={item.rating} readOnly /> : null}
         </span>
         <span className="vi-albumrow__plays">{plays}</span>
       </Link>
+      <DiscogsCardAttribution item={item} />
+      {unavailable ? (
+        <RetryDiscogsButton item={item} client={client} onRetried={onMutated} />
+      ) : null}
       <QuickActions {...props} />
     </div>
   )

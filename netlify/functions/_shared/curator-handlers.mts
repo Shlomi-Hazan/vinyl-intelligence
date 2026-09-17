@@ -17,6 +17,10 @@ import {
 } from '../../../src/lib/curator/openrouterCurator.ts'
 import { normalizeCuratorIntent } from '../../../src/lib/curator/intentSchema.ts'
 import { canonicalizeGenres } from '../../../src/lib/genre/canonical.ts'
+import { isDiscogsRowFresh } from '../../../src/lib/catalog/discogsFreshness.ts'
+import { lookupDiscogsRelease } from '../../../src/lib/catalog/discogs.ts'
+import { upsertCatalogRelease } from './catalogPersistence.mts'
+import { paceDiscogsRequest as paceDiscogsRequestImpl } from './catalog-handlers.mts'
 import {
   CURATOR_INTENT_FEATURE,
   CURATOR_SELECTION_FEATURE,
@@ -65,6 +69,13 @@ export type CuratorFunctionDependencies = {
     args: { token: string; userId: string; windowStartIso: string },
   ) => Promise<number>
   now: () => number
+  /**
+   * The same 1500ms in-process/best-effort Discogs pacing discipline used
+   * by the catalog Netlify Functions (spec 0018 §12/§17, PR #41 finding 2) -
+   * applied before each stale-row revalidation call to `lookupDiscogsRelease`
+   * inside `loadOwnedCollection`. Injectable so tests never actually wait.
+   */
+  paceDiscogsRequest: () => Promise<void>
 }
 
 type CuratorResponsePayload =
@@ -294,16 +305,30 @@ async function enforceRateLimit(
   }
 }
 
+/**
+ * `provider`/`provider_release_id`/`provider_fetched_at` are server-internal
+ * only - used solely to decide freshness/revalidation below (spec 0018 §8.0)
+ * and never added to `CuratorCollectionItem`, the type actually sent onward
+ * to candidate-selection/prompt construction, which stays completely
+ * unchanged.
+ */
+type CuratorReleaseRow = {
+  artist: string
+  title: string
+  release_year: number | null
+  genres: string[] | null
+  provider?: string | null
+  provider_release_id?: string | null
+  provider_fetched_at?: string | null
+}
+
 type CuratorCollectionRow = {
   id: string
   added_at: string
   rating: number | null
   is_favorite: boolean
   personal_genres: string[] | null
-  release:
-    | { artist: string; title: string; release_year: number | null; genres: string[] | null }
-    | { artist: string; title: string; release_year: number | null; genres: string[] | null }[]
-    | null
+  release: CuratorReleaseRow | CuratorReleaseRow[] | null
 }
 
 function normalizeCollectionRow(row: CuratorCollectionRow): CuratorCollectionItem {
@@ -332,7 +357,20 @@ async function loadOwnedCollection(
   env: Environment,
   createClientImpl: SupabaseFactory,
   { token }: AuthenticatedContext,
-): Promise<{ items: CuratorCollectionItem[]; events: CuratorListeningEvent[] }> {
+  paceDiscogsRequest: () => Promise<void>,
+): Promise<{
+  items: CuratorCollectionItem[]
+  events: CuratorListeningEvent[]
+  /**
+   * True when the user owns at least one collection item row, independent of
+   * how many of those rows survived Discogs freshness exclusion (spec 0018
+   * §12). Distinguishes a genuinely empty collection (`empty_collection`,
+   * zero model calls) from a non-empty collection whose owned items are all
+   * currently unavailable (falls through to the normal `no_match` path, one
+   * model call, per the documented cost decision) - never conflates the two.
+   */
+  hasOwnedRows: boolean
+}> {
   const supabaseUrl = requiredEnv(env, 'VITE_SUPABASE_URL')
   const publishableKey = requiredEnv(env, 'VITE_SUPABASE_PUBLISHABLE_KEY')
   const userClient = createClientImpl(supabaseUrl, publishableKey, {
@@ -349,7 +387,7 @@ async function loadOwnedCollection(
   const itemsResult = await userClient
     .from('collection_items')
     .select(
-      'id, added_at, rating, is_favorite, personal_genres, release:releases!inner(artist, title, release_year, genres)',
+      'id, added_at, rating, is_favorite, personal_genres, release:releases!inner(artist, title, release_year, genres, provider, provider_release_id, provider_fetched_at)',
     )
     .order('added_at', { ascending: false })
     .limit(1000)
@@ -366,11 +404,77 @@ async function loadOwnedCollection(
     throw new CuratorError('collection_unavailable', 'Could not load your listening history. Please try again.')
   }
 
-  const items = (itemsResult.data ?? []).map((row) =>
-    normalizeCollectionRow(row as unknown as CuratorCollectionRow),
-  )
+  const rows = (itemsResult.data ?? []) as unknown as CuratorCollectionRow[]
+  const items: CuratorCollectionItem[] = []
+  const now = Date.now()
+
+  for (const row of rows) {
+    const release = Array.isArray(row.release) ? row.release[0] : row.release
+
+    if (!release) {
+      throw new CuratorError('collection_unavailable', 'A record is missing its metadata.')
+    }
+
+    // Freshness-safe data plumbing (spec 0018 §12) - VIN's model/prompt/
+    // ranking logic is completely unchanged; only which rows' provider-
+    // derived facts are eligible for THIS request is affected.
+    if (isDiscogsRowFresh(release.provider ?? null, release.provider_fetched_at ?? null, now)) {
+      items.push(normalizeCollectionRow(row))
+      continue
+    }
+
+    const providerReleaseId = release.provider_release_id
+
+    if (!providerReleaseId) {
+      // No id to revalidate against - exclude rather than guess (spec 0018 §12).
+      continue
+    }
+
+    try {
+      const token = requiredEnv(env, 'DISCOGS_TOKEN')
+      const discogsUserAgent = requiredEnv(env, 'DISCOGS_USER_AGENT')
+      // Same 1500ms in-process/best-effort pacing discipline as the catalog
+      // Netlify Functions (spec 0018 §12/§17, PR #41 finding 2) - applied
+      // before each stale-row revalidation call, sequentially, no retry.
+      await paceDiscogsRequest()
+      const { candidate, genres } = await lookupDiscogsRelease({
+        providerReleaseId,
+        token,
+        userAgent: discogsUserAgent,
+      })
+      const providerFetchedAt = new Date().toISOString()
+
+      // Best-effort persistence - its own failure does not fail this
+      // request; the refreshed facts below are still used for THIS
+      // request's candidate construction (spec 0018 §8.3).
+      try {
+        await upsertCatalogRelease(env, createClientImpl, candidate, genres, providerFetchedAt)
+      } catch {
+        /* best-effort only */
+      }
+
+      items.push(
+        normalizeCollectionRow({
+          ...row,
+          release: {
+            ...release,
+            artist: candidate.artist,
+            title: candidate.title,
+            release_year: candidate.releaseYear,
+            genres,
+          },
+        }),
+      )
+    } catch {
+      // A failed revalidation excludes this item entirely from this
+      // request's candidate pool (spec 0018 §8.3/§12) - never supply stale
+      // metadata to VIN as current.
+      continue
+    }
+  }
+
   const events = (eventsResult.data ?? []) as CuratorListeningEvent[]
-  return { items, events }
+  return { items, events, hasOwnedRows: rows.length > 0 }
 }
 
 async function defaultRecordModelCall(
@@ -430,6 +534,7 @@ function defaultDependencies(): CuratorFunctionDependencies {
         windowStartIso,
       }),
     now: () => Date.now(),
+    paceDiscogsRequest: paceDiscogsRequestImpl,
   }
 }
 
@@ -537,6 +642,30 @@ async function runSelectionPipeline(args: {
   }
 }
 
+/**
+ * A neutral, honest `CuratorIntent` for the "owned rows exist, but every one
+ * was excluded before any interpretation happened" `no_match` short-circuit
+ * (PR #41 finding 3) - every field is a genuine "nothing was asked/inferred"
+ * default, never a fabricated reading of the user's actual request. This
+ * value is never sent to, or produced by, a model.
+ */
+function uninterpretedIntent(): CuratorIntent {
+  return {
+    includeGenres: [],
+    excludeGenres: [],
+    decades: [],
+    minRating: null,
+    favoritesOnly: false,
+    neverPlayedOnly: false,
+    avoidRecentlyPlayed: false,
+    recentDays: null,
+    preference: 'none',
+    energy: 'any',
+    mood: null,
+    requestedCount: 3,
+  }
+}
+
 export async function handleCuratorRecommend(
   request: Request,
   env: Environment = process.env,
@@ -547,9 +676,22 @@ export async function handleCuratorRecommend(
     const userRequest = await parseCuratorRequestBody(request)
     await enforceRateLimit(deps, env, context)
 
-    const { items, events } = await loadOwnedCollection(env, deps.createClient, context)
-    if (items.length === 0) {
+    const { items, events, hasOwnedRows } = await loadOwnedCollection(
+      env,
+      deps.createClient,
+      context,
+      deps.paceDiscogsRequest,
+    )
+    if (!hasOwnedRows) {
       return jsonResponse({ status: 'empty_collection' })
+    }
+    // Owned rows exist, but every one was excluded by the Discogs
+    // freshness pass above (spec 0018 §12, PR #41 finding 3) - the normal
+    // no_match response, returned BEFORE any OpenRouter/model call (zero
+    // calls, not one) rather than falling through to LLM call #1 only to
+    // discover there is nothing left to interpret against.
+    if (items.length === 0) {
+      return jsonResponse({ status: 'no_match', interpretedIntent: uninterpretedIntent() })
     }
 
     const provider = providerConfig(env)
@@ -620,9 +762,30 @@ export async function handleCuratorRefine(
     const { request: followUp, context: refinementContext } = await parseCuratorRefineBody(request)
     await enforceRateLimit(deps, env, context)
 
-    const { items, events } = await loadOwnedCollection(env, deps.createClient, context)
-    if (items.length === 0) {
+    const { items, events, hasOwnedRows } = await loadOwnedCollection(
+      env,
+      deps.createClient,
+      context,
+      deps.paceDiscogsRequest,
+    )
+    if (!hasOwnedRows) {
       return jsonResponse({ status: 'empty_collection' })
+    }
+    // Owned rows exist, but every one was excluded by the Discogs
+    // freshness pass above (spec 0018 §12, PR #41 finding 3) - the normal
+    // no_match response, returned BEFORE any OpenRouter/model call (zero
+    // calls, not one) rather than falling through to LLM call #1 only to
+    // discover there is nothing left to interpret against. Unlike the
+    // initial-recommend path, a refinement has a real prior conversational
+    // intent already in hand (`refinementContext.previousIntent`) - since
+    // no refinement model ran, that intent was never revised, so it is
+    // echoed back as-is rather than overwritten with a fabricated neutral
+    // one (PR #41 final correction).
+    if (items.length === 0) {
+      return jsonResponse({
+        status: 'no_match',
+        interpretedIntent: refinementContext.previousIntent,
+      })
     }
 
     const provider = providerConfig(env)

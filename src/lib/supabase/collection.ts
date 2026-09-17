@@ -4,19 +4,19 @@ import type {
   Release,
 } from './client.ts'
 import { canonicalizeGenre, canonicalizeGenres } from '../genre/canonical.ts'
+import {
+  RELEASE_FIELD_LIMITS,
+  RELEASE_YEAR_MAX,
+  RELEASE_YEAR_MIN,
+} from '../catalog/catalogFieldLimits.ts'
+import type { CatalogProvider } from '../catalog/types.ts'
 
-export const RELEASE_FIELD_LIMITS = {
-  artist: 160,
-  title: 200,
-  label: 160,
-  catalogNumber: 120,
-  country: 80,
-  format: 80,
-  genre: 40,
-} as const
-
-const RELEASE_YEAR_MIN = 1900
-const RELEASE_YEAR_MAX = 2100
+// Re-exported so every existing import site of `RELEASE_FIELD_LIMITS` from
+// this module keeps working unmodified (spec 0018 §1/§2.3) -
+// `catalogFieldLimits.ts` is now the one canonical definition, mirroring the
+// existing `musicbrainzIdentity.ts`/`musicbrainz.ts` re-export precedent for
+// `MUSICBRAINZ_RELEASE_ID_PATTERN`.
+export { RELEASE_FIELD_LIMITS }
 
 export type ManualReleaseInput = {
   artist: string
@@ -52,6 +52,13 @@ export type CollectionItemWithRelease = Pick<
   custom_cover_updated_at?: string | null
   /** Phase D owner-added genres. Always populated by `loadCollection`. */
   personal_genres?: string[]
+  /**
+   * Set (never persisted) by `CollectionDataProvider`'s freshness pass
+   * (spec 0018 §8.2) when this item's Discogs provider metadata could not be
+   * confirmed fresh at classification time. Absent/false for every
+   * non-Discogs item and every successfully-revalidated Discogs item.
+   */
+  discogsUnavailable?: boolean
   release: Pick<
     Release,
     | 'id'
@@ -65,13 +72,21 @@ export type CollectionItemWithRelease = Pick<
     | 'genres'
     | 'updated_at'
   > & {
-    /** MusicBrainz ids for display-time Cover Art Archive artwork (optional). */
+    /** Catalog provider identity (spec 0018 §11); optional for pre-Discogs fixtures. */
+    provider?: CatalogProvider | null
+    /** MusicBrainz/Discogs ids for display-time Cover Art Archive artwork (optional). */
     provider_release_id?: string | null
     provider_release_group_id?: string | null
     /**
-     * 'manual' (user-entered, editable) or 'catalog' (MusicBrainz, read-only).
-     * Optional so pre-Phase-D fixtures stay valid; treated as 'manual' when
-     * absent only for display, never to bypass RLS.
+     * The last time this Discogs-backed row was successfully revalidated
+     * against the live Discogs API (spec 0018 §12). `null`/absent for every
+     * non-Discogs row.
+     */
+    provider_fetched_at?: string | null
+    /**
+     * 'manual' (user-entered, editable) or 'catalog' (MusicBrainz/Discogs,
+     * read-only). Optional so pre-Phase-D fixtures stay valid; treated as
+     * 'manual' when absent only for display, never to bypass RLS.
      */
     source?: 'manual' | 'catalog' | null
   }
@@ -292,8 +307,10 @@ export async function loadCollection(
           country,
           format,
           genres,
+          provider,
           provider_release_id,
           provider_release_group_id,
+          provider_fetched_at,
           source,
           updated_at
         )
@@ -350,8 +367,10 @@ export async function addManualCollectionItem(
           country,
           format,
           genres,
+          provider,
           provider_release_id,
           provider_release_group_id,
+          provider_fetched_at,
           source,
           updated_at
         )

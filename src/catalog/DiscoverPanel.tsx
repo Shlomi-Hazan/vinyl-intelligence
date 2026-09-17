@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
+import { DiscogsSearchPanel } from './DiscogsSearchPanel.tsx'
 import { Dialog } from '../ui/Dialog.tsx'
 import { Button, Field, Input, SegmentedRadioGroup, SearchInput } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
@@ -110,6 +111,9 @@ export function DiscoverPanel({
   const [addingId, setAddingId] = useState<string | null>(null)
   const [addErrors, setAddErrors] = useState<Record<string, string>>({})
   const [showManual, setShowManual] = useState(false)
+  // Discogs fallback (spec 0018 §6): its own, fully independent toggle and
+  // panel state - never auto-triggered by a MusicBrainz search.
+  const [showDiscogs, setShowDiscogs] = useState(false)
   // Local confirmation state for "Add another copy" of an already-owned
   // release (spec 0016 Finding B / §21.7 - dialog/confirmation state is
   // local to this panel, never shared with ScanPanel). Reused identically
@@ -428,7 +432,7 @@ export function DiscoverPanel({
   function renderCandidate(c: CatalogCandidate) {
     const collectionReady = collectionStatus === 'ready'
     const owned =
-      collectionReady && isExactCatalogReleaseOwned(c.providerReleaseId, ownedItems)
+      collectionReady && isExactCatalogReleaseOwned(c.provider, c.providerReleaseId, ownedItems)
     const metaParts = candidateMetaParts(c)
     return (
       <li key={c.providerReleaseId}>
@@ -439,8 +443,10 @@ export function DiscoverPanel({
               artist={c.artist}
               title={c.title}
               seedId={c.providerReleaseId}
-              releaseMbid={c.providerReleaseId}
-              releaseGroupMbid={c.providerReleaseGroupId}
+              releaseMbid={c.provider !== 'discogs' ? c.providerReleaseId : null}
+              releaseGroupMbid={
+                c.provider !== 'discogs' ? c.providerReleaseGroupId : null
+              }
             />
           </span>
           <div className="vi-candidate__body">
@@ -692,6 +698,27 @@ export function DiscoverPanel({
             {renderCandidate(exactCandidate)}
           </ul>
         ) : null}
+      </div>
+
+      <div className="vi-discover__discogs">
+        {showDiscogs ? (
+          <div className="vi-discogs-search-host">
+            <h3 style={{ fontFamily: 'var(--font-display)' }}>Search Discogs</h3>
+            <DiscogsSearchPanel
+              client={client}
+              ownedItems={ownedItems}
+              collectionStatus={collectionStatus}
+              onCollectionChanged={onCollectionChanged}
+            />
+            <Button variant="ghost" size="sm" onClick={() => setShowDiscogs(false)}>
+              Close Discogs search
+            </Button>
+          </div>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={() => setShowDiscogs(true)}>
+            Can't find it? Search Discogs
+          </Button>
+        )}
       </div>
 
       <div className="vi-discover__manual">

@@ -12,6 +12,9 @@ import { Button } from '../ui/primitives.tsx'
 import { Icon } from '../ui/Icon.tsx'
 import { EmptyState, ErrorState, LoadingSkeleton } from '../ui/feedback.tsx'
 import { musicBrainzReleaseUrl } from '../lib/catalog/musicbrainzIdentity.ts'
+import { discogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
+import { DiscogsAttribution } from '../catalog/DiscogsAttribution.tsx'
+import { refreshDiscogsCollectionItem } from '../lib/catalog/client.ts'
 import { useClient } from '../app/useClient.ts'
 import type { BrowserSupabaseClient } from '../lib/supabase/client.ts'
 import { useCollectionData } from '../app/useCollectionData.ts'
@@ -60,6 +63,7 @@ export function AlbumDetailPage() {
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [retrying, setRetrying] = useState(false)
 
   if (status === 'loading') {
     return (
@@ -104,25 +108,55 @@ export function AlbumDetailPage() {
   const { release } = item
   const editable = isEditableRelease(release)
   const summary = summarizeListeningForItem(events, item.id)
+  const isDiscogs = release.provider === 'discogs'
+  // Spec 0018 §8.4: no identity-field exception - when a Discogs row is
+  // masked, no provider-derived field (including title/artist) may display
+  // anywhere, including this page's own heading.
+  const discogsUnavailable = isDiscogs && item.discogsUnavailable === true
 
-  const meta = [
-    release.release_year != null ? { k: 'Year', v: String(release.release_year) } : null,
-    release.label ? { k: 'Label', v: release.label } : null,
-    release.catalog_number ? { k: 'Catalog no.', v: release.catalog_number } : null,
-    release.country ? { k: 'Country', v: release.country } : null,
-    release.format ? { k: 'Format', v: release.format } : null,
-  ].filter((entry): entry is { k: string; v: string } => entry !== null)
+  const meta = discogsUnavailable
+    ? []
+    : [
+        release.release_year != null ? { k: 'Year', v: String(release.release_year) } : null,
+        release.label ? { k: 'Label', v: release.label } : null,
+        release.catalog_number ? { k: 'Catalog no.', v: release.catalog_number } : null,
+        release.country ? { k: 'Country', v: release.country } : null,
+        release.format ? { k: 'Format', v: release.format } : null,
+      ].filter((entry): entry is { k: string; v: string } => entry !== null)
 
-  // MusicBrainz provenance link (spec 0017 §13.2): shown iff the release is
-  // catalog-backed (the same `isEditableRelease` boundary already used
-  // above - `!editable`) AND `provider_release_id` is present and valid.
-  // `musicBrainzReleaseUrl` itself returns null for a malformed id, so a
-  // manually-created release or an unexpectedly malformed/absent provider
-  // id both collapse to `null` here - never a fabricated or malformed link.
-  const musicBrainzUrl =
+  // Provenance link (spec 0017 §13.2, extended by spec 0018 §13 for
+  // Discogs): shown iff the release is catalog-backed (the same
+  // `isEditableRelease` boundary already used above - `!editable`) AND
+  // `provider_release_id` is present and valid. This link is identity-only
+  // (derived from the already-validated id, never fetched metadata), so it
+  // remains safe to show even when `discogsUnavailable` (spec 0018 §8.4).
+  // `musicBrainzReleaseUrl`/`discogsReleaseUrl` both return null for a
+  // malformed id - never a fabricated or malformed link.
+  const providerReleaseUrl =
     !editable && release.provider_release_id
-      ? musicBrainzReleaseUrl(release.provider_release_id)
+      ? isDiscogs
+        ? discogsReleaseUrl(release.provider_release_id)
+        : musicBrainzReleaseUrl(release.provider_release_id)
       : null
+  const providerLabel = isDiscogs ? 'Discogs' : 'MusicBrainz'
+
+  async function retryDiscogsDetails() {
+    if (!release.provider_release_id || retrying) {
+      return
+    }
+    setRetrying(true)
+    try {
+      await refreshDiscogsCollectionItem(client, release.provider_release_id)
+      invalidate()
+    } catch (caught) {
+      toast.show({
+        message: errorMessage(caught, 'Could not refresh catalog details.'),
+        tone: 'error',
+      })
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   async function removeRecord() {
     try {
@@ -149,17 +183,20 @@ export function AlbumDetailPage() {
         Collection
       </Link>
 
-      <PageHeader eyebrow={release.artist} title={release.title} />
+      <PageHeader
+        eyebrow={discogsUnavailable ? undefined : release.artist}
+        title={discogsUnavailable ? 'Record details unavailable' : release.title}
+      />
 
       <div className="vi-album__hero">
         <div className="vi-album__art">
           <AlbumArtwork
-            artist={release.artist}
-            title={release.title}
+            artist={discogsUnavailable ? 'Unknown artist' : release.artist}
+            title={discogsUnavailable ? 'Unknown album' : release.title}
             seedId={release.id}
             size="hero"
-            releaseMbid={release.provider_release_id ?? null}
-            releaseGroupMbid={release.provider_release_group_id ?? null}
+            releaseMbid={!isDiscogs ? release.provider_release_id ?? null : null}
+            releaseGroupMbid={!isDiscogs ? release.provider_release_group_id ?? null : null}
             customCoverPath={
               item.custom_cover_path ? customCoverPath(userId, item.id) : null
             }
@@ -175,7 +212,21 @@ export function AlbumDetailPage() {
         </div>
 
         <div className="vi-album__ident">
-          {meta.length > 0 || musicBrainzUrl ? (
+          {discogsUnavailable ? (
+            <div className="vi-album__unavailable">
+              <p className="vi-hint">Catalog details temporarily unavailable.</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={retrying}
+                onClick={() => void retryDiscogsDetails()}
+              >
+                {retrying ? 'Retrying…' : 'Retry'}
+              </Button>
+            </div>
+          ) : null}
+
+          {meta.length > 0 || providerReleaseUrl ? (
             <dl className="vi-album__meta">
               {meta.map((entry) => (
                 <div key={entry.k}>
@@ -185,33 +236,34 @@ export function AlbumDetailPage() {
                   </dd>
                 </div>
               ))}
-              {musicBrainzUrl ? (
+              {providerReleaseUrl ? (
                 <div>
-                  <dt>MusicBrainz</dt>
+                  <dt>{providerLabel}</dt>
                   <dd>
                     <a
                       className="vi-btn vi-btn--ghost vi-btn--sm"
-                      href={musicBrainzUrl}
+                      href={providerReleaseUrl}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      View on MusicBrainz
+                      View on {providerLabel}
                       <span className="vi-visually-hidden"> (opens in a new tab)</span>
                     </a>
+                    {isDiscogs ? <DiscogsAttribution releaseUrl={providerReleaseUrl} /> : null}
                   </dd>
                 </div>
               ) : null}
             </dl>
-          ) : (
+          ) : !discogsUnavailable ? (
             <p className="vi-hint">No catalog details recorded.</p>
-          )}
+          ) : null}
 
           <FavouriteAndRating item={item} client={client} onSaved={invalidate} />
 
           <PersonalGenresEditor
             client={client}
             collectionItemId={item.id}
-            catalogGenres={release.genres ?? []}
+            catalogGenres={discogsUnavailable ? [] : release.genres ?? []}
             personalGenres={item.personal_genres ?? []}
             onSaved={invalidate}
           />
@@ -263,8 +315,8 @@ export function AlbumDetailPage() {
           </>
         ) : (
           <p className="vi-hint">
-            Catalog details come from MusicBrainz and can’t be edited here. Add
-            your own genres and notes above, or upload your own cover.
+            Catalog details come from {providerLabel} and can’t be edited here.
+            Add your own genres and notes above, or upload your own cover.
           </p>
         )}
 
@@ -279,9 +331,13 @@ export function AlbumDetailPage() {
         <Dialog open onClose={() => setRemoving(false)} title="Remove from collection?">
           <p>
             This removes{' '}
-            <strong>
-              “<BidiText>{release.title}</BidiText>”
-            </strong>{' '}
+            {discogsUnavailable ? (
+              'this record'
+            ) : (
+              <strong>
+                “<BidiText>{release.title}</BidiText>”
+              </strong>
+            )}{' '}
             and its listening history from your collection. Catalog metadata
             other collectors share is not affected. This can’t be undone.
           </p>
