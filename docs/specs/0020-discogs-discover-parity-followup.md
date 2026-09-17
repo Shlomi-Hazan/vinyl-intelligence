@@ -1,9 +1,14 @@
 # 0020 Discogs Discover Parity Follow-up (Specification)
 
-Status: **IMPLEMENTED** (this spec and its companion plan,
+Status: **IMPLEMENTED, MERGED, DEPLOYED, PRODUCTION ACCEPTANCE COMPLETE /
+ACCEPTED** (this spec and its companion plan,
 `docs/plans/020-discogs-discover-parity-followup.md`, were written and
 implemented together in the same branch, per this follow-up's own explicit
-instruction to keep it small).
+instruction to keep it small; one HIGH race-condition correction round
+followed before merge — see PR #43). Human production acceptance ran
+2026-09-17 against production runtime commit
+`6a86f57b292826ecf73c4adab9d5a40baa5ecdeb` / Netlify deploy
+`6aac1973b27b534636273f42` — see §9 below for the full record.
 
 This is a small, post-production UX-parity follow-up to
 `docs/specs/0019-discogs-discover-ux-and-artwork.md` (PR #42,
@@ -191,3 +196,52 @@ Unchanged from spec 0019 §10, plus, explicitly for this follow-up:
    unchanged (same markup, same condition).
 9. `npm run typecheck`, `npm run lint`, `npm run test:run`, and `npm run
    build` all pass; no Supabase migration/reset was needed.
+
+## 9. Production acceptance — COMPLETE / ACCEPTED (2026-09-17)
+
+This spec, plus its PR #43 correction round (a HIGH race condition: an
+in-flight Discogs search left pending across an All/Artist/Album mode
+change could otherwise populate results under the newly-selected mode —
+fixed with a Discogs-only request-generation counter, independent of
+MusicBrainz's), merged to `main` and was deployed to production.
+
+- **Production runtime commit:** `6a86f57b292826ecf73c4adab9d5a40baa5ecdeb`
+  (merge of PR #43).
+- **Production Netlify deploy:** `6aac1973b27b534636273f42`.
+- **Date:** 2026-09-17.
+
+Human production acceptance ran against that deploy and **PASSED** on all
+of the following:
+
+- Discogs All / Artist / Album mode control visible and working.
+- Changing mode does not auto-search.
+- Example searches are present under Discogs and work.
+- The Discogs hint copy reads exactly "Extra pressings and regional
+  releases."
+- "Search on Discogs" works.
+- Discogs Hebrew search and artwork work.
+- Direct "Add to collection" (no client-side preview popup) works.
+- The duplicate "Add another copy" confirmation works.
+- The exact Discogs release-URL import flow works.
+- Album Detail's Discogs provider layout (§6 above) is accepted.
+- The MusicBrainz side of Discover and Album Detail (regression) passed
+  unchanged.
+- Manual-add placement is unchanged.
+
+**Known minor UI issue, ACCEPTED FOR SUBMISSION:** the Discogs attribution
+mark can visually crowd the rating/title area in Collection Grid view, and
+makes Discogs rows taller/less aligned than MusicBrainz rows in Collection
+List view. Stored rating values and all underlying collection data are
+correct — this is presentation-only, does not affect any stored value or
+any of the functionality above, and does not block submission. Not fixed
+by this closure (documentation-only; no runtime change was made or
+authorized here).
+
+**Deployment note:** Netlify production deploys became paused after the
+`6aac1973b27b534636273f42` deploy above because the team exhausted its
+current production-deploy credit allowance. The already-published
+production site remains online and continues serving that deploy. No
+further production deploy is required for this closure.
+
+This closes out spec 0020's production-acceptance gate — **COMPLETE /
+ACCEPTED**.
