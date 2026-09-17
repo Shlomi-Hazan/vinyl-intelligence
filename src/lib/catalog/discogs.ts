@@ -299,7 +299,7 @@ export function normalizeDiscogsSearchResult(
   // (spec 0018 follow-up §8) - `cleanImageUrl` still independently
   // re-validates each value as an HTTPS URL rather than trusting the field
   // name alone. Both fields, and their public loadability, are confirmed
-  // by human live-API verification (spec 0019 §7.1, 2026-09-18).
+  // by human live-API verification (spec 0019 §7.1, 2026-09-17).
   const transientCoverDisplayUrl =
     cleanImageUrl(raw.cover_image) ?? cleanImageUrl(raw.thumb)
 
@@ -441,7 +441,7 @@ function findVinylFormat(value: unknown): Record<string, unknown> | null {
  * own finding 3): only `uri` (full-size) and `uri150` (a 150x150
  * thumbnail) - `uri` preferred, `uri150` a last resort. Both fields, and
  * their public loadability with no `Authorization` header, are confirmed
- * by human live-API verification (spec 0019 §7.1, 2026-09-18).
+ * by human live-API verification (spec 0019 §7.1, 2026-09-17).
  * `resource_url` is deliberately still NOT used as a browser `<img>`
  * source: it is a documented field on the same entry, but that
  * verification did not cover it, and this codebase has not independently

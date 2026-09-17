@@ -1,6 +1,6 @@
 # Verification Strategy
 
-Last updated: 2026-09-15.
+Last updated: 2026-09-17.
 
 Verification must be based on written acceptance criteria, not on generated confidence.
 
@@ -5914,7 +5914,7 @@ section and four other living documents, written while this PR was still
 open — is reconciled by PR #38 (this status reconciliation) and this same
 paragraph's surrounding text.
 
-### Discogs Discover UX and Provider Artwork — Image Field Human Live-API Verification (spec 0019, 2026-09-18)
+### Discogs Discover UX and Provider Artwork — Image Field Human Live-API Verification (spec 0019, 2026-09-17)
 
 `docs/specs/0018-discogs-secondary-catalog-provider.md` (PR #41, merged
 `main` `b73d7a79769ddd7a1d4a109945eda301fca5f605`, migration applied,
@@ -5927,7 +5927,7 @@ project had itself made — since the official Discogs developer pages
 return HTTP 403 to this project's automated fetch tooling (the same known
 constraint spec 0018 §5.2 already recorded for the Terms of Use). That gate
 is now **CLOSED / PASS**, verified by the human directly against the live
-Discogs API (2026-09-18):
+Discogs API (2026-09-17):
 
 1. Exact release `26770295` (`GET /releases/26770295`) returns `images[]`
    with a primary image whose `uri` and `uri150` are both HTTPS.

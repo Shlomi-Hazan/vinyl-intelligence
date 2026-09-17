@@ -189,7 +189,7 @@ already established for every other Discogs-derived fact:
 Both endpoints already used by spec 0018 return image fields; this
 enhancement adds no new endpoint and no seventh Netlify Function.
 
-**Verification status (human-run, 2026-09-18):** this section originally
+**Verification status (human-run, 2026-09-17):** this section originally
 recorded these field names and their public-loadability as an OPEN
 gate — sourced only from the Discogs API's own published field
 documentation and corroborating third-party integration references, since
