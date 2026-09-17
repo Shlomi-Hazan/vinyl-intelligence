@@ -5952,3 +5952,51 @@ No code/runtime behavior changed as a result of this verification — the
 implementation already only used the now-confirmed fields
 (`cover_image`/`thumb`/`uri`/`uri150`), HTTPS-only, per PR #42's own
 review-correction round.
+
+### Discogs Discover Parity Follow-up — Human Production Acceptance (spec 0020, 2026-09-17)
+
+`docs/specs/0020-discogs-discover-parity-followup.md` (PR #43, branch
+`feature/discogs-discover-parity`) — Discogs All/Artist/Album search
+modes, example searches, shortened hint copy, a "Search on Discogs" link,
+and Album Detail provider-layout parity — merged to `main`, including a
+pre-merge PR #43 correction round that fixed one HIGH race condition (an
+in-flight Discogs search left pending across a mode change could populate
+results under the newly-selected mode; fixed with an independent Discogs
+request-generation counter).
+
+- **Production runtime commit:** `6a86f57b292826ecf73c4adab9d5a40baa5ecdeb`
+  (merge of PR #43).
+- **Production Netlify deploy:** `6aac1973b27b534636273f42`.
+- **Date:** 2026-09-17.
+
+Human production acceptance against that deploy **PASSED**:
+
+- Discogs All / Artist / Album visible and working.
+- Changing mode does not auto-search.
+- Example searches present and working.
+- Hint copy reads exactly "Extra pressings and regional releases."
+- Search on Discogs works.
+- Discogs Hebrew search + artwork works.
+- Direct "Add to collection" works.
+- Duplicate "Add another copy" confirmation works.
+- Exact Discogs URL flow works.
+- Album Detail provider layout accepted.
+- MusicBrainz regression passed.
+- Manual-add placement unchanged.
+
+**Known minor UI issue, ACCEPTED FOR SUBMISSION:** the Discogs attribution
+mark can visually crowd the rating/title area in Collection Grid view, and
+makes Discogs rows taller/less aligned than MusicBrainz rows in Collection
+List view. Stored rating values and all collection data are correct —
+this is presentation-only and does not block the submitted functionality.
+Not fixed by this closure (documentation-only; no runtime change was made
+or authorized here).
+
+**Deployment note:** Netlify production deploys became paused after the
+`6aac1973b27b534636273f42` deploy above because the team exhausted its
+current production-deploy credit allowance. The already-published
+production site remains online and continues serving that deploy. No
+further production deploy is required for this closure.
+
+This closes spec 0020's production-acceptance gate — **COMPLETE /
+ACCEPTED**.
