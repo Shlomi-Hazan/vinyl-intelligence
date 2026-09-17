@@ -110,7 +110,7 @@ One shared search area serves two catalog providers, **MusicBrainz | Discogs**, 
   <img src="docs/assets/screenshots/10-discover-results.png" alt="MusicBrainz search results for Radiohead OK Computer, provider selector visible" width="820">
 </p>
 
-**Discogs is an explicit secondary provider**, not a silent fallback — useful for regional pressings and releases MusicBrainz doesn't have. Discogs results and MusicBrainz results are never combined or cross-matched; adding the same release through both providers creates two separate, honestly-labeled collection entries, each carrying real cover artwork and the required "Data provided by Discogs." attribution:
+**Discogs is an explicit secondary provider**, not a silent fallback — useful for regional pressings and releases MusicBrainz doesn't have. Discogs results and MusicBrainz results are never combined or cross-matched; adding the same release through both providers creates two separate, honestly-labeled collection entries. A Discogs entry shows cover artwork when Discogs has it available and the fetch is fresh (not guaranteed for every release) — only the image's URL is ever persisted, never the image bytes themselves, and it's rendered with a plain `<img src>`, never proxied through the server — plus the required "Data provided by Discogs." attribution, which applies to the Discogs entry only:
 
 <p align="center">
   <img src="docs/assets/screenshots/19-discover-discogs-results.png" alt="Discogs search results for a Hebrew query, with artwork, attribution, and owned state" width="820">
@@ -212,7 +212,7 @@ Full detail, including rejected alternatives and the reasoning behind each decis
 - **Backend:** Netlify Functions (`.mts`), six endpoints — five auth-gated application endpoints plus one public `/api/health` liveness endpoint
 - **Database / Auth / Storage:** hosted Supabase — Postgres with RLS on every table, Supabase Auth, two private Storage buckets
 - **AI:** OpenRouter — `google/gemini-3.1-flash-lite` (vision + curator intent), `google/gemini-3.5-flash` (curator selection); strict JSON schemas; allowed-candidate-ID validation
-- **Music metadata:** MusicBrainz (primary/default), Discogs (explicit secondary provider); Cover Art Archive for display-time MusicBrainz artwork, a persisted Discogs image URL for Discogs artwork
+- **Music metadata:** MusicBrainz (primary/default), Discogs (explicit secondary provider); Cover Art Archive for display-time MusicBrainz artwork, a persisted Discogs image URL (when available/fresh — never the image bytes, never proxied) for Discogs artwork
 - **Testing:** Vitest (unit/integration), pgTAP via the Supabase CLI (RLS/DB)
 - **Deliberately not used:** RAG / vector database, multi-agent orchestration, Next.js, analytics infrastructure
 
@@ -294,7 +294,7 @@ The full verification history — every milestone's automated gate, independent 
 
 ## 🔒 Security & Privacy
 
-- Server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) never reach the browser, are never logged, and are never written to a row.
+- Server secrets (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `DISCOGS_TOKEN`) never reach the browser, are never logged, and are never written to a row.
 - Row-Level Security is enabled on every table; a user can never read or write another user's collection, ratings, notes, or listening history.
 - Shared catalog (`releases`) metadata is browser-read-only; user control is expressed through owned overlays (rating, favorite, notes, personal genres, custom cover) and manual-entry editability, never by rewriting another collector's shared facts.
 - A cover-recognition input photo is checked server-side (MIME allow-list, size cap, and magic-byte content sniffing) before it ever reaches the vision model, then discarded — never written to storage. A custom cover or avatar is checked client-side (accepted MIME, size cap, decode/re-encode to WebP) and is the one kind of upload that's intentionally persisted, in a private, owner-scoped Storage bucket. The recognition prompt treats all in-image text as untrusted data.
@@ -317,7 +317,7 @@ Full detail: [`docs/security.md`](docs/security.md).
 
 The application is **live and human production-accepted**, built from the accepted production runtime recorded in [`docs/roadmaps/2026-09-02-complete-project-roadmap.md`](docs/roadmaps/2026-09-02-complete-project-roadmap.md#post-m12-evolution) and evidenced in [`docs/verification.md`](docs/verification.md).
 
-The project was not designed once and generated — it evolved through a disciplined, auditable agentic engineering process, in three phases:
+The project was not designed once and generated — it evolved through a disciplined, auditable agentic engineering process, through the following phases:
 
 1. **Milestones 0–12** — foundation, auth, manual collection CRUD, catalog integration, AI photo recognition, browse/search/filter, ratings/favorites/notes, listening history, the AI curator, conversational refinement, a dedicated Visual Experience & Product Identity pass, production deployment, and final hardening.
 2. **Hebrew & Multilingual Record Support** — a deliberate post-M12 enhancement, not part of the original plan.

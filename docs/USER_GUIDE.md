@@ -121,7 +121,7 @@ Each MusicBrainz result shows the release's year, label, catalog number, country
 
 <p align="center"><img src="assets/screenshots/19-discover-discogs-results.png" alt="Discover — Discogs search results for a Hebrew query, with real artwork and attribution" width="820"></p>
 
-Select **Discogs** to search a second, independent catalog — useful for regional pressings and releases MusicBrainz doesn't carry. A Discogs result shows real cover artwork pulled from Discogs itself, the release's year, country, format, label, and catalog number, and the required **"Data provided by Discogs."** attribution linking back to the release's Discogs page. Discogs results have no "Load more" paging (they're a bounded, single fetch), and — this is deliberate — **Discogs and MusicBrainz results are never combined, matched, or deduplicated against each other**: adding the same physical release through both providers creates two separate, honestly-labeled collection entries, not one merged one.
+Select **Discogs** to search a second, independent catalog — useful for regional pressings and releases MusicBrainz doesn't carry. A Discogs result shows cover artwork when Discogs has it available and the fetch is fresh (not guaranteed for every release — only the image's URL is ever kept, never the image itself, and it's never proxied through the server), the release's year, country, format, label, and catalog number, and the required **"Data provided by Discogs."** attribution linking back to the release's Discogs page. Discogs results have no "Load more" paging (they're a bounded, single fetch), and — this is deliberate — **Discogs and MusicBrainz results are never combined, matched, or deduplicated against each other**: adding the same release through both providers creates two separate, honestly-labeled collection entries.
 
 Still not finding it? Two escape hatches, in order, for whichever provider you have selected:
 
@@ -252,7 +252,7 @@ No — it's used once, to extract search clues, and then discarded.
 The app's own interface stays in English by design; only your record data (titles, artists, notes, genres) is multilingual-aware. See §14.
 
 **Can I add the same record from both MusicBrainz and Discogs?**
-Yes. They're never combined, matched, or deduplicated against each other — doing so creates two separate, honestly-labeled collection entries, exactly like adding two different pressings would.
+Yes. The two providers are never cross-matched, so Vinyl Intelligence has no way to know whether a MusicBrainz release and a Discogs release are the same pressing or different ones — adding from both simply creates two separate, honestly-labeled collection entries, without claiming either way.
 
 **What happens if MusicBrainz, Discogs, or the AI provider is down?**
 You'll see an honest error with a retry option, never a fabricated result. MusicBrainz and Discogs fail independently — one being unavailable never blocks searching the other.
