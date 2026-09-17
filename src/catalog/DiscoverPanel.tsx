@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlbumArtwork } from '../media/AlbumArtwork.tsx'
 import { BidiJoin, BidiText } from '../components/BidiText.tsx'
 import { CollectionForm } from '../collection/CollectionForm.tsx'
@@ -24,6 +24,7 @@ import {
   parseMusicBrainzReleaseUrl,
 } from '../lib/catalog/musicbrainzIdentity.ts'
 import { parseDiscogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
+import { isDiscogsRowFresh, msUntilStale } from '../lib/catalog/discogsFreshness.ts'
 import { isExactCatalogReleaseOwned } from '../lib/catalog/ownedRelease.ts'
 import {
   addManualCollectionItem,
@@ -197,6 +198,14 @@ export function DiscoverPanel({
   const [discogsSubmittedQuery, setDiscogsSubmittedQuery] = useState('')
   const [discogsSearchError, setDiscogsSearchError] = useState<string | null>(null)
   const discogsInProgress = useRef(false)
+  // The exact moment `discogsResults` was fetched (spec 0018 follow-up §7 -
+  // finding 1: transient Discogs data must expire at 6h, same as persisted
+  // owned-release data). `null` whenever there are no live results to
+  // expire. Read by the expiry effect below via `discogsResultsFetchedAtRef`.
+  const [discogsResultsFetchedAt, setDiscogsResultsFetchedAt] = useState<string | null>(
+    null,
+  )
+  const discogsResultsFetchedAtRef = useRef<string | null>(null)
 
   // --- Exact Discogs release URL lookup (spec 0018 follow-up §5) - the
   // Discogs analog of the MusicBrainz exact-URL state above, fully
@@ -208,6 +217,88 @@ export function DiscoverPanel({
     null,
   )
   const discogsExactUrlInProgress = useRef(false)
+  // The exact moment `discogsExactCandidate` was fetched - the same
+  // transient six-hour boundary as `discogsResultsFetchedAt` above, tracked
+  // independently since the two are fully independent surfaces.
+  const [discogsExactFetchedAt, setDiscogsExactFetchedAt] = useState<string | null>(null)
+  const discogsExactFetchedAtRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    discogsResultsFetchedAtRef.current = discogsResultsFetchedAt
+  }, [discogsResultsFetchedAt])
+  useEffect(() => {
+    discogsExactFetchedAtRef.current = discogsExactFetchedAt
+  }, [discogsExactFetchedAt])
+
+  /**
+   * Expires transient Discogs data older than six hours (spec 0018 follow-up
+   * §7 finding 1) - the exact same freshness boundary already used for
+   * persisted owned-release data (`isDiscogsRowFresh`/`msUntilStale`,
+   * `discogsFreshness.ts`), applied here to ephemeral React state instead of
+   * a database row. Clears (never re-fetches) each independently: search
+   * results and the exact-URL preview candidate can expire at different
+   * times. Called from the one-shot timer below AND from the
+   * visibilitychange handler, so a backgrounded tab's throttled/paused timer
+   * can never leave stale data visible after the tab becomes visible again.
+   */
+  const expireStaleDiscogsTransientData = useCallback(() => {
+    const resultsFetchedAt = discogsResultsFetchedAtRef.current
+    if (resultsFetchedAt && !isDiscogsRowFresh('discogs', resultsFetchedAt)) {
+      setDiscogsResults([])
+      setDiscogsPhase('initial')
+      setDiscogsSubmittedQuery('')
+      setDiscogsSearchError(null)
+      setDiscogsResultsFetchedAt(null)
+    }
+
+    const exactFetchedAt = discogsExactFetchedAtRef.current
+    if (exactFetchedAt && !isDiscogsRowFresh('discogs', exactFetchedAt)) {
+      setDiscogsExactCandidate(null)
+      setDiscogsExactUrlPhase('idle')
+      setDiscogsExactUrlError(null)
+      setDiscogsExactFetchedAt(null)
+    }
+  }, [])
+
+  // The one-shot expiry timer (mirrors `CollectionDataProvider.tsx`'s exact
+  // floor-free pattern) - re-computed whenever either fetched-at timestamp
+  // changes, scheduled for exactly the soonest remaining deadline plus 1ms
+  // (the six-hour boundary itself is fresh-inclusive, so the timer must fire
+  // 1ms past it to observe genuine staleness - discogsFreshness.ts). No
+  // polling; at most one pending timer for both surfaces combined.
+  useEffect(() => {
+    const pending = [discogsResultsFetchedAt, discogsExactFetchedAt].filter(
+      (value): value is string => value !== null,
+    )
+
+    if (pending.length === 0) {
+      return
+    }
+
+    const delay = Math.min(...pending.map((value) => msUntilStale('discogs', value) + 1))
+    const timeoutId = window.setTimeout(expireStaleDiscogsTransientData, delay)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [discogsResultsFetchedAt, discogsExactFetchedAt, expireStaleDiscogsTransientData])
+
+  // Visibility-resume (spec 0018 §8.2's established pattern, applied here to
+  // transient Discogs data): closes the gap where a backgrounded tab's
+  // `setTimeout` was throttled/paused past its scheduled delay. Synchronous
+  // on resume - stale transient data is never displayed even for one frame
+  // after the tab becomes visible again. Never triggers a re-fetch.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        expireStaleDiscogsTransientData()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [expireStaleDiscogsTransientData])
 
   // Bumps the request-generation counter and releases every in-flight guard
   // that bump makes stale - search's own `inProgress` guard AND Load More's
@@ -252,6 +343,7 @@ export function DiscoverPanel({
     setDiscogsResults([])
     setDiscogsSubmittedQuery('')
     setDiscogsSearchError(null)
+    setDiscogsResultsFetchedAt(null)
     setAddErrors({})
     setShowManual(false)
     setDiscogsPhase('initial')
@@ -422,10 +514,17 @@ export function DiscoverPanel({
         setDiscogsResults(response.results)
         setDiscogsSubmittedQuery(q)
         setDiscogsPhase(response.results.length > 0 ? 'results' : 'no-results')
+        // The receipt time for the six-hour transient-data expiry boundary
+        // (spec 0018 follow-up §7 finding 1) - recorded even for a
+        // zero-result page, so a subsequent expiry correctly clears back to
+        // the initial "search again" state rather than leaving a stale
+        // empty-results phase displayed indefinitely.
+        setDiscogsResultsFetchedAt(new Date().toISOString())
       } catch (error) {
         setDiscogsResults([])
         setDiscogsSearchError(errorMessage(error))
         setDiscogsPhase('error')
+        setDiscogsResultsFetchedAt(null)
       } finally {
         discogsInProgress.current = false
       }
@@ -568,14 +667,20 @@ export function DiscoverPanel({
       if (!candidate) {
         setDiscogsExactUrlPhase('error')
         setDiscogsExactUrlError('That release could not be verified on Discogs.')
+        setDiscogsExactFetchedAt(null)
         return
       }
 
       setDiscogsExactCandidate(candidate)
       setDiscogsExactUrlPhase('result')
+      // The receipt time for the six-hour transient-data expiry boundary
+      // (spec 0018 follow-up §7 finding 1) - the same boundary applied to
+      // the search results above.
+      setDiscogsExactFetchedAt(new Date().toISOString())
     } catch (error) {
       setDiscogsExactUrlPhase('error')
       setDiscogsExactUrlError(errorMessage(error))
+      setDiscogsExactFetchedAt(null)
     } finally {
       discogsExactUrlInProgress.current = false
     }

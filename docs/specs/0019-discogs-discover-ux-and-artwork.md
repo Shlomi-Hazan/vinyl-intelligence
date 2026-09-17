@@ -182,42 +182,49 @@ already established for every other Discogs-derived fact:
   ownership.
 - `DISCOGS_TOKEN` is never exposed to the browser, never placed in an image
   URL or any query string, and never required by the browser to display an
-  image — verified against the empirically-observed Discogs API image
-  fields below.
+  image.
 
-### 7.1 Verified field names (not invented)
+### 7.1 Field names used, and an OPEN human-verification gate
 
 Both endpoints already used by spec 0018 return image fields; this
-enhancement adds no new endpoint and no seventh Netlify Function.
+enhancement adds no new endpoint and no seventh Netlify Function. The field
+names below come from the Discogs API's own published field documentation
+and corroborating third-party integration references — the official
+developer pages themselves return HTTP 403 to this project's automated
+fetch tooling, the same persistent, known access constraint spec 0018 §5.2
+already recorded for the Terms of Use document. **This is not a live,
+human-verified confirmation of these response shapes, and this document
+does not claim it is** — a human must independently confirm, against a
+live authenticated response, both (a) that these are the correct field
+names and (b) that each field this implementation actually uses is a
+directly-loadable, unauthenticated image URL before this feature is relied
+upon, mirroring spec 0018 §25's own "reconfirm before implementation"
+pattern for the Terms of Use. This gate stays open across this correction
+round — it is not closed by tightening which fields are used below.
 
 - **Database Search** (`GET /database/search`, used for Discogs search
-  results): each result item's own **`cover_image`** (full-size) and
-  **`thumb`** (150×150) fields — both already complete, directly-loadable
-  `https://img.discogs.com/…` URLs, safely renderable via a plain
-  `<img src>` with no further authentication. These were confirmed via the
-  Discogs API's own published field documentation and corroborating
-  third-party integration references (the official developer pages
-  themselves return HTTP 403 to this project's automated fetch tooling —
-  the same persistent, known access constraint spec 0018 §5.2 already
-  recorded for the Terms of Use document). This is recorded here as the
-  verification method actually used, not silently assumed: a human should
-  independently confirm these two field names directly against a live
-  authenticated search response before/at the next opportunity to do so
-  (mirroring spec 0018 §25's own "reconfirm before implementation" pattern
-  for the Terms of Use).
+  results): each result item's own `cover_image` (full-size) and `thumb`
+  (150×150) fields.
 - **Exact Release lookup** (`GET /releases/{id}`, spec 0018 §9's existing
-  authoritative fetch): an **`images`** array, each entry carrying `type`
-  (`"primary"` or `"secondary"`), `uri` (full-size), `uri150` (150×150
-  thumbnail), `resource_url` (typically identical to `uri`), `width`,
-  `height`. Same verification method and same reconfirmation note as
-  above.
+  authoritative fetch): an `images` array, each entry documented as
+  carrying `type` (`"primary"` or `"secondary"`), `uri` (full-size),
+  `uri150` (150×150 thumbnail), `resource_url`, `width`, `height`.
+  **`resource_url` is deliberately NOT used as an `<img>` source by this
+  implementation** — unlike `uri`/`uri150`, this project has not
+  independently confirmed it is always a directly-loadable,
+  unauthenticated image URL (as opposed to, for example, an API resource
+  reference); only `uri`, then `uri150`, are used (§7.3).
 - Fetching the metadata (search or exact release) requires the existing
   authenticated, server-only `DISCOGS_TOKEN` call, exactly as every other
-  Discogs field already required (spec 0018 §5.1/§9). Once the resulting
-  image URL is known, it is a plain public CDN URL — the same pattern
-  already established and load-bearing for Cover Art Archive imagery, and
-  the same pattern by which Discogs's own public release pages render
-  cover art to logged-out visitors.
+  Discogs field already required (spec 0018 §5.1/§9). The resulting image
+  URL, once known, is treated as a plain public CDN URL to be rendered via
+  a normal `<img src>` — the same pattern already established for Cover
+  Art Archive imagery — but this too is covered by the open verification
+  gate above, not asserted as independently confirmed.
+- Every accepted image URL, from either endpoint, must be **HTTPS only**
+  (§7.2/§7.3) — `http:`, `javascript:`, `data:`, and any relative/malformed
+  value are rejected outright, never partially trusted or silently
+  downgraded to an insecure fetch.
 
 ### 7.2 Search-result images — transient, never persisted
 
@@ -227,25 +234,26 @@ becomes a new `transientCoverDisplayUrl` field on `DiscogsSearchResultItem`
 `CatalogCandidate.transientCoverDisplayUrl` field MusicBrainz already
 carries. It is rendered only in the search-result card; it is never
 persisted as release artwork, and never confused with the exact-release
-field below. Missing/invalid: falls back to the existing branded fallback
-artwork, exactly as before this enhancement — a Discogs id is still never
-sent to Cover Art Archive.
+field below. Missing/invalid/non-HTTPS: falls back to the existing branded
+fallback artwork, exactly as before this enhancement — a Discogs id is
+still never sent to Cover Art Archive.
 
 ### 7.3 Exact-release image — persisted, deterministic, optional
 
 The exact Discogs lookup gains a new `providerImageUrl` field on
 `CatalogCandidate` (always `null` for MusicBrainz — it derives artwork from
 the Cover Art Archive by mbid at render time, never a persisted URL).
-Selection is deterministic, never inferred or fabricated:
+Selection is deterministic, never inferred or fabricated, and considers
+only `uri`/`uri150` (§7.1 - never `resource_url`):
 
 1. the first `images[]` entry whose `type` is exactly `"primary"`, if it
-   has a usable URL (`uri`, else `resource_url`, else `uri150`);
-2. otherwise the first entry with any usable URL at all;
+   has a usable URL (`uri`, else `uri150`);
+2. otherwise the first entry with any usable `uri`/`uri150` URL at all;
 3. otherwise `null` — a release with no usable image is a normal, valid
    outcome, not an error, and not every Discogs row is required to have
    one.
 
-A malformed URL (not `http(s)`, empty, over the shared length bound) is
+A malformed URL (not HTTPS, empty, over the shared length bound) is
 ignored entirely, never partially trusted.
 
 ## 8. Data model
@@ -281,6 +289,48 @@ verified directly against the migration diff and the existing pgTAP suite
 (`catalog_releases_rls.test.sql`).
 
 ## 9. Freshness and artwork precedence
+
+### 9.0 Transient Discover-surface freshness (correction round finding 1)
+
+Persisted owned-release freshness (§9.1 below) was already correct from
+the first round of this follow-up. It does not, by itself, cover the
+Discover screen's own transient Discogs data: a normal search's results
+list and the exact-URL preview candidate were kept in React state
+indefinitely, with no expiry of their own - meaning Discogs API metadata
+(and, once fetched, a transient search-result image) could in principle
+still be displayed more than six hours after it was fetched, if the user
+simply left the tab/page open without re-searching.
+
+This is now closed with the exact same six-hour boundary, applied to
+ephemeral component state rather than a database row:
+
+- Each surface (search results; the exact-URL preview candidate) records
+  its own fetch/receipt timestamp independently when it successfully
+  loads.
+- Fresh through exactly six hours (boundary inclusive, matching
+  `isDiscogsRowFresh`'s existing semantic); the first genuinely-stale
+  instant is one millisecond past that.
+- A floor-free one-shot timer (mirroring `CollectionDataProvider.tsx`'s
+  existing pattern, reusing the same `msUntilStale`/`isDiscogsRowFresh`
+  pure functions from `discogsFreshness.ts` against the local receipt
+  timestamp) clears - never re-fetches - the expired surface's state back
+  to its initial "search/find again" state at that exact moment. No
+  polling.
+- A `visibilitychange` listener performs the same check synchronously on
+  tab resume, closing the gap where a backgrounded tab's `setTimeout` may
+  have been throttled or paused past its scheduled fire time - stale
+  transient data is never displayed even for one frame after the tab
+  becomes visible again.
+- Switching the provider toggle away and back never resurrects expired
+  data - once cleared, the state is simply gone; toggling only changes
+  which already-live surface is rendered.
+- No automatic re-fetch under any circumstance. The user must explicitly
+  search, or submit the exact-URL form, again.
+
+This applies identically and independently to both transient surfaces -
+they can expire at different times, tracked separately.
+
+### 9.1 Persisted owned-release freshness
 
 Discogs provider artwork obeys the exact same six-hour freshness boundary
 as every other Discogs-derived field (spec 0018 §12):
@@ -369,3 +419,9 @@ Unchanged from spec 0018/ADR 0008, not reopened by this follow-up:
 11. No image binary is ever written to Supabase Storage or the repository;
     no provider token appears in any image URL, request, or client-visible
     data.
+12. A Discover search result or exact-URL preview candidate just below or
+    exactly at six hours old is still shown; immediately past six hours it
+    is cleared (never automatically re-fetched), independently for each
+    surface; switching providers away and back after expiry never
+    resurrects it; a tab resuming visibility after expiry clears it
+    synchronously even if its timer was throttled while backgrounded.

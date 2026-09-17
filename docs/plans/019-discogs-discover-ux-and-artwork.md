@@ -12,10 +12,20 @@ applied and deployed to production before this branch started). Historical
 freeze tags `ase26-final-submission-2026-09-15`/`…-09-16` remain untouched;
 no tag action in this branch.
 
+**Correction round note:** an independent review of the first version of
+this PR (PR #42) found one BLOCKER (transient Discover-surface data had no
+expiry of its own - spec 0019 §9.0, §6 below), two HIGH findings (the
+compact attribution variant dropped the required trailing period;
+`resource_url` was used as an unverified `<img>` source and image URLs
+accepted plain `http:`), and one MEDIUM (the migration's timestamp was
+dated a day ahead of when it was actually written). All four are fixed in
+this same branch/PR, described inline below rather than as a separate
+document.
+
 ## 1. Migration
 
 One new, forward-only migration:
-`supabase/migrations/20260918120000_add_discogs_provider_image.sql` — adds
+`supabase/migrations/20260917130000_add_discogs_provider_image.sql` — adds
 nullable `provider_image_url text`, a clean-format check (btrim + 1-1000
 chars, mirroring every other text field's existing convention), and a
 `provider = 'discogs'`-scoped check (never required, only ever scoped —
@@ -23,7 +33,14 @@ the opposite direction from `releases_discogs_requires_fetched_at`). No
 grant, RLS, or unique-constraint change. **Not applied to the hosted
 project by this branch** — verification ran against the local Supabase
 instance only (`supabase db reset` + `supabase test db` + `supabase db
-lint`).
+lint`). **Correction round finding 4:** this file was originally created
+as `20260918120000_...sql` — one day ahead of when it was actually
+written (2026-09-17, after the last applied migration,
+`20260917120000_add_discogs_catalog_provider.sql`). Renamed via `git mv`
+to the timestamp above; every documentation reference was updated to
+match. No remote/hosted action of any kind was taken for this rename - the
+migration was never applied to the hosted project either before or after
+it, so no `migration repair` or other remote-state action was needed.
 
 ## 2. Library layer (provider-agnostic types first)
 
@@ -33,13 +50,19 @@ lint`).
   string | null` (always `null` for MusicBrainz).
 - `src/lib/catalog/musicbrainz.ts`: sets `providerImageUrl: null`
   explicitly on every candidate (the type now requires it).
-- `src/lib/catalog/discogs.ts`:
+- `src/lib/catalog/discogs.ts` (**correction round finding 3:** the first
+  version of `cleanImageUrl` accepted plain `http:` and
+  `imageUrlFromEntry` fell back to `resource_url`, which this project has
+  never independently confirmed is a directly-loadable, unauthenticated
+  image URL as opposed to, e.g., an API resource reference - both fixed):
   - `DiscogsSearchResultItem` gains `transientCoverDisplayUrl` (from
-    `cover_image` else `thumb`, both validated as real `http(s)` URLs, a
+    `cover_image` else `thumb`, both validated as real HTTPS-only URLs, a
     malformed value discarded rather than partially trusted);
   - `normalizeDiscogsExactRelease` gains `selectDiscogsProviderImage`
-    (primary-first, then first-usable, then `null`), feeding
-    `candidate.providerImageUrl`.
+    (primary-first, then first-usable, then `null`, considering only
+    `uri`/`uri150` - never `resource_url`, which this project has not
+    independently confirmed is a directly-loadable unauthenticated URL,
+    spec 0019 §7.1), feeding `candidate.providerImageUrl`.
 - `src/lib/catalog/discogsIdentity.ts`: new `parseDiscogsReleaseUrl`
   (mirrors `parseMusicBrainzReleaseUrl`'s exact discipline — a real `URL`
   parse, anchored pathname regex, never string splitting); the module's own
@@ -140,11 +163,53 @@ new component tree):
 - "Can't find it? Add it manually" — untouched: same location, same
   appearance, same behavior.
 
+### 6.1 Transient Discover-surface expiry (correction round finding 1, spec 0019 §9.0)
+
+Two new pieces of state track when each transient surface was last
+fetched: `discogsResultsFetchedAt` and `discogsExactFetchedAt` (both
+`string | null` ISO timestamps), set alongside the existing
+`discogsResults`/`discogsExactCandidate` state on a successful
+fetch, and cleared on reset/error. Mirrored into refs
+(`discogsResultsFetchedAtRef`/`discogsExactFetchedAtRef`) so the timer and
+visibility-resume callbacks - which run outside React's render cycle - can
+read the latest value without a stale closure, matching
+`CollectionDataProvider.tsx`'s own established `itemsRef` pattern.
+
+`expireStaleDiscogsTransientData` checks each ref independently against
+the existing `isDiscogsRowFresh('discogs', fetchedAt)` pure function from
+`discogsFreshness.ts` and clears (never re-fetches) whichever surface has
+gone stale - reusing tested freshness logic rather than reimplementing the
+six-hour boundary a second time. A `useEffect` schedules one floor-free
+`setTimeout` for `Math.min` of each pending surface's
+`msUntilStale('discogs', fetchedAt) + 1` (the `+1` mirrors the exact fix
+already applied to `CollectionDataProvider.tsx`'s own timer in the PR #41
+review round: the boundary itself is fresh-inclusive, so the timer must
+fire 1ms past it to observe genuine staleness), re-scheduled whenever
+either fetched-at timestamp changes. A second effect adds a
+`visibilitychange` listener that calls the same expiry check synchronously
+whenever the document becomes visible, closing the backgrounded-tab
+throttled-timer gap.
+
+Tests use `vi.useFakeTimers()` (`DiscoverPanel.test.tsx`'s new "transient
+Discogs data expires at 6h" describe block) but drive interactions with
+`fireEvent` rather than `userEvent` — `userEvent`'s own internal
+delay/timer machinery otherwise fights the fake clock and hangs
+indefinitely, since nothing advances it while `userEvent` waits. Any
+subsequent async state update within a test is flushed with two
+`Promise.resolve()` ticks inside `act()`, not `waitFor` (`waitFor`'s
+internal polling likewise depends on a real or advancing timer).
+
 ## 7. Attribution presentation
 
 - `src/catalog/DiscogsAttribution.tsx`: added a decorative, `aria-hidden`
   "↗" after the required text (compact and full variants alike); the
-  required wording itself is unchanged.
+  required wording itself is unchanged. **Correction round finding 2:** the
+  first version of the compact variant dropped the trailing period
+  (`{compact ? null : '.'}`), producing "Data provided by Discogs" instead
+  of the exact required phrase. Fixed so both variants always render "Data
+  provided by Discogs." verbatim, followed by the decorative arrow -
+  `compact` now only ever controls layout density (the
+  `vi-discogs-attribution--compact` class), never the wording.
 - `src/styles/pages.css`: new `.vi-discogs-attribution` rule (previously
   unstyled — plain default `<p>` sizing, which is what made it look "too
   large and too central" in production). Reuses the existing small/muted

@@ -143,11 +143,17 @@ describe('normalizeDiscogsSearchResult (display-only, never split)', () => {
     ).toBeNull()
   })
 
-  it('ignores a non-http(s) cover_image value (never javascript:/data:)', () => {
-    const item = normalizeDiscogsSearchResult(
-      searchResultPayload({ cover_image: 'javascript:alert(1)' }),
-    )
-    expect(item?.transientCoverDisplayUrl).toBeNull()
+  it('ignores a non-https cover_image value (never javascript:/data:/http:)', () => {
+    expect(
+      normalizeDiscogsSearchResult(
+        searchResultPayload({ cover_image: 'javascript:alert(1)' }),
+      )?.transientCoverDisplayUrl,
+    ).toBeNull()
+    expect(
+      normalizeDiscogsSearchResult(
+        searchResultPayload({ cover_image: 'http://img.discogs.com/insecure.jpeg' }),
+      )?.transientCoverDisplayUrl,
+    ).toBeNull()
   })
 })
 
@@ -275,14 +281,7 @@ describe('normalizeDiscogsExactRelease (the sole CatalogCandidate producer)', ()
     expect(result?.candidate.providerImageUrl).toBe('https://i.discogs.com/first.jpeg')
   })
 
-  it('falls back to resource_url, then uri150, when uri is missing', () => {
-    const withResourceUrl = normalizeDiscogsExactRelease(
-      hsv005ExactReleasePayload({
-        images: [{ type: 'primary', resource_url: 'https://i.discogs.com/res.jpeg' }],
-      }),
-    )
-    expect(withResourceUrl?.candidate.providerImageUrl).toBe('https://i.discogs.com/res.jpeg')
-
+  it('falls back to uri150 when uri is missing', () => {
     const withThumbOnly = normalizeDiscogsExactRelease(
       hsv005ExactReleasePayload({
         images: [{ type: 'primary', uri150: 'https://i.discogs.com/150.jpeg' }],
@@ -291,7 +290,25 @@ describe('normalizeDiscogsExactRelease (the sole CatalogCandidate producer)', ()
     expect(withThumbOnly?.candidate.providerImageUrl).toBe('https://i.discogs.com/150.jpeg')
   })
 
-  it('a malformed entry (no usable URL field, or a non-http(s) value) is ignored, never fabricated', () => {
+  it('never uses resource_url as an image source, even when uri/uri150 are absent (spec 0018 follow-up finding 3 - unverified as a directly-loadable unauthenticated URL)', () => {
+    const result = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [{ type: 'primary', resource_url: 'https://i.discogs.com/res.jpeg' }],
+      }),
+    )
+    expect(result?.candidate.providerImageUrl).toBeNull()
+  })
+
+  it('rejects a plain http (non-https) image URL', () => {
+    const result = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [{ type: 'primary', uri: 'http://i.discogs.com/insecure.jpeg' }],
+      }),
+    )
+    expect(result?.candidate.providerImageUrl).toBeNull()
+  })
+
+  it('a malformed entry (no usable URL field, or a non-https value) is ignored, never fabricated', () => {
     const result = normalizeDiscogsExactRelease(
       hsv005ExactReleasePayload({
         images: [

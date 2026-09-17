@@ -11,17 +11,18 @@ describe('DiscogsAttribution', () => {
     expect(screen.getByText(/Data provided by/)).toBeInTheDocument()
   })
 
-  it('the full variant carries the required trailing period before the decorative arrow', () => {
+  it('the full variant carries the exact required phrase, including the period, before the decorative arrow', () => {
     render(<DiscogsAttribution releaseUrl="https://www.discogs.com/release/1" />)
-    expect(screen.getByText(/Data provided by/).textContent).toMatch(/Discogs\.\s*↗$/)
+    expect(screen.getByText(/Data provided by/).textContent).toMatch(
+      /^Data provided by Discogs\.\s*↗$/,
+    )
   })
 
-  it('the compact variant carries the compact modifier class and omits the trailing period', () => {
+  it('the compact variant carries the compact modifier class but the SAME exact required phrase, including the period (spec 0018 follow-up §2 correction)', () => {
     render(<DiscogsAttribution releaseUrl="https://www.discogs.com/release/1" compact />)
     const text = screen.getByText(/Data provided by/)
     expect(text.className).toContain('vi-discogs-attribution--compact')
-    expect(text.textContent).toMatch(/Discogs\s*↗$/)
-    expect(text.textContent).not.toMatch(/Discogs\./)
+    expect(text.textContent).toMatch(/^Data provided by Discogs\.\s*↗$/)
   })
 
   it('the decorative arrow is aria-hidden - never part of the accessible name', () => {

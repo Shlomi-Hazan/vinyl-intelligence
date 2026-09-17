@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act } from 'react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DiscoverPanel } from './DiscoverPanel.tsx'
 import { buildUserSessionKey } from '../lib/session/sessionDraft.ts'
 import { __clearSignedCoverCache } from '../media/signedCover.ts'
@@ -1130,8 +1131,7 @@ function discogsResult(
   }
 }
 
-async function switchToDiscogs() {
-  const user = userEvent.setup()
+async function switchToDiscogs(user: ReturnType<typeof userEvent.setup> = userEvent.setup()) {
   await user.click(screen.getByRole('radio', { name: 'Discogs' }))
   return user
 }
@@ -1398,5 +1398,149 @@ describe('DiscoverPanel - exact Discogs release URL (spec 0018 follow-up §5)', 
 
     const links = await screen.findAllByRole('link', { name: /Discogs.*opens in a new tab/ })
     expect(links.length).toBeGreaterThan(0)
+  })
+})
+
+describe('DiscoverPanel - transient Discogs data expires at 6h (spec 0018 follow-up §7 finding 1)', () => {
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-17T12:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** `fireEvent` dispatches DOM events synchronously with no internal
+   * delay/rAF machinery, unlike `userEvent` - reliable under
+   * `vi.useFakeTimers()`. The subsequent async work (the mocked provider
+   * call + resulting state update) is flushed with two `Promise.resolve()`
+   * ticks inside `act()`, NOT `waitFor` - `waitFor`'s own internal polling
+   * uses `setTimeout` and would otherwise hang forever under fake timers
+   * with nothing ever advancing them while it waits. */
+  async function searchAndGetFreshResult() {
+    searchDiscogsCatalog.mockResolvedValue({ results: [discogsResult()] })
+    renderPanel()
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    fireEvent.change(screen.getByLabelText('Search the catalog'), {
+      target: { value: 'כהן' },
+    })
+    await act(async () => {
+      fireEvent.submit(screen.getByRole('search'))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('כהן - מה שאפשר עם מה שנשאר')).toBeInTheDocument()
+  }
+
+  async function getFreshExactPreview() {
+    lookupDiscogsCatalogRelease.mockResolvedValue(
+      page([
+        candidate({ provider: 'discogs', providerReleaseId: '26770295', title: 'Exact Title' }),
+      ]),
+    )
+    renderPanel()
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    fireEvent.change(
+      screen.getByPlaceholderText('https://www.discogs.com/release/26770295-...'),
+      { target: { value: 'https://www.discogs.com/release/26770295' } },
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Find exact release' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('Exact Title')).toBeInTheDocument()
+  }
+
+  it('a search result just below 6h old is still shown', async () => {
+    await searchAndGetFreshResult()
+    vi.advanceTimersByTime(SIX_HOURS_MS - 1000)
+    expect(screen.getByText('כהן - מה שאפשר עם מה שנשאר')).toBeInTheDocument()
+  })
+
+  it('a search result exactly 6h old is still shown (boundary inclusive)', async () => {
+    await searchAndGetFreshResult()
+    vi.advanceTimersByTime(SIX_HOURS_MS)
+    expect(screen.getByText('כהן - מה שאפשר עם מה שנשאר')).toBeInTheDocument()
+  })
+
+  it('immediately after 6h, the search result is cleared and no automatic re-fetch happens', async () => {
+    await searchAndGetFreshResult()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    expect(screen.queryByText('כהן - מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+    expect(searchDiscogsCatalog).toHaveBeenCalledOnce()
+    // Back to the initial hint - the user must explicitly search again.
+    expect(screen.getByText(/Search Discogs for a release/)).toBeInTheDocument()
+  })
+
+  it('switching to MusicBrainz and back after expiry does not resurrect the stale search result', async () => {
+    await searchAndGetFreshResult()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    expect(screen.queryByText('כהן - מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+  })
+
+  it('a visibility resume after expiry synchronously clears the stale search result, even if the timer itself was throttled', async () => {
+    await searchAndGetFreshResult()
+    // Simulate a backgrounded tab: the clock advances well past expiry
+    // without any pending timer actually firing (as a throttled/paused
+    // background-tab timer would behave), then the tab becomes visible.
+    vi.setSystemTime(new Date(Date.now() + SIX_HOURS_MS + 1))
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(screen.queryByText('כהן - מה שאפשר עם מה שנשאר')).not.toBeInTheDocument()
+  })
+
+  it('the exact Discogs URL preview just below 6h old is still shown', async () => {
+    await getFreshExactPreview()
+    vi.advanceTimersByTime(SIX_HOURS_MS - 1000)
+    expect(screen.getByText('Exact Title')).toBeInTheDocument()
+  })
+
+  it('the exact Discogs URL preview exactly 6h old is still shown (boundary inclusive)', async () => {
+    await getFreshExactPreview()
+    vi.advanceTimersByTime(SIX_HOURS_MS)
+    expect(screen.getByText('Exact Title')).toBeInTheDocument()
+  })
+
+  it('immediately after 6h, the exact Discogs URL preview is cleared and no automatic re-fetch happens', async () => {
+    await getFreshExactPreview()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    expect(screen.queryByText('Exact Title')).not.toBeInTheDocument()
+    expect(lookupDiscogsCatalogRelease).toHaveBeenCalledOnce()
+  })
+
+  it('switching to MusicBrainz and back after exact-preview expiry does not resurrect it', async () => {
+    await getFreshExactPreview()
+    act(() => {
+      vi.advanceTimersByTime(SIX_HOURS_MS + 1)
+    })
+    fireEvent.click(screen.getByRole('radio', { name: 'MusicBrainz' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Discogs' }))
+    expect(screen.queryByText('Exact Title')).not.toBeInTheDocument()
+  })
+
+  it('a visibility resume after exact-preview expiry synchronously clears it', async () => {
+    await getFreshExactPreview()
+    vi.setSystemTime(new Date(Date.now() + SIX_HOURS_MS + 1))
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(screen.queryByText('Exact Title')).not.toBeInTheDocument()
   })
 })

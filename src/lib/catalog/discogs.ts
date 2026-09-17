@@ -66,10 +66,11 @@ function cleanText(value: unknown, maxLength: number): string | null {
 
 /**
  * A malformed provider image value is ignored entirely (`null`), never
- * partially trusted (spec 0018 follow-up §7-§9): must be a non-empty string,
- * within the shared length bound, and an `http(s)` URL - never a
- * `javascript:`/`data:`/relative value that could execute in, or be
- * misrendered by, the browser.
+ * partially trusted (spec 0018 follow-up §7-§9, corrected by PR #42's own
+ * finding 3): must be a non-empty string, within the shared length bound,
+ * and an **HTTPS-only** absolute URL - never `http:`, `javascript:`,
+ * `data:`, or a relative value that could execute in, or be misrendered
+ * by, the browser, or be silently downgraded to an insecure fetch.
  */
 function cleanImageUrl(value: unknown): string | null {
   const text = cleanText(value, RELEASE_FIELD_LIMITS.providerImageUrl)
@@ -86,7 +87,7 @@ function cleanImageUrl(value: unknown): string | null {
     return null
   }
 
-  return url.protocol === 'https:' || url.protocol === 'http:' ? text : null
+  return url.protocol === 'https:' ? text : null
 }
 
 /**
@@ -295,8 +296,11 @@ export function normalizeDiscogsSearchResult(
 
   const { label, catalogNumber } = searchLabelAndCatalogNumber(raw)
   // Prefer the full-size `cover_image`; fall back to the 150x150 `thumb`
-  // (spec 0018 follow-up §8 - both are documented Database Search fields,
-  // already full HTTPS URLs, never invented field names).
+  // (spec 0018 follow-up §8 - documented Database Search field names, not
+  // invented; `cleanImageUrl` still independently re-validates each value
+  // as an HTTPS URL rather than trusting the field name alone - live
+  // human verification of this response shape remains an open item, spec
+  // 0019 §7.1).
   const transientCoverDisplayUrl =
     cleanImageUrl(raw.cover_image) ?? cleanImageUrl(raw.thumb)
 
@@ -434,15 +438,19 @@ function findVinylFormat(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * One image entry's best URL (spec 0018 follow-up §9): the exact-Release
- * `images[]` array's documented fields are `uri` (full-size), `resource_url`
- * (typically identical to `uri`), and `uri150` (a 150x150 thumbnail) - `uri`
- * preferred, `uri150` a last resort, never invented.
+ * One image entry's best URL (spec 0018 follow-up §9, corrected by PR #42's
+ * own finding 3): only `uri` (full-size) and `uri150` (a 150x150
+ * thumbnail) - `uri` preferred, `uri150` a last resort. `resource_url` is
+ * deliberately NOT used as a browser `<img>` source: it is a documented
+ * field on the same entry, but this codebase has not independently
+ * verified against a live response that it is always a directly-loadable,
+ * unauthenticated image URL (as opposed to, e.g., an API resource
+ * reference) - treating an unverified field as safe to render is exactly
+ * the kind of assumption this project's own image-licensing/security
+ * boundary requires NOT making. Revisit only after that live verification.
  */
 function imageUrlFromEntry(entry: Record<string, unknown>): string | null {
-  return (
-    cleanImageUrl(entry.uri) ?? cleanImageUrl(entry.resource_url) ?? cleanImageUrl(entry.uri150)
-  )
+  return cleanImageUrl(entry.uri) ?? cleanImageUrl(entry.uri150)
 }
 
 /**
