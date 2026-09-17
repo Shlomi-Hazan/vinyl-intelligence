@@ -10,7 +10,7 @@ A screen-by-screen guide to using the application. For the product's final contr
 4. [🏠 Dashboard](#-4-dashboard)
 5. [📀 Collection — Browsing, Search, Filters, Sorting, Views](#-5-collection--browsing-search-filters-sorting-views)
 6. [➕ Adding a Record Manually](#-6-adding-a-record-manually)
-7. [🔎 Discovering a Record through MusicBrainz](#-7-discovering-a-record-through-musicbrainz)
+7. [🔎 Discovering Records — MusicBrainz & Discogs](#-7-discovering-records--musicbrainz--discogs)
 8. [🔁 Duplicate-Copy Confirmation](#-8-duplicate-copy-confirmation)
 9. [📸 Scanning a Record Cover](#-9-scanning-a-record-cover)
 10. [💿 Record Detail & Personal Metadata](#-10-record-detail--personal-metadata)
@@ -93,13 +93,15 @@ List view adds a per-row play count ("Never played" / "N play(s)") plus quick fa
 
 ## ➕ 6. Adding a Record Manually
 
-From Collection, click **Add record** (or **Add a record** in the top bar). Fill in the fields you know — artist and title are required, everything else is optional — and save. Use this when a record genuinely has no MusicBrainz match (a bootleg, an extremely obscure pressing, a private release).
+From Collection, click **Add record** (or **Add a record** in the top bar). Fill in the fields you know — artist and title are required, everything else is optional — and save. Use this when a record genuinely has no match on either catalog provider (a bootleg, an extremely obscure pressing, a private release) — try Discover's MusicBrainz **and** Discogs search first (§7).
 
-## 🔎 7. Discovering a Record through MusicBrainz
+## 🔎 7. Discovering Records — MusicBrainz & Discogs
 
-<p align="center"><img src="assets/screenshots/09-discover.png" alt="Discover — initial state with search modes and exact-URL lookup" width="820"></p>
+<p align="center"><img src="assets/screenshots/09-discover.png" alt="Discover — MusicBrainz selected, search modes, examples, and exact-URL lookup" width="820"></p>
 
-Type an artist and album (the example chips — "Alice Coltrane," "Bowie Low," "Radiohead OK Computer" — show the expected format) and press Enter or the search icon. Three modes sit above the results, mutually exclusive and single-select:
+Discover has **one search box shared by two catalog providers** — a **MusicBrainz | Discogs** selector sits right below it. **MusicBrainz is selected by default** every time you open the page. Switching providers (or switching modes, below) is instant and **never runs a search by itself** — it only changes what a search *would* do the next time you press Enter or click a search button — and whatever you've already typed stays in the box across the switch, so you never have to retype it.
+
+Type an artist and album (the example chips — "Alice Coltrane," "Bowie Low," "Radiohead OK Computer" — show the expected format and work under either provider) and press Enter or the search icon. Both providers show the same three modes above the results, mutually exclusive and single-select:
 
 | Mode | Searches | When to use it |
 | --- | --- | --- |
@@ -107,28 +109,42 @@ Type an artist and album (the example chips — "Alice Coltrane," "Bowie Low," "
 | **Artist** | artist name only | a common word in the artist name is drowning in unrelated release-title matches |
 | **Album** | release title only | you know the exact title and want to skip artist noise |
 
-Switching modes clears the current results (they were fetched under the old mode's meaning) but keeps whatever you've typed — no retyping needed.
+Switching modes clears the current results (they were fetched under the old mode's meaning) but keeps whatever you've typed — no retyping needed, and no search runs until you press Enter again.
 
-<p align="center"><img src="assets/screenshots/10-discover-results.png" alt="Discover — search results" width="820"></p>
+### MusicBrainz results
 
-Each result shows the release's year, label, catalog number, country, and format, plus a link to view it on MusicBrainz. Click **Add to collection** on the correct edition to import it. Results come five at a time; if more exist, a **Load more** button appends the next five (up to 20 total per search) without losing what's already on screen. If a later page fails to load, the ones already showing stay put and a **Retry** re-fetches just that page.
+<p align="center"><img src="assets/screenshots/10-discover-results.png" alt="Discover — MusicBrainz search results, provider selector visible" width="820"></p>
 
-Still not finding it? Two escape hatches, in order:
+Each MusicBrainz result shows the release's year, label, catalog number, country, and format, plus a link to view it on MusicBrainz. Click **Add to collection** on the correct edition to import it. Results come five at a time; if more exist, a **Load more** button appends the next five (up to 20 total per search) without losing what's already on screen. If a later page fails to load, the ones already showing stay put and a **Retry** re-fetches just that page.
 
-- **Search on MusicBrainz** — opens MusicBrainz's own full search site in a new tab, for when Vinyl Intelligence's bounded result window isn't enough.
-- **Know the exact release?** — if you've found the release on MusicBrainz yourself, paste its release URL (e.g. `https://musicbrainz.org/release/...`) and click **Find exact release**. Vinyl Intelligence extracts the release ID from the URL itself — you never have to copy just the ID — and looks up that exact release. The pasted URL is validated in your browser before anything is sent, and only the extracted ID ever reaches the server; an invalid link (wrong site, wrong MusicBrainz page type, malformed ID) is rejected locally with no network request at all.
+### Discogs results
+
+<p align="center"><img src="assets/screenshots/19-discover-discogs-results.png" alt="Discover — Discogs search results for a Hebrew query, with real artwork and attribution" width="820"></p>
+
+Select **Discogs** to search a second, independent catalog — useful for regional pressings and releases MusicBrainz doesn't carry. A Discogs result shows real cover artwork pulled from Discogs itself, the release's year, country, format, label, and catalog number, and the required **"Data provided by Discogs."** attribution linking back to the release's Discogs page. Discogs results have no "Load more" paging (they're a bounded, single fetch), and — this is deliberate — **Discogs and MusicBrainz results are never combined, matched, or deduplicated against each other**: adding the same physical release through both providers creates two separate, honestly-labeled collection entries, not one merged one.
+
+Still not finding it? Two escape hatches, in order, for whichever provider you have selected:
+
+- **Search on MusicBrainz** / **Search on Discogs** — opens that provider's own full search site in a new tab, carrying over whatever you've typed, for when Vinyl Intelligence's bounded result window isn't enough.
+- **Know the exact release?** — if you've found the release yourself on MusicBrainz or Discogs, paste its release URL and click **Find exact release**:
+  - MusicBrainz: `https://musicbrainz.org/release/...`
+  - Discogs: `https://www.discogs.com/release/...`
+
+  Vinyl Intelligence extracts and validates the release ID from the URL itself — you never have to copy just the ID — and looks up that exact release. The pasted URL is validated in your browser before anything is sent, and only the extracted ID ever reaches the server; an invalid link (wrong site, wrong page type, malformed ID) is rejected locally with no network request at all. Each provider's exact-lookup field only accepts that provider's own URL shape.
 
 <p align="center"><img src="assets/screenshots/17-discover-exact-lookup.png" alt="Discover — exact MusicBrainz release URL lookup result" width="820"></p>
 
-An exact-URL result appears in the same candidate card as any other result, with the same **Add to collection** confirmation and the same duplicate-copy handling below — pasting a URL never adds anything by itself.
+<p align="center"><img src="assets/screenshots/20-discover-discogs-exact-lookup.png" alt="Discover — exact Discogs release URL lookup result, already owned" width="820"></p>
 
-If none of that matches, use **Can't find it? Add it manually** at the bottom of the page.
+An exact-URL result appears in the same candidate card as any other result for that provider, with the same **Add to collection** action and the same duplicate-copy handling below — pasting a URL never adds anything by itself.
+
+A brand-new (not-yet-owned) result from either provider adds directly with one click on **Add to collection** — no extra confirmation step in the way. If none of that matches, use **Can't find it? Add it manually** at the bottom of the page (§6) — the manual-entry fallback is identical regardless of which provider you were searching.
 
 ## 🔁 8. Duplicate-Copy Confirmation
 
-If a search result is a release you already own (matched by its exact MusicBrainz release ID), Discover tells you honestly instead of blocking or silently duplicating it:
+If a search result — MusicBrainz or Discogs — is a release you already own (matched by its exact provider identity: provider + release ID, never guessed, and MusicBrainz/Discogs identities are never conflated with each other), Discover tells you honestly instead of blocking or silently duplicating it:
 
-<p align="center"><img src="assets/screenshots/11-discover-duplicate-dialog.png" alt="Add another copy confirmation dialog" width="520"></p>
+<p align="center"><img src="assets/screenshots/11-discover-duplicate-dialog.png" alt="Add another copy confirmation dialog for an already-owned Discogs release" width="520"></p>
 
 | State | What you see | What happens |
 | --- | --- | --- |
@@ -156,16 +172,20 @@ If the photo is unclear, you'll be offered "Search by text instead" (hands the c
 
 | Section | Editable? | Notes |
 | --- | --- | --- |
-| Artist / title / year / label / country / format | No | Shared catalog facts sourced from MusicBrainz (or your own entry, for a manual record) |
+| Artist / title / year / label / country / format | No | Shared catalog facts sourced from MusicBrainz or Discogs, depending on how the record was added (or your own entry, for a manual record) |
 | ♡ Add favourite | Yes | Toggles the favorite flag |
 | ★ rating row | Yes | Click a star to rate 1–5; click the filled star again to return to unrated |
 | Genres | No | Catalog-sourced tags |
 | Your genres | Yes | Type a tag and click **Add**; these are yours alone and combine with catalog genres for filtering |
-| Cover art | Yes | **Use my own cover** uploads a replacement; catalog artwork is the default |
-| MusicBrainz | No | A catalog-backed release shows **View on MusicBrainz**, linking to its exact release page on musicbrainz.org (opens in a new tab); a manually-created record shows no such link, since it has no MusicBrainz identity to point to |
+| Cover art | Yes | **Use my own cover** uploads a replacement; catalog artwork (MusicBrainz's Cover Art Archive image, or a persisted Discogs image) is the default |
+| MusicBrainz / Discogs | No | A catalog-backed release shows a provenance entry for its source provider — **MusicBrainz** / **View on MusicBrainz**, linking to its exact release page on musicbrainz.org, or **Discogs** / **View on Discogs**, linking to its exact release page on discogs.com, paired with the required **"Data provided by Discogs."** attribution directly beneath the link; a manually-created record shows neither, since it has no catalog identity to point to |
 | Listening | Yes (log only) | **Mark played** logs a play now; see §11 for corrections |
 
-Personal notes (not shown in the screenshot above) are available on the same page for a private, free-text note per record — never shared, never sent to any AI model.
+<p align="center"><img src="assets/screenshots/21-discogs-record-detail.png" alt="Record detail page for a Discogs-backed release" width="820"></p>
+
+The two providers' record-detail layouts match — same field positions, same styling — with the Discogs one additionally carrying the attribution line above.
+
+Personal notes (not shown in the screenshots above) are available on the same page for a private, free-text note per record — never shared, never sent to any AI model.
 
 ## 🎧 11. Listening History
 
@@ -215,7 +235,7 @@ A record with a Hebrew (or any non-Latin-script) title and artist renders correc
 - Your collection, ratings, notes, personal genres, and listening history are yours — Row-Level Security means no other user can read or write them, and there is no admin UI that bypasses that.
 - A photo you upload to **Scan** is used only to identify a record — it is transient and is not permanently stored. A **custom cover** you choose for a record, by contrast, is artwork you're intentionally keeping, and is stored in your own private Storage space until you replace or remove it.
 - Your VIN conversation is never saved anywhere.
-- Shared catalog facts (the parts sourced from MusicBrainz) are shared read-only reference data used by everyone's collection — editing them isn't offered because they aren't yours alone to change; your own corrections live in the personal-metadata overlays described in §10.
+- Shared catalog facts (the parts sourced from MusicBrainz or Discogs, whichever provider a record was added through) are shared read-only reference data used by everyone's collection — editing them isn't offered because they aren't yours alone to change; your own corrections live in the personal-metadata overlays described in §10.
 
 ## ❓ 17. FAQ
 
@@ -231,5 +251,8 @@ No — it's used once, to extract search clues, and then discarded.
 **Can I use the app in Hebrew throughout?**
 The app's own interface stays in English by design; only your record data (titles, artists, notes, genres) is multilingual-aware. See §14.
 
-**What happens if MusicBrainz or the AI provider is down?**
-You'll see an honest error with a retry option, never a fabricated result.
+**Can I add the same record from both MusicBrainz and Discogs?**
+Yes. They're never combined, matched, or deduplicated against each other — doing so creates two separate, honestly-labeled collection entries, exactly like adding two different pressings would.
+
+**What happens if MusicBrainz, Discogs, or the AI provider is down?**
+You'll see an honest error with a retry option, never a fabricated result. MusicBrainz and Discogs fail independently — one being unavailable never blocks searching the other.

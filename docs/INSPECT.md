@@ -12,7 +12,7 @@ Live application: **<https://vinyl-intelligence.netlify.app>**
 2. [🎚️ Collection Controls — Finding A Evidence](#-2-collection-controls--finding-a-evidence)
 3. [💿 Record Detail — The Metadata Boundary](#-3-record-detail--the-metadata-boundary)
 4. [🔁 Duplicate-Copy Handling — Finding B Evidence](#-4-duplicate-copy-handling--finding-b-evidence)
-5. [🔎 Discover — Search Modes & Exact MusicBrainz Lookup](#-5-discover--search-modes--exact-musicbrainz-lookup)
+5. [🔎 Discover — Two-Provider Search, Modes & Exact Lookup](#-5-discover--two-provider-search-modes--exact-lookup)
 6. [📸 Scan — Vision Privacy & Confirm-Before-Save](#-6-scan--vision-privacy--confirm-before-save)
 7. [🤖 VIN — The Recommendation Boundary](#-7-vin--the-recommendation-boundary)
 8. [🎧 History — Hebrew Rendering & Owner-Scoped Correction](#-8-history--hebrew-rendering--owner-scoped-correction)
@@ -37,7 +37,7 @@ Live application: **<https://vinyl-intelligence.netlify.app>**
 
 <p align="center"><img src="assets/inspect/03-record-detail.png" alt="Annotated record detail" width="820"></p>
 
-**🔍 What to inspect:** catalog genres are read-only chips (shared MusicBrainz data); "Your genres" is a separate, editable, owner-scoped overlay. This is the concrete UI evidence for the deterministic/shared-vs-owned data boundary described in [`../SPEC.md`](../SPEC.md) §30/§32 and [ADR 0006](decisions/0006-listening-event-mutability-and-profile-avatar.md).
+**🔍 What to inspect:** catalog genres are read-only chips (shared catalog data, sourced from MusicBrainz or Discogs depending on how the record was added); "Your genres" is a separate, editable, owner-scoped overlay. This is the concrete UI evidence for the deterministic/shared-vs-owned data boundary described in [`../SPEC.md`](../SPEC.md) §30/§32 and [ADR 0006](decisions/0006-listening-event-mutability-and-profile-avatar.md). A Discogs-backed record's equivalent provider-provenance layout is shown in Stop 5.
 
 ## 🔁 4. Duplicate-Copy Handling — Finding B Evidence
 
@@ -45,11 +45,16 @@ Live application: **<https://vinyl-intelligence.netlify.app>**
 
 **🔍 What to inspect:** the exact approved confirmation copy, captured live against a real already-owned MusicBrainz release. This is Finding B's restored contract — an already-owned release is disclosed honestly, never blocked, and a second physical copy requires exactly one intentional confirmation. Cancel makes zero writes; Confirm creates exactly one row. Identical behavior exists in Scan. Full independent-review chronology (including the corrected post-add stale-ownership race) is in `verification.md`.
 
-## 🔎 5. Discover — Search Modes & Exact MusicBrainz Lookup
+## 🔎 5. Discover — Two-Provider Search, Modes & Exact Lookup
 
-<p align="center"><img src="assets/inspect/09-discover-modes-exact-lookup.png" alt="Annotated Discover search modes and exact-URL lookup" width="820"></p>
+<p align="center"><img src="assets/inspect/09-discover-modes-exact-lookup.png" alt="Annotated Discover: two-provider selector, shared search modes, and exact-release lookup" width="820"></p>
 
-**🔍 What to inspect:** the explicit, mutually-exclusive **All / Artist / Album** radio group (correct `role="radio"`/`aria-checked` semantics, not a toggle-button group) above the results, and — lower on the page — a real MusicBrainz release URL pasted into **"Know the exact release?"** resolving to exactly one candidate. This is the Discover & MusicBrainz Navigation Enhancement's core contract made visible: the server never fetches the pasted URL itself — only a locally-extracted, pattern-validated release ID crosses the boundary, re-validated again server-side (`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md` §10–§15). Full evidence in `verification.md`'s "Discover & MusicBrainz Navigation Enhancement Evidence" section.
+**🔍 What to inspect (live, ~2 minutes):** one shared search box serves both catalog providers via the **MusicBrainz | Discogs** selector — **MusicBrainz stays selected by default** on every load, and neither switching provider nor switching mode ever fires a search by itself (the annotated callouts above mark exactly these three regions: the provider selector, the shared All/Artist/Album mode row — the same explicit, mutually-exclusive `role="radio"`/`aria-checked` group on both providers, not a toggle-button group, each paired with its own outbound **"Search on MusicBrainz"** / **"Search on Discogs"** link — and the exact-release-URL area). Click **Discogs**, then reproduce this exact case:
+
+- Search query: `כהן מה שאפשר עם מה שנשאר` — real artwork, the required "Data provided by Discogs." attribution, and owned/addable state all render (see [`USER_GUIDE.md`](USER_GUIDE.md) §7 for the full walkthrough and [`assets/screenshots/19-discover-discogs-results.png`](assets/screenshots/19-discover-discogs-results.png)).
+- Exact release: paste `https://www.discogs.com/release/26770295` into "Know the exact release?" — resolves to exactly one candidate ([`assets/screenshots/20-discover-discogs-exact-lookup.png`](assets/screenshots/20-discover-discogs-exact-lookup.png)).
+
+This is the Discover & MusicBrainz Navigation Enhancement's original core contract, now extended to a second provider: the server never fetches a pasted URL itself for either provider — only a locally-extracted, pattern-validated release ID crosses the boundary, re-validated again server-side (`docs/specs/0017-discover-musicbrainz-navigation-enhancement.md` §10–§15; `docs/specs/0018-discogs-secondary-catalog-provider.md`; `docs/specs/0020-discogs-discover-parity-followup.md`). MusicBrainz and Discogs identity are never conflated — an "In your collection" / "Add another copy" disclosure (§4 above) is checked against the exact `(provider, provider_release_id)` pair. Full evidence in `verification.md`'s "Discover & MusicBrainz Navigation Enhancement Evidence" and "Discogs Discover Parity Follow-up" sections.
 
 ## 📸 6. Scan — Vision Privacy & Confirm-Before-Save
 

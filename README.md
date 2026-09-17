@@ -69,7 +69,7 @@ Vinyl collectors often remember a mood, a decade, or a feeling before they remem
 | 🤖 AI Curator (VIN) | Natural-language mood → grounded recommendations from owned records only |
 | 💬 Conversational refinement | Bounded follow-up turns that narrow a previous recommendation |
 | 📀 Personal collection | Full CRUD, organized by artist, genre, year, decade, rating, favorites |
-| 🔎 Catalog-assisted add | MusicBrainz search → candidate confirmation → import |
+| 🔎 Catalog-assisted add | MusicBrainz (default) or Discogs (secondary) search → candidate confirmation → import |
 | 📸 AI cover recognition | Photograph a sleeve → vision clues → catalog match → confirm → save |
 | 🔁 Duplicate-copy handling | Owning a second physical pressing is disclosed and explicitly confirmed, never blocked or silently duplicated |
 | 🔍 Deterministic search/filter/sort | Artist, title, genre, decade, rating, listening recency — no LLM involved |
@@ -96,24 +96,36 @@ The non-negotiable rule: **VIN recommends only from records the user owns.** The
   <img src="docs/assets/screenshots/06-collection-list.png" alt="Collection list view with filters" width="820">
 </p>
 
-Every collection item combines shared catalog facts (artist, title, year, label, genres — sourced from MusicBrainz) with data the user fully owns: rating, favorite flag, personal notes, personal genres, custom cover, and listening history. Browse by artist, genre, year/decade, favorites, minimum rating, or listening recency ("Never played," "Not played in 30 days," "Least recently played"), in Grid or List view, on desktop or mobile — all deterministic, with no network round-trip on a filter change.
+Every collection item combines shared catalog facts (artist, title, year, label, genres — sourced from MusicBrainz or Discogs, depending on how the record was added) with data the user fully owns: rating, favorite flag, personal notes, personal genres, custom cover, and listening history. Browse by artist, genre, year/decade, favorites, minimum rating, or listening recency ("Never played," "Not played in 30 days," "Least recently played"), in Grid or List view, on desktop or mobile — all deterministic, with no network round-trip on a filter change.
 
 ## 🔎 Discover Records
 
 <p align="center">
-  <img src="docs/assets/screenshots/10-discover-results.png" alt="Discover search results with mode selector" width="820">
+  <img src="docs/assets/screenshots/09-discover.png" alt="Discover — MusicBrainz/Discogs provider selector, search modes, examples, and exact-release lookup" width="820">
 </p>
 
-Search MusicBrainz in one of three explicit modes — **All** (artist or release title, the default), **Artist**, or **Album** — confirm the correct release, and add it. Results page five at a time with **Load more** (up to 20 per query), and a **"Search on MusicBrainz"** link opens the provider's own full search UI when the bounded in-app result set isn't enough. Already know the exact pressing? Paste its MusicBrainz release URL under **"Know the exact release?"** and Vinyl Intelligence extracts and validates the release ID itself — no manual copying, and the pasted URL is never fetched by the server, only the validated ID crosses the boundary:
+One shared search area serves two catalog providers, **MusicBrainz | Discogs**, chosen with an explicit selector — **MusicBrainz is the default**, and switching provider (or mode) never fires a search by itself; the typed query always survives the switch. Both providers expose the same three explicit search modes — **All** (artist or release title, the default), **Artist**, or **Album** — plus a set of example searches and an outbound **"Search on MusicBrainz"** / **"Search on Discogs"** link to the provider's own full search UI when the bounded in-app result set isn't enough:
 
 <p align="center">
-  <img src="docs/assets/screenshots/17-discover-exact-lookup.png" alt="Exact MusicBrainz release URL lookup returning one candidate" width="820">
+  <img src="docs/assets/screenshots/10-discover-results.png" alt="MusicBrainz search results for Radiohead OK Computer, provider selector visible" width="820">
 </p>
 
-If a candidate is a release **already** in the collection, Discover says so honestly ("In your collection") and still offers an explicit **"Add another copy"** action for a legitimate second pressing — click it and a single confirmation dialog is the only way an extra physical copy is ever added:
+**Discogs is an explicit secondary provider**, not a silent fallback — useful for regional pressings and releases MusicBrainz doesn't have. Discogs results and MusicBrainz results are never combined or cross-matched; adding the same release through both providers creates two separate, honestly-labeled collection entries, each carrying real cover artwork and the required "Data provided by Discogs." attribution:
 
 <p align="center">
-  <img src="docs/assets/screenshots/11-discover-duplicate-dialog.png" alt="Duplicate-copy confirmation dialog" width="520">
+  <img src="docs/assets/screenshots/19-discover-discogs-results.png" alt="Discogs search results for a Hebrew query, with artwork, attribution, and owned state" width="820">
+</p>
+
+Already know the exact pressing? Paste a MusicBrainz **or** Discogs release URL under **"Know the exact release?"** and Vinyl Intelligence extracts and validates the release ID itself — no manual copying, and the pasted URL is never fetched by the server; only the validated ID crosses the boundary:
+
+<p align="center">
+  <img src="docs/assets/screenshots/20-discover-discogs-exact-lookup.png" alt="Exact Discogs release URL lookup returning one candidate, already owned" width="820">
+</p>
+
+If a candidate is a release **already** in the collection (checked by its exact provider + release ID, MusicBrainz and Discogs identities never conflated), Discover says so honestly ("In your collection") and still offers an explicit **"Add another copy"** action for a legitimate second pressing — click it and a single confirmation dialog is the only way an extra physical copy is ever added; a brand-new, not-yet-owned result adds directly, with no extra popup in the way:
+
+<p align="center">
+  <img src="docs/assets/screenshots/11-discover-duplicate-dialog.png" alt="Duplicate-copy confirmation dialog for an already-owned Discogs release" width="520">
 </p>
 
 ## 📸 Scan a Record Cover
@@ -138,7 +150,7 @@ Photograph or upload a cover. A vision model extracts likely clues (artist, titl
   <img src="docs/assets/screenshots/07-record-detail.png" alt="Album detail page" width="820">
 </p>
 
-The Album Detail page is the clearest picture of the app's metadata boundary: catalog genres are shown as read-only chips (shared data, sourced from MusicBrainz), while "Your genres," rating, favorite, notes, and cover art are all editable, owner-scoped overlays layered on top. A MusicBrainz-backed record also carries a **"View on MusicBrainz"** link back to its exact release page — pure outbound provenance, no new server call. VIN can use these signals; it never invents or overwrites them.
+The Album Detail page is the clearest picture of the app's metadata boundary: catalog genres are shown as read-only chips (shared data, sourced from MusicBrainz or Discogs depending on how the record was added), while "Your genres," rating, favorite, notes, and cover art are all editable, owner-scoped overlays layered on top. A catalog-backed record also carries a provenance link back to its exact release page on its source provider — **"View on MusicBrainz"** or **"View on Discogs"**, the latter paired with the required "Data provided by Discogs." attribution — pure outbound provenance, no new server call. VIN can use these signals; it never invents or overwrites them.
 
 ## 🌍 Hebrew & Multilingual Records
 
@@ -154,8 +166,8 @@ Dynamic record content — titles, artists, labels, genres — renders correctly
 | --- | --- |
 | ![Dashboard](docs/assets/screenshots/03-dashboard.png) | ![Collection filters](docs/assets/screenshots/05-collection-filters.png) |
 | Dashboard — stats, Quick VIN, quick actions | Collection — minimum-rating filter applied |
-| ![Discover](docs/assets/screenshots/09-discover.png) | ![Mobile](docs/assets/screenshots/16-mobile-collection.png) |
-| Discover — search modes, Load more, and exact-URL lookup | Mobile — Collection on a narrow viewport |
+| ![Discover](docs/assets/screenshots/18-discover-discogs.png) | ![Mobile](docs/assets/screenshots/16-mobile-collection.png) |
+| Discover — Discogs selected, search modes, examples, and exact-URL lookup | Mobile — Collection on a narrow viewport |
 
 More screens are shown throughout this README and in the [User Guide](docs/USER_GUIDE.md) and [Visual Inspect](docs/INSPECT.md) guide.
 
@@ -178,14 +190,15 @@ Browser (Vite + React 19 + TypeScript SPA on Netlify static hosting)
   |
   `---- provider access + privileged catalog persistence --> Netlify Functions
           |  /api/health             (GET)   public liveness — no auth
-          |  /api/catalog/search     (GET)   MusicBrainz release search        [auth]
+          |  /api/catalog/search     (GET)   MusicBrainz (default) or Discogs  [auth]
+          |                                  (secondary, ?provider=discogs) search
           |  /api/catalog/add        (POST)  upsert shared release + insert    [auth]
           |                                  owned collection item
           |  /api/catalog/recognize  (POST)  OpenRouter vision recognition     [auth]
           |  /api/curator/recommend  (POST)  initial recommendation pipeline   [auth]
           |  /api/curator/refine     (POST)  bounded refinement pipeline       [auth]
           v
-      Hosted Supabase (service-role:    OpenRouter                MusicBrainz
+      Hosted Supabase (service-role:    OpenRouter                MusicBrainz + Discogs
       catalog-add's release upsert       google/gemini-3.1-flash-lite (vision + intent)
       AND collection-item insert,        google/gemini-3.5-flash (selection)
       plus telemetry writes)
@@ -199,7 +212,7 @@ Full detail, including rejected alternatives and the reasoning behind each decis
 - **Backend:** Netlify Functions (`.mts`), six endpoints — five auth-gated application endpoints plus one public `/api/health` liveness endpoint
 - **Database / Auth / Storage:** hosted Supabase — Postgres with RLS on every table, Supabase Auth, two private Storage buckets
 - **AI:** OpenRouter — `google/gemini-3.1-flash-lite` (vision + curator intent), `google/gemini-3.5-flash` (curator selection); strict JSON schemas; allowed-candidate-ID validation
-- **Music metadata:** MusicBrainz; Cover Art Archive for display-time artwork
+- **Music metadata:** MusicBrainz (primary/default), Discogs (explicit secondary provider); Cover Art Archive for display-time MusicBrainz artwork, a persisted Discogs image URL for Discogs artwork
 - **Testing:** Vitest (unit/integration), pgTAP via the Supabase CLI (RLS/DB)
 - **Deliberately not used:** RAG / vector database, multi-agent orchestration, Next.js, analytics infrastructure
 
@@ -226,9 +239,11 @@ Copy `.env.example` to a local `.env` and fill in local or hosted Supabase value
 | `SUPABASE_SERVICE_ROLE_KEY` | Netlify Functions only | **yes** |
 | `OPENROUTER_API_KEY` | Netlify Functions only | **yes** |
 | `MUSICBRAINZ_USER_AGENT`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_CURATOR_INTENT_MODEL`, `OPENROUTER_CURATOR_SELECTION_MODEL` | Netlify Functions only | no |
+| `DISCOGS_TOKEN` | Netlify Functions only | **yes** |
+| `DISCOGS_USER_AGENT` | Netlify Functions only | no |
 | `OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE` | Netlify Functions only | no (optional attribution headers) |
 
-Browser code uses only `VITE_*` values. Running the photo-recognition or curator flows locally makes real, paid OpenRouter calls.
+Browser code uses only `VITE_*` values — `DISCOGS_TOKEN` and `DISCOGS_USER_AGENT` (like every other catalog/AI credential) are read only by Netlify Functions and never reach client code. Running the photo-recognition or curator flows locally makes real, paid OpenRouter calls; running a Discogs search locally makes a real Discogs API call.
 
 For the local Supabase stack:
 
@@ -270,7 +285,7 @@ The full verification history — every milestone's automated gate, independent 
 | [Architecture](docs/architecture.md) | As-built system design |
 | [Data Model](docs/data-model.md) | Schema, RLS, and Storage |
 | [AI Design](docs/ai-design.md) | Model choices, prompts, cost/latency posture |
-| [API Integrations](docs/api-integrations.md) | MusicBrainz, Cover Art Archive, OpenRouter, Supabase, Netlify |
+| [API Integrations](docs/api-integrations.md) | MusicBrainz, Discogs, Cover Art Archive, OpenRouter, Supabase, Netlify |
 | [Security](docs/security.md) | Secrets, RLS, upload validation, retention |
 | [Verification](docs/verification.md) | Every milestone's evidence, findings, and human acceptance |
 | [Current Roadmap](docs/roadmaps/2026-09-02-complete-project-roadmap.md) | Actual project evolution, current status |
@@ -308,8 +323,11 @@ The project was not designed once and generated — it evolved through a discipl
 2. **Hebrew & Multilingual Record Support** — a deliberate post-M12 enhancement, not part of the original plan.
 3. **Final Submission Alignment** — an independent audit-triggered remediation that closed two real gaps (Collection rating/listening browse completion; Discover/Scan duplicate-copy handling) and reconciled the living documentation.
 4. **Discover & MusicBrainz Navigation Enhancement** — a further deliberate, human-requested post-freeze usability enhancement discovered during real hands-on product use: explicit All/Artist/Album search modes with corrected MusicBrainz query semantics, bounded "Load more" pagination, a deterministic exact-release-URL lookup (extract-and-validate the MBID; the pasted URL itself is never fetched server-side), an outbound "Search on MusicBrainz" link, and a Record Detail "View on MusicBrainz" provenance link — all routed through the existing `/api/catalog/search` endpoint and the existing confirm-before-add/duplicate-copy contract, with no schema, dependency, or AI-model change.
+5. **Discogs Secondary Catalog Provider** — MusicBrainz remains primary/default; Discogs was added as an explicit, user-triggered secondary provider (never automatic, never combined or cross-matched with MusicBrainz results) for regional pressings and releases MusicBrainz doesn't have (spec 0018).
+6. **Discogs Discover UX & Provider Artwork** — triggered by real production acceptance of the above: one shared MusicBrainz/Discogs search area, a direct first-add (no redundant preview popup) while the duplicate-copy confirmation is kept, exact Discogs release URL import, and a new persisted-URL-only Discogs provider-artwork feature, gated by a six-hour freshness boundary (spec 0019).
+7. **Discogs Discover Parity Follow-up** — brought Discogs the rest of the way to parity with MusicBrainz: the same All/Artist/Album modes and example searches, a "Search on Discogs" outbound link, and an Album Detail provenance layout matching MusicBrainz's own (spec 0020). This is the current accepted production runtime.
 
-Every phase followed the same loop: specification → human-approved plan → implementation → automated verification → independent review → correction where needed → merge → deployment → human production acceptance. See the [current roadmap](docs/roadmaps/2026-09-02-complete-project-roadmap.md) for the full chronology and exact commit/deploy evidence, and the [historical roadmap snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) (preserved unchanged) for what was originally planned before implementation began.
+Every phase followed the same loop: specification → human-approved plan → implementation → automated verification → independent review → correction where needed → merge → deployment → human production acceptance. See the [current roadmap](docs/roadmaps/2026-09-02-complete-project-roadmap.md) for the full chronology and exact commit/deploy evidence, and the [historical roadmap snapshot](docs/roadmaps/2026-08-18-complete-project-roadmap.md) (preserved unchanged) for what was originally planned before implementation began. This documentation-refresh pass (README/User Guide/Inspect/screenshots) and the production-acceptance record that precedes it are docs-only changes on top of that same accepted runtime — they do not themselves change what's deployed.
 
 ## 🎓 ASE-26 Course Context
 
