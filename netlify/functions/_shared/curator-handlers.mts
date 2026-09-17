@@ -775,9 +775,17 @@ export async function handleCuratorRefine(
     // freshness pass above (spec 0018 §12, PR #41 finding 3) - the normal
     // no_match response, returned BEFORE any OpenRouter/model call (zero
     // calls, not one) rather than falling through to LLM call #1 only to
-    // discover there is nothing left to interpret against.
+    // discover there is nothing left to interpret against. Unlike the
+    // initial-recommend path, a refinement has a real prior conversational
+    // intent already in hand (`refinementContext.previousIntent`) - since
+    // no refinement model ran, that intent was never revised, so it is
+    // echoed back as-is rather than overwritten with a fabricated neutral
+    // one (PR #41 final correction).
     if (items.length === 0) {
-      return jsonResponse({ status: 'no_match', interpretedIntent: uninterpretedIntent() })
+      return jsonResponse({
+        status: 'no_match',
+        interpretedIntent: refinementContext.previousIntent,
+      })
     }
 
     const provider = providerConfig(env)

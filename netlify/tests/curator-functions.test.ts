@@ -1073,15 +1073,20 @@ describe('loadOwnedCollection - Discogs freshness-safe plumbing (spec 0018 §12)
     expect(ctx.selectRecommendations).not.toHaveBeenCalled()
   })
 
-  it('applies to refine too: zero model calls when every candidate is excluded', async () => {
+  it('applies to refine too: zero model calls when every candidate is excluded, echoing the prior intent unchanged', async () => {
     mockLookupDiscogsRelease.mockReset()
     mockLookupDiscogsRelease.mockRejectedValue(new Error('Discogs unavailable'))
     const staleFetchedAt = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    const previousIntent = validIntent({
+      includeGenres: ['rock'],
+      decades: [1990],
+      avoidRecentlyPlayed: true,
+    })
 
     const { json, extractRefinement, selectRecommendations } = await runRefine(
       {
         request: 'only favorites',
-        context: validContext(),
+        context: validContext({ previousIntent }),
       },
       {
         collectionRows: [
@@ -1098,6 +1103,10 @@ describe('loadOwnedCollection - Discogs freshness-safe plumbing (spec 0018 §12)
     // OpenRouter/model call.
     expect(extractRefinement).not.toHaveBeenCalled()
     expect(selectRecommendations).not.toHaveBeenCalled()
+    // PR #41 final correction: no refinement model ran, so the prior
+    // conversational intent was never revised - it is echoed back exactly,
+    // never overwritten with a fabricated neutral intent.
+    expect(json.interpretedIntent).toEqual(previousIntent)
   })
 
   it('the release select gains provider/provider_release_id/provider_fetched_at', async () => {
