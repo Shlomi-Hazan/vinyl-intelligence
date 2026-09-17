@@ -74,6 +74,7 @@ function catalogReleasePayload(
     label: candidate.label,
     provider: candidate.provider,
     provider_fetched_at: providerFetchedAt,
+    provider_image_url: candidate.providerImageUrl,
     provider_release_group_id: candidate.providerReleaseGroupId,
     provider_release_id: candidate.providerReleaseId,
     release_year: candidate.releaseYear,

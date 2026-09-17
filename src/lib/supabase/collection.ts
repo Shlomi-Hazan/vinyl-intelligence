@@ -84,6 +84,12 @@ export type CollectionItemWithRelease = Pick<
      */
     provider_fetched_at?: string | null
     /**
+     * A persisted Discogs provider image URL (spec 0018 follow-up §9-§11) -
+     * optional for pre-follow-up fixtures; `null`/absent for every
+     * MusicBrainz/manual row and for a Discogs row with no usable artwork.
+     */
+    provider_image_url?: string | null
+    /**
      * 'manual' (user-entered, editable) or 'catalog' (MusicBrainz/Discogs,
      * read-only). Optional so pre-Phase-D fixtures stay valid; treated as
      * 'manual' when absent only for display, never to bypass RLS.
@@ -311,6 +317,7 @@ export async function loadCollection(
           provider_release_id,
           provider_release_group_id,
           provider_fetched_at,
+          provider_image_url,
           source,
           updated_at
         )
@@ -371,6 +378,7 @@ export async function addManualCollectionItem(
           provider_release_id,
           provider_release_group_id,
           provider_fetched_at,
+          provider_image_url,
           source,
           updated_at
         )

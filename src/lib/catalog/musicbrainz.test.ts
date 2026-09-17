@@ -114,6 +114,7 @@ describe('MusicBrainz adapter', () => {
         score: 98,
         title: 'The Dark Side of the Moon',
         transientCoverDisplayUrl: null,
+        providerImageUrl: null,
       },
     ])
     expect(page.rawCount).toBe(1)

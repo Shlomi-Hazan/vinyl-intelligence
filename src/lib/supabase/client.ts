@@ -27,6 +27,14 @@ export type Release = {
    * 'discogs'` rows; always null for MusicBrainz/manual rows.
    */
   provider_fetched_at: string | null
+  /**
+   * A persisted Discogs provider image URL (spec 0018 follow-up S9) - never
+   * image bytes. Scoped to `provider = 'discogs'` rows at the database level;
+   * always null for MusicBrainz (which derives artwork from the Cover Art
+   * Archive by mbid, never a persisted URL) and manual rows. Missing Discogs
+   * artwork is a valid state, not an error.
+   */
+  provider_image_url: string | null
   artist: string
   title: string
   release_year: number | null
@@ -167,6 +175,7 @@ type Database = {
           provider_release_id?: null
           provider_release_group_id?: null
           provider_fetched_at?: null
+          provider_image_url?: null
           artist: string
           title: string
           release_year?: number | null

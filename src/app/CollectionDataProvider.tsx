@@ -175,6 +175,11 @@ export function CollectionDataProvider({ client, userId, children }: Props) {
                       country: response.candidate.country,
                       format: response.candidate.format,
                       genres: response.genres,
+                      // Tied to the SAME successful provider fetch as
+                      // `provider_fetched_at` below (spec 0018 follow-up
+                      // §10/§13) - never a leftover value from a previous
+                      // fetch, and never persisted independently of it.
+                      provider_image_url: response.candidate.providerImageUrl,
                       // The server-returned timestamp, never `Date.now()`
                       // (spec 0018 §8.0) - the client's freshness clock stays
                       // anchored to what was actually persisted.

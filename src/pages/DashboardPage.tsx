@@ -52,6 +52,9 @@ function AlbumMini({ item }: { item: CollectionItemWithRelease }) {
         releaseGroupMbid={
           !isDiscogs ? item.release.provider_release_group_id ?? null : null
         }
+        providerImageUrl={
+          isDiscogs && !unavailable ? item.release.provider_image_url ?? null : null
+        }
         customCoverPath={
           item.custom_cover_path ? customCoverPath(userId, item.id) : null
         }

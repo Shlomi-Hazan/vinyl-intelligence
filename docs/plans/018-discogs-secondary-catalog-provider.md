@@ -1,6 +1,18 @@
 # 018 Discogs Secondary Catalog Provider (Implementation Plan)
 
-Status: **PLANNING ONLY — NOT IMPLEMENTED.**
+**Status update (2026-09-18):** Implemented, independently reviewed
+(2 correction rounds), merged as PR #41
+(`b73d7a79769ddd7a1d4a109945eda301fca5f605`), migration applied to the
+hosted project, and that `main` deployed to production. The UX/flow
+decisions this plan made in §1/§6/§8/§14 (Discogs's placement below
+MusicBrainz, the read-only-preview-then-confirm add flow, "no exact
+Discogs URL import," and "Discogs images entirely out of scope") were
+superseded immediately afterward by real production acceptance feedback -
+see `docs/plans/019-discogs-discover-ux-and-artwork.md`. This document's
+body is preserved as originally written; it is not edited to match the
+follow-up.
+
+Original status at plan time: **PLANNING ONLY — NOT IMPLEMENTED.**
 
 Spec: `docs/specs/0018-discogs-secondary-catalog-provider.md` — **merged,
 human-approved**, the primary behavioral contract; this plan does not

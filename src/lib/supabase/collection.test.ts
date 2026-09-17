@@ -127,6 +127,7 @@ function expectCollectionSelectSemantics(selectArg: unknown) {
     'country',
     'format',
     'updated_at',
+    'provider_image_url',
   ]) {
     expect(releaseFields).toContain(field)
   }

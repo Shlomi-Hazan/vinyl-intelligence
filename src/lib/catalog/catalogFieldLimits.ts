@@ -14,6 +14,8 @@ export const RELEASE_FIELD_LIMITS = {
   country: 80,
   format: 80,
   genre: 40,
+  /** A persisted Discogs provider image URL (spec 0018 follow-up §9). */
+  providerImageUrl: 1000,
 } as const
 
 export const RELEASE_YEAR_MIN = 1900

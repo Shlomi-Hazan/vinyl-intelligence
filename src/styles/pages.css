@@ -1128,6 +1128,21 @@
   color: var(--text-faint);
   font-family: var(--font-mono);
 }
+/* Required Discogs attribution (spec 0018 §13) - small, muted supporting
+   microcopy everywhere it appears, never a section title, primary metadata,
+   a CTA, or a central content block (spec 0018 follow-up §6). */
+.vi-discogs-attribution {
+  font-size: var(--fs-label);
+  color: var(--text-faint);
+  margin: 0;
+}
+.vi-discogs-attribution a {
+  color: inherit;
+  text-decoration: underline;
+}
+.vi-discogs-attribution--compact {
+  display: inline-block;
+}
 .vi-candidate__actions {
   display: flex;
   flex-wrap: wrap;

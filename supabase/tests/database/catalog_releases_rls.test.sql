@@ -57,6 +57,32 @@ select ok(
 select ok(
   exists (
     select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'releases'
+      and column_name = 'provider_image_url'
+      and is_nullable = 'YES'
+  ),
+  'releases has a nullable provider_image_url column (spec 0018 follow-up)'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace ns on ns.oid = rel.relnamespace
+    where ns.nspname = 'public'
+      and rel.relname = 'releases'
+      and con.conname = 'releases_provider_image_url_scoped_to_discogs'
+      and con.contype = 'c'
+  ),
+  'releases scopes provider_image_url to Discogs rows'
+);
+
+select ok(
+  exists (
+    select 1
     from pg_policies
     where schemaname = 'public'
       and tablename = 'releases'
@@ -338,6 +364,79 @@ select lives_ok(
        now()
      ) $$,
   'service role can create a valid Discogs catalog release with a fetched-at marker'
+);
+
+select lives_ok(
+  $$ insert into public.releases (
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title,
+       provider_fetched_at,
+       provider_image_url
+     ) values (
+       null,
+       'catalog',
+       'discogs',
+       '26770296',
+       'Discogs Artist With Image',
+       'Discogs Album With Image',
+       now(),
+       'https://i.discogs.com/abc123/release-26770296.jpeg'
+     ) $$,
+  'a Discogs catalog release may carry a persisted provider_image_url (spec 0018 follow-up)'
+);
+
+select is(
+  (select provider_image_url from public.releases where provider_release_id = '26770296'),
+  'https://i.discogs.com/abc123/release-26770296.jpeg',
+  'the persisted provider_image_url is stored verbatim'
+);
+
+select lives_ok(
+  $$ insert into public.releases (
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title,
+       provider_fetched_at
+     ) values (
+       null,
+       'catalog',
+       'discogs',
+       '26770297',
+       'Discogs Artist Without Image',
+       'Discogs Album Without Image',
+       now()
+     ) $$,
+  'a Discogs catalog release with no image at all is still valid - missing artwork is not an error'
+);
+
+select throws_ok(
+  $$ insert into public.releases (
+       created_by,
+       source,
+       provider,
+       provider_release_id,
+       artist,
+       title,
+       provider_image_url
+     ) values (
+       null,
+       'catalog',
+       'musicbrainz',
+       'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc',
+       'Invalid Image Artist',
+       'Invalid Image Album',
+       'https://i.discogs.com/should-be-rejected.jpeg'
+     ) $$,
+  '23514',
+  null,
+  'a non-null provider_image_url on a non-Discogs catalog release is rejected'
 );
 
 select throws_ok(

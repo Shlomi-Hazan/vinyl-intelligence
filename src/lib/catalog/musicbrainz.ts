@@ -438,6 +438,10 @@ export function normalizeMusicBrainzRelease(
     country: cleanOptionalText(release.country, RELEASE_FIELD_LIMITS.country),
     format: extractFormat(release),
     transientCoverDisplayUrl: null,
+    // MusicBrainz artwork is always derived at render time from the Cover
+    // Art Archive by mbid, never a persisted URL (spec 0018 follow-up §9) -
+    // this field is exclusively a Discogs concept.
+    providerImageUrl: null,
     derivedProviderPageUrl,
   }
 }

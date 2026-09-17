@@ -114,6 +114,41 @@ describe('normalizeDiscogsSearchResult (display-only, never split)', () => {
     expect(normalizeDiscogsSearchResult(null)).toBeNull()
     expect(normalizeDiscogsSearchResult('string')).toBeNull()
   })
+
+  it('prefers cover_image as the transient display image (spec 0018 follow-up §8)', () => {
+    const item = normalizeDiscogsSearchResult(
+      searchResultPayload({
+        cover_image: 'https://img.discogs.com/full.jpeg',
+        thumb: 'https://img.discogs.com/thumb.jpeg',
+      }),
+    )
+    expect(item?.transientCoverDisplayUrl).toBe('https://img.discogs.com/full.jpeg')
+  })
+
+  it('falls back to thumb when cover_image is absent', () => {
+    const item = normalizeDiscogsSearchResult(
+      searchResultPayload({ thumb: 'https://img.discogs.com/thumb.jpeg' }),
+    )
+    expect(item?.transientCoverDisplayUrl).toBe('https://img.discogs.com/thumb.jpeg')
+  })
+
+  it('is null when neither cover_image nor thumb is a valid URL', () => {
+    expect(
+      normalizeDiscogsSearchResult(searchResultPayload())?.transientCoverDisplayUrl,
+    ).toBeNull()
+    expect(
+      normalizeDiscogsSearchResult(
+        searchResultPayload({ cover_image: 'not-a-url', thumb: '' }),
+      )?.transientCoverDisplayUrl,
+    ).toBeNull()
+  })
+
+  it('ignores a non-http(s) cover_image value (never javascript:/data:)', () => {
+    const item = normalizeDiscogsSearchResult(
+      searchResultPayload({ cover_image: 'javascript:alert(1)' }),
+    )
+    expect(item?.transientCoverDisplayUrl).toBeNull()
+  })
 })
 
 describe('normalizeDiscogsExactRelease (the sole CatalogCandidate producer)', () => {
@@ -209,6 +244,68 @@ describe('normalizeDiscogsExactRelease (the sole CatalogCandidate producer)', ()
 
   it('returns null for a non-object input', () => {
     expect(normalizeDiscogsExactRelease(null)).toBeNull()
+  })
+
+  it('is null when the release has no images array at all', () => {
+    const result = normalizeDiscogsExactRelease(hsv005ExactReleasePayload())
+    expect(result?.candidate.providerImageUrl).toBeNull()
+  })
+
+  it('prefers the entry whose type is exactly "primary" (spec 0018 follow-up §9)', () => {
+    const result = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [
+          { type: 'secondary', uri: 'https://i.discogs.com/secondary.jpeg' },
+          { type: 'primary', uri: 'https://i.discogs.com/primary.jpeg' },
+        ],
+      }),
+    )
+    expect(result?.candidate.providerImageUrl).toBe('https://i.discogs.com/primary.jpeg')
+  })
+
+  it('falls back to the first entry with a usable URL when no entry is type "primary"', () => {
+    const result = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [
+          { type: 'secondary', uri: 'https://i.discogs.com/first.jpeg' },
+          { type: 'secondary', uri: 'https://i.discogs.com/second.jpeg' },
+        ],
+      }),
+    )
+    expect(result?.candidate.providerImageUrl).toBe('https://i.discogs.com/first.jpeg')
+  })
+
+  it('falls back to resource_url, then uri150, when uri is missing', () => {
+    const withResourceUrl = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [{ type: 'primary', resource_url: 'https://i.discogs.com/res.jpeg' }],
+      }),
+    )
+    expect(withResourceUrl?.candidate.providerImageUrl).toBe('https://i.discogs.com/res.jpeg')
+
+    const withThumbOnly = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [{ type: 'primary', uri150: 'https://i.discogs.com/150.jpeg' }],
+      }),
+    )
+    expect(withThumbOnly?.candidate.providerImageUrl).toBe('https://i.discogs.com/150.jpeg')
+  })
+
+  it('a malformed entry (no usable URL field, or a non-http(s) value) is ignored, never fabricated', () => {
+    const result = normalizeDiscogsExactRelease(
+      hsv005ExactReleasePayload({
+        images: [
+          { type: 'primary', uri: 'javascript:alert(1)' },
+          { type: 'secondary' },
+        ],
+      }),
+    )
+    expect(result?.candidate.providerImageUrl).toBeNull()
+  })
+
+  it('a release with an empty images array has providerImageUrl null - missing artwork is valid', () => {
+    const result = normalizeDiscogsExactRelease(hsv005ExactReleasePayload({ images: [] }))
+    expect(result?.candidate.providerImageUrl).toBeNull()
   })
 })
 
