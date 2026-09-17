@@ -23,7 +23,7 @@ import {
   musicBrainzWebSearchUrl,
   parseMusicBrainzReleaseUrl,
 } from '../lib/catalog/musicbrainzIdentity.ts'
-import { parseDiscogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
+import { discogsWebSearchUrl, parseDiscogsReleaseUrl } from '../lib/catalog/discogsIdentity.ts'
 import { isDiscogsRowFresh, msUntilStale } from '../lib/catalog/discogsFreshness.ts'
 import { isExactCatalogReleaseOwned } from '../lib/catalog/ownedRelease.ts'
 import {
@@ -197,6 +197,10 @@ export function DiscoverPanel({
   const [discogsResults, setDiscogsResults] = useState<DiscogsSearchResultItem[]>([])
   const [discogsSubmittedQuery, setDiscogsSubmittedQuery] = useState('')
   const [discogsSearchError, setDiscogsSearchError] = useState<string | null>(null)
+  // Discogs's own All/Artist/Album mode (spec 0020 §2) - independent of
+  // MusicBrainz's `mode` above, exactly like every other Discogs surface in
+  // this panel. Switching it never fires a search by itself.
+  const [discogsMode, setDiscogsMode] = useState<SearchMode>('all')
   const discogsInProgress = useRef(false)
   // The exact moment `discogsResults` was fetched (spec 0018 follow-up §7 -
   // finding 1: transient Discogs data must expire at 6h, same as persisted
@@ -374,6 +378,25 @@ export function DiscoverPanel({
     [invalidatePendingWork, mode, query, userId],
   )
 
+  /** The Discogs analog of `handleModeChange` (spec 0020 §2): switching
+   * mode never fires a search by itself, and never touches MusicBrainz's
+   * own `mode`/results. Unlike MusicBrainz's mode, Discogs search has no
+   * draft persistence and no in-flight request to invalidate (no
+   * pagination, no request-generation counter on this surface). */
+  const handleDiscogsModeChange = useCallback(
+    (next: SearchMode) => {
+      if (next === discogsMode) {
+        return
+      }
+      setDiscogsMode(next)
+      setDiscogsResults([])
+      setDiscogsSubmittedQuery('')
+      setDiscogsSearchError(null)
+      setDiscogsPhase('initial')
+    },
+    [discogsMode],
+  )
+
   const runSearch = useCallback(
     async (raw?: string) => {
       // This guard is runSearch's own rapid-resubmit dedup (e.g. mashing
@@ -510,7 +533,7 @@ export function DiscoverPanel({
       discogsInProgress.current = true
       setDiscogsPhase('loading')
       try {
-        const response = await searchDiscogsCatalog(client, q)
+        const response = await searchDiscogsCatalog(client, q, discogsMode)
         setDiscogsResults(response.results)
         setDiscogsSubmittedQuery(q)
         setDiscogsPhase(response.results.length > 0 ? 'results' : 'no-results')
@@ -529,7 +552,7 @@ export function DiscoverPanel({
         discogsInProgress.current = false
       }
     },
-    [client, query],
+    [client, discogsMode, query],
   )
 
   /**
@@ -936,13 +959,30 @@ export function DiscoverPanel({
           </a>
         </div>
       ) : (
-        <p className="vi-hint vi-discover__discogshint">
-          More pressings and regional releases. Discogs and MusicBrainz
-          results are shown separately and are never combined or matched
-          against each other - adding the same release through both
-          providers creates two separate collection entries.
-        </p>
+        <div className="vi-discover__modes">
+          <SegmentedRadioGroup
+            label="Search mode"
+            value={discogsMode}
+            onChange={handleDiscogsModeChange}
+            options={MODE_OPTIONS}
+          />
+          <a
+            className="vi-btn vi-btn--ghost vi-btn--sm"
+            href={discogsWebSearchUrl(query || null)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Search on Discogs
+            <span className="vi-visually-hidden"> (opens in a new tab)</span>
+          </a>
+        </div>
       )}
+
+      {provider === 'discogs' ? (
+        <p className="vi-hint vi-discover__discogshint">
+          Extra pressings and regional releases.
+        </p>
+      ) : null}
 
       {provider === 'musicbrainz' && searched && submittedQuery ? (
         <p className="vi-hint vi-discover__current">
@@ -1097,6 +1137,21 @@ export function DiscoverPanel({
           {discogsPhase === 'initial' ? (
             <div className="vi-discover__hint">
               <p>Search Discogs for a release, confirm it&rsquo;s the right pressing, and add it.</p>
+              <div className="vi-discover__examples">
+                {EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    className="vi-chip"
+                    onClick={() => {
+                      setQuery(ex)
+                      void runDiscogsSearch(ex)
+                    }}
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 

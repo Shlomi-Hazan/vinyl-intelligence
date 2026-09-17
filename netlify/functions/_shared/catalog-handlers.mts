@@ -291,10 +291,12 @@ type SearchPageRequest = {
 /**
  * The explicit, user-triggered Discogs fallback search (spec 0018 §8) - a
  * genuinely distinct request/response shape from `SearchPageRequest`, never
- * forced into `CatalogSearchResponse`.
+ * forced into `CatalogSearchResponse`. `mode` (spec 0020 §2) selects which
+ * Discogs search field carries `query` - still no pagination.
  */
 type DiscogsSearchPageRequest = {
   kind: 'discogs-search'
+  mode: SearchMode
   query: string
 }
 
@@ -361,14 +363,18 @@ function parseCatalogSearchRequest(request: Request): CatalogSearchRequest {
   }
 
   if (provider === 'discogs') {
-    if (rawMode !== null || rawOffset !== null || rawLimit !== null) {
+    if (rawOffset !== null || rawLimit !== null) {
       throw new CatalogFunctionError(
         'invalid_query',
-        'Discogs search does not accept mode, offset, or limit.',
+        'Discogs search does not accept offset or limit.',
       )
     }
 
-    return { kind: 'discogs-search', query }
+    // `mode` (spec 0020 §2) - same validation/default as MusicBrainz's,
+    // Discogs still has no pagination so offset/limit remain rejected above.
+    const mode = parseMode(rawMode)
+
+    return { kind: 'discogs-search', mode, query }
   }
 
   const mode = parseMode(rawMode)
@@ -800,6 +806,7 @@ export async function handleCatalogSearch(
       await dependencies.paceDiscogsRequest()
 
       const response = await dependencies.searchDiscogsReleases({
+        mode: parsed.mode,
         query: parsed.query,
         token,
         userAgent,

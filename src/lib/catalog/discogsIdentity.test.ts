@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DISCOGS_RELEASE_ID_PATTERN,
   discogsReleaseUrl,
+  discogsWebSearchUrl,
   parseDiscogsReleaseUrl,
 } from './discogsIdentity.ts'
 
@@ -46,6 +47,23 @@ describe('discogsReleaseUrl', () => {
     expect(discogsReleaseUrl('not-a-uuid')).toBeNull()
     expect(discogsReleaseUrl('')).toBeNull()
     expect(discogsReleaseUrl('0')).toBeNull()
+  })
+})
+
+describe('discogsWebSearchUrl (spec 0020 §5)', () => {
+  it('omits q for a null term but always sets type=release', () => {
+    expect(discogsWebSearchUrl(null)).toBe('https://www.discogs.com/search/?type=release')
+  })
+
+  it('omits q for an empty/whitespace-only term', () => {
+    expect(discogsWebSearchUrl('')).toBe('https://www.discogs.com/search/?type=release')
+    expect(discogsWebSearchUrl('   ')).toBe('https://www.discogs.com/search/?type=release')
+  })
+
+  it('sets the trimmed term as q when non-empty', () => {
+    expect(discogsWebSearchUrl('  portishead  ')).toBe(
+      'https://www.discogs.com/search/?q=portishead&type=release',
+    )
   })
 })
 

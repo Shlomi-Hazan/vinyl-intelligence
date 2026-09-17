@@ -3,12 +3,12 @@
  * sibling of `musicbrainzIdentity.ts` (spec 0018 §2.1). IDs are validated and
  * carried as strings everywhere, never parsed to a JS `number`.
  *
- * Still deliberately does NOT export a `discogsWebSearchUrl` (no "search on
- * Discogs" outbound link with a free-text query - spec 0018 §3, unchanged by
- * the follow-up). `parseDiscogsReleaseUrl`, below, WAS cut from v1 but is
- * reinstated by the spec 0018 follow-up (§5): exact Discogs release URL
- * import is now a supported entry point, mirroring the existing MusicBrainz
- * exact-URL feature.
+ * `discogsWebSearchUrl`, below, was originally cut (no "search on Discogs"
+ * outbound link - spec 0018 §3) but is reinstated by spec 0020 §5, solely to
+ * give a user an in-app path to Discogs's own site to find a release URL for
+ * the exact-URL import feature (which itself was cut from v1 and reinstated
+ * earlier, by the spec 0018 follow-up §5, spec 0019). Neither link performs
+ * or triggers any search, matching, or persistence of its own.
  */
 
 /**
@@ -28,6 +28,25 @@ export function discogsReleaseUrl(providerReleaseId: string): string | null {
   }
 
   return `https://www.discogs.com/release/${providerReleaseId}`
+}
+
+/**
+ * An outbound link to Discogs's own web search (spec 0020 §5), mirroring
+ * `musicBrainzWebSearchUrl`'s exact shape: `q` is set only for a non-empty,
+ * trimmed term; `type=release` is always set. Never fetched by this app -
+ * purely a link the user follows to Discogs's own site.
+ */
+export function discogsWebSearchUrl(term: string | null): string {
+  const params = new URLSearchParams()
+  const trimmed = term?.trim()
+
+  if (trimmed) {
+    params.set('q', trimmed)
+  }
+
+  params.set('type', 'release')
+
+  return `https://www.discogs.com/search/?${params.toString()}`
 }
 
 /**
