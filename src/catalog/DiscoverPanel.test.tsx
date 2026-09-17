@@ -1262,6 +1262,52 @@ describe('DiscoverPanel - one primary catalog-search area (spec 0018 follow-up Â
     expect(screen.getByLabelText('Search the catalog')).toHaveValue('Alice Coltrane')
   })
 
+  it('a Discogs mode change invalidates an in-flight search - the stale response never appears and a new-mode search runs immediately (PR #43 correction)', async () => {
+    let resolveFirst: (v: { results: import('../lib/catalog/discogs.ts').DiscogsSearchResultItem[] }) => void =
+      () => {}
+    searchDiscogsCatalog.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveFirst = resolve)),
+    )
+    const user = userEvent.setup()
+    renderPanel()
+
+    // 1. start a Discogs "All" search that never resolves on its own.
+    await switchToDiscogs(user)
+    await user.type(screen.getByLabelText('Search the catalog'), 'portishead')
+    await user.keyboard('{Enter}')
+    await waitFor(() =>
+      expect(searchDiscogsCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead', 'all'),
+    )
+
+    // 2. switch to Artist mode before the "All" request resolves.
+    await user.click(screen.getByRole('radio', { name: 'Artist' }))
+
+    // 3. the stale "All" request now resolves.
+    resolveFirst({
+      results: [discogsResult({ providerReleaseId: 'stale', displayTitle: 'Stale All Result' })],
+    })
+
+    // 4. its results must never appear, and the panel must not be stuck on
+    // a loading state the stale request's own `finally` failed to clear.
+    await waitFor(() => expect(screen.queryByText('Stale All Result')).toBeNull())
+    expect(screen.getByText(/Search Discogs for a release/i)).toBeInTheDocument()
+
+    // 5. submit a new search immediately - it must not be blocked by the
+    // stale request's guard.
+    searchDiscogsCatalog.mockResolvedValueOnce({
+      results: [discogsResult({ providerReleaseId: 'fresh', displayTitle: 'Fresh Artist Result' })],
+    })
+    await user.click(screen.getByLabelText('Search the catalog'))
+    await user.keyboard('{Enter}')
+
+    // 6. the new-mode request/result works normally.
+    await waitFor(() =>
+      expect(searchDiscogsCatalog).toHaveBeenCalledWith(expect.anything(), 'portishead', 'artist'),
+    )
+    expect(await screen.findByText('Fresh Artist Result')).toBeInTheDocument()
+    expect(screen.queryByText('Stale All Result')).toBeNull()
+  })
+
   it('preserves the typed query when switching providers', async () => {
     const user = userEvent.setup()
     renderPanel()

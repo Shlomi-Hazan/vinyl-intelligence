@@ -202,6 +202,15 @@ export function DiscoverPanel({
   // this panel. Switching it never fires a search by itself.
   const [discogsMode, setDiscogsMode] = useState<SearchMode>('all')
   const discogsInProgress = useRef(false)
+  // Discogs's own monotonic request-generation counter (PR #43 correction -
+  // a HIGH race: a Discogs search left in flight across a mode change could
+  // otherwise populate results under the newly-selected mode once it
+  // resolved, and its own `finally` could clear `discogsInProgress` for a
+  // request that had already been superseded, wrongly unblocking/blocking
+  // later state). Mirrors `requestSeq`'s stale-response protection for
+  // MusicBrainz in intent only - a fully independent counter, since this
+  // surface has no Load More/offset guard of its own to release.
+  const discogsRequestSeq = useRef(0)
   // The exact moment `discogsResults` was fetched (spec 0018 follow-up §7 -
   // finding 1: transient Discogs data must expire at 6h, same as persisted
   // owned-release data). `null` whenever there are no live results to
@@ -321,6 +330,17 @@ export function DiscoverPanel({
     return seq
   }, [])
 
+  /** The Discogs analog of `invalidatePendingWork` (PR #43 correction) -
+   * bumps `discogsRequestSeq` and releases `discogsInProgress` so a
+   * superseded search's own `finally` can never block (or wrongly clear a
+   * newer request's) guard. No `loadingMore`-equivalent guard exists on
+   * this surface (no pagination), so there is nothing else to release. */
+  const invalidateDiscogsPendingWork = useCallback((): number => {
+    const seq = ++discogsRequestSeq.current
+    discogsInProgress.current = false
+    return seq
+  }, [])
+
   const resetSearch = useCallback(() => {
     invalidatePendingWork()
     setQuery('')
@@ -342,7 +362,7 @@ export function DiscoverPanel({
   }, [invalidatePendingWork, userId])
 
   const resetDiscogsSearch = useCallback(() => {
-    discogsInProgress.current = false
+    invalidateDiscogsPendingWork()
     setQuery('')
     setDiscogsResults([])
     setDiscogsSubmittedQuery('')
@@ -352,7 +372,7 @@ export function DiscoverPanel({
     setShowManual(false)
     setDiscogsPhase('initial')
     window.setTimeout(() => searchRef.current?.focus(), 0)
-  }, [])
+  }, [invalidateDiscogsPendingWork])
 
   const handleModeChange = useCallback(
     (next: SearchMode) => {
@@ -380,21 +400,25 @@ export function DiscoverPanel({
 
   /** The Discogs analog of `handleModeChange` (spec 0020 §2): switching
    * mode never fires a search by itself, and never touches MusicBrainz's
-   * own `mode`/results. Unlike MusicBrainz's mode, Discogs search has no
-   * draft persistence and no in-flight request to invalidate (no
-   * pagination, no request-generation counter on this surface). */
+   * own `mode`/results. Invalidates any in-flight Discogs search under the
+   * previous mode first (PR #43 correction) - otherwise that request's
+   * eventual success/error could populate results under the newly-selected
+   * mode, and its own `finally` could clear `discogsInProgress` for what by
+   * then may be a different, newer request (or leave it stuck `true` for
+   * one that never got to run its own `finally` at all). */
   const handleDiscogsModeChange = useCallback(
     (next: SearchMode) => {
       if (next === discogsMode) {
         return
       }
+      invalidateDiscogsPendingWork()
       setDiscogsMode(next)
       setDiscogsResults([])
       setDiscogsSubmittedQuery('')
       setDiscogsSearchError(null)
       setDiscogsPhase('initial')
     },
-    [discogsMode],
+    [discogsMode, invalidateDiscogsPendingWork],
   )
 
   const runSearch = useCallback(
@@ -520,6 +544,10 @@ export function DiscoverPanel({
 
   const runDiscogsSearch = useCallback(
     async (raw?: string) => {
+      // This guard is runDiscogsSearch's own rapid-resubmit dedup (e.g.
+      // mashing Enter) - unrelated to, and evaluated before, the
+      // invalidation below, which releases the guard belonging to an
+      // *other*, now-superseded operation (a mode change in particular).
       if (discogsInProgress.current) {
         return
       }
@@ -530,10 +558,21 @@ export function DiscoverPanel({
         setDiscogsSearchError('Enter at least 2 characters.')
         return
       }
+      // PR #43 correction: capture this request's own generation before
+      // starting it, so a later mode change/reset that bumps
+      // `discogsRequestSeq` can mark this request stale - its eventual
+      // success/error then never mutates the now-current UI, and its
+      // `finally` never clears a guard that a newer request already owns.
+      const seq = invalidateDiscogsPendingWork()
       discogsInProgress.current = true
       setDiscogsPhase('loading')
       try {
         const response = await searchDiscogsCatalog(client, q, discogsMode)
+
+        if (seq !== discogsRequestSeq.current) {
+          return
+        }
+
         setDiscogsResults(response.results)
         setDiscogsSubmittedQuery(q)
         setDiscogsPhase(response.results.length > 0 ? 'results' : 'no-results')
@@ -544,15 +583,20 @@ export function DiscoverPanel({
         // empty-results phase displayed indefinitely.
         setDiscogsResultsFetchedAt(new Date().toISOString())
       } catch (error) {
+        if (seq !== discogsRequestSeq.current) {
+          return
+        }
         setDiscogsResults([])
         setDiscogsSearchError(errorMessage(error))
         setDiscogsPhase('error')
         setDiscogsResultsFetchedAt(null)
       } finally {
-        discogsInProgress.current = false
+        if (seq === discogsRequestSeq.current) {
+          discogsInProgress.current = false
+        }
       }
     },
-    [client, discogsMode, query],
+    [client, discogsMode, invalidateDiscogsPendingWork, query],
   )
 
   /**
